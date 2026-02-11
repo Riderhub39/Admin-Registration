@@ -88,16 +88,20 @@
             <div class="text-muted small">View photos uploaded by field staff</div>
         </div>
 
-        <div class="d-flex gap-2">
-            <input type="date" id="dateFilter" class="form-control fw-bold" style="width: 160px;">
+        <div class="d-flex gap-2 align-items-center">
+            <button class="btn btn-outline-secondary" onclick="changeDate(-1)">
+                <i data-lucide="chevron-left" class="size-4"></i>
+            </button>
+
+            <input type="date" id="dateFilter" class="form-control fw-bold text-center" style="width: 150px;" onchange="loadEvidence()">
             
-            <select id="staffFilter" class="form-select" style="width: 200px;">
+            <button class="btn btn-outline-secondary" onclick="changeDate(1)">
+                <i data-lucide="chevron-right" class="size-4"></i>
+            </button>
+            
+            <select id="staffFilter" class="form-select ms-2" style="width: 200px;" onchange="loadEvidence()">
                 <option value="all">All Staff</option>
                 </select>
-
-            <button class="btn btn-primary" onclick="loadEvidence()">
-                <i data-lucide="filter" class="size-4 me-2"></i> Load
-            </button>
         </div>
     </div>
 
@@ -147,16 +151,28 @@
 
     const imageModal = new bootstrap.Modal(document.getElementById('imageModal'));
 
-    // Init Date to Today
-    document.getElementById('dateFilter').value = new Date().toISOString().split('T')[0];
+    // 🟢 Init Date to Today
+    const dateInput = document.getElementById('dateFilter');
+    dateInput.value = new Date().toISOString().split('T')[0];
+
+    // 🟢 Change Date Helper
+    window.changeDate = (days) => {
+        const current = new Date(dateInput.value);
+        current.setDate(current.getDate() + days);
+        dateInput.value = current.toISOString().split('T')[0];
+        loadEvidence(); // Auto-load
+    };
+
+    // 🟢 Expose loadEvidence globally
+    window.loadEvidence = loadEvidenceImpl; 
 
     onAuthStateChanged(auth, async (user) => {
         if (user) {
-            // Check Admin Role (Optional, reusing logic from home.html)
+            // Check Admin Role
             const adminDoc = await getDoc(doc(db, "users", user.uid));
             if (adminDoc.exists() && adminDoc.data().role === 'admin') {
                 await loadStaffList();
-                loadEvidence();
+                loadEvidence(); // Initial Load
             } else {
                 alert("Unauthorized Access");
                 window.location.href = "index.html";
@@ -176,7 +192,7 @@
                 const data = doc.data();
                 const name = data.personal?.name || data.name || "Unknown";
                 const opt = document.createElement('option');
-                opt.value = data.authUid || doc.id; // Use AuthUID for filtering if available
+                opt.value = data.authUid || doc.id; 
                 opt.textContent = name;
                 select.appendChild(opt);
             });
@@ -185,8 +201,8 @@
         }
     }
 
-    // 2. Load Photos Logic
-    window.loadEvidence = async function() {
+    // 2. Load Photos Logic Implementation
+    async function loadEvidenceImpl() {
         const container = document.getElementById('galleryContainer');
         const dateVal = document.getElementById('dateFilter').value;
         const staffVal = document.getElementById('staffFilter').value;
@@ -220,7 +236,7 @@
             const grouped = {};
             snap.forEach(doc => {
                 const d = doc.data();
-                // Filter by Staff ID (Manual filter since Firestore compound query with range is restrictive)
+                // Filter by Staff ID (Manual filter)
                 if (staffVal !== 'all' && d.uid !== staffVal) return;
 
                 const sName = d.staffName || "Unknown Staff";
@@ -243,8 +259,7 @@
                 
                 let photosHtml = '';
                 photos.forEach(p => {
-                    const timeStr = p.localTime ? p.localTime.split(' ')[1] : "Unknown"; // Extract HH:mm:ss
-                    // Escape special chars for JSON
+                    const timeStr = p.localTime ? p.localTime.split(' ')[1] : "Unknown"; 
                     const safeData = JSON.stringify(p).replace(/"/g, '&quot;');
                     
                     photosHtml += `
