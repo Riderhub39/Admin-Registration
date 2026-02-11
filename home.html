@@ -11,19 +11,20 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-        /* 顶部快捷按钮 */
+        /* Top Quick Actions */
         .quick-action-btn {
             background: white; border: 1px solid #e2e8f0; border-radius: 12px;
             padding: 15px; text-align: center; transition: all 0.2s;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             height: 100px; text-decoration: none; color: var(--text-main);
+            cursor: pointer;
         }
         .quick-action-btn:hover {
             transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.05);
             border-color: var(--primary); color: var(--primary);
         }
         
-        /* 通用统计卡片 */
+        /* General Stat Cards */
         .stat-card { 
             background: white; border-radius: 16px; border: 1px solid #e2e8f0; 
             padding: 20px; height: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.01); 
@@ -32,7 +33,7 @@
         
         .stat-value { font-size: 2rem; font-weight: 800; line-height: 1; }
         
-        /* 待办任务卡片样式 */
+        /* Task Row Styling */
         .task-row { 
             transition: all 0.2s ease; 
             border: 1px solid #e2e8f0; 
@@ -47,12 +48,19 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
         }
         
-        /* 状态点 */
+        /* Status Dots */
         .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; }
         .bg-online { background-color: #22c55e; box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2); }
         .bg-offline { background-color: #94a3b8; }
         
         .cursor-pointer { cursor: pointer; }
+
+        /* WiFi List Item Style */
+        .wifi-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0;
+            border-radius: 6px; margin-bottom: 5px;
+        }
     </style>
 </head>
 <body>
@@ -63,13 +71,13 @@
 
     <div class="row g-3 mb-4 justify-content-center">
         <div class="col-6 col-md-2">
-    <a href="manage_staff.html" class="quick-action-btn">
-        <div class="bg-primary bg-opacity-10 p-2 rounded-circle mb-2 text-primary">
-            <i data-lucide="user" class="size-5"></i>
+            <a href="manage_staff.html" class="quick-action-btn">
+                <div class="bg-primary bg-opacity-10 p-2 rounded-circle mb-2 text-primary">
+                    <i data-lucide="user" class="size-5"></i>
+                </div>
+                <div class="fw-bold small">Onboard Staff</div>
+            </a>
         </div>
-        <div class="fw-bold small">Onboard Staff</div>
-    </a>
-</div>
         <div class="col-6 col-md-2">
             <a href="attendance.html" class="quick-action-btn">
                 <div class="bg-success bg-opacity-10 p-2 rounded-circle mb-2 text-success"><i data-lucide="file-spreadsheet" class="size-5"></i></div>
@@ -85,7 +93,7 @@
         </div>
 
         <div class="col-6 col-md-2">
-            <button onclick="openAnnouncementModal()" class="quick-action-btn w-100 border-0 shadow-sm" style="border: 1px solid #e2e8f0;">
+            <button onclick="openAnnouncementModal()" class="quick-action-btn w-100 border-0 shadow-sm">
                 <div class="bg-warning bg-opacity-10 p-2 rounded-circle mb-2 text-warning"><i data-lucide="megaphone" class="size-5"></i></div>
                 <div class="fw-bold small">Announcement</div>
             </button>
@@ -96,6 +104,13 @@
                 <div class="bg-info bg-opacity-10 p-2 rounded-circle mb-2 text-info"><i data-lucide="calendar-days" class="size-5"></i></div>
                 <div class="fw-bold small">Roster Plan</div>
             </a>
+        </div>
+
+        <div class="col-6 col-md-2">
+            <button onclick="openOfficeSettingsModal()" class="quick-action-btn w-100 border-0 shadow-sm">
+                <div class="bg-secondary bg-opacity-10 p-2 rounded-circle mb-2 text-secondary"><i data-lucide="settings" class="size-5"></i></div>
+                <div class="fw-bold small">Office Setup</div>
+            </button>
         </div>
     </div>
 
@@ -240,12 +255,65 @@
     </div>
 </div>
 
+<div class="modal fade" id="officeSettingsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">🏢 Company Office Settings</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6 class="fw-bold mb-3">📍 GPS Location</h6>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label small">Latitude</label>
+                        <input type="number" id="officeLat" class="form-control" step="any" placeholder="e.g. 3.1415">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">Longitude</label>
+                        <input type="number" id="officeLng" class="form-control" step="any" placeholder="e.g. 101.6869">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small">Allowed Radius (meters)</label>
+                        <input type="number" id="officeRadius" class="form-control" value="500">
+                    </div>
+                </div>
+
+                <hr>
+
+                <h6 class="fw-bold mb-3">📶 Wi-Fi Whitelist (Secure BSSID)</h6>
+                <div class="row g-2 mb-2">
+                    <div class="col-5">
+                        <input type="text" id="newWifiSSID" class="form-control" placeholder="WiFi Name (SSID)">
+                    </div>
+                    <div class="col-5">
+                        <input type="text" id="newWifiBSSID" class="form-control" placeholder="MAC Address (BSSID)">
+                    </div>
+                    <div class="col-2">
+                        <button class="btn btn-outline-primary w-100" type="button" onclick="addWifiToList()">Add</button>
+                    </div>
+                </div>
+                <div class="form-text text-muted small mb-2">
+                    Tip: BSSID (e.g., <code>c0:25:e9:8d:a0:1b</code>) ensures staff connect to the <b>specific</b> office router, preventing fake hotspots.
+                </div>
+                
+                <div id="wifiListContainer" style="max-height: 200px; overflow-y: auto;">
+                    </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="saveOfficeSettings()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-    import { getFirestore, collection, query, where, getDocs, onSnapshot, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, collection, query, where, getDocs, onSnapshot, addDoc, serverTimestamp, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     import { firebaseConfig } from "./firebase-config.js";
     import { initUnifiedHeader } from "./header-app.js";
@@ -258,6 +326,7 @@
 
     let attChartInstance = null;
     const announceModal = new bootstrap.Modal(document.getElementById('announceModal'));
+    const officeModal = new bootstrap.Modal(document.getElementById('officeSettingsModal'));
 
     onAuthStateChanged(auth, (user) => {
         if (user) {
@@ -273,24 +342,142 @@
     }
 
     // ==========================================
-    // 1. Task Logic (Updates Counts for Cards)
+    // 🟢 Office Settings Logic (Enhanced)
+    // ==========================================
+    let currentWifiList = []; // Structure: [{ ssid: 'Name', bssid: 'xx:xx' }]
+
+    // 1. Open Modal & Load Data
+    window.openOfficeSettingsModal = async () => {
+        officeModal.show();
+        try {
+            const docRef = doc(db, "settings", "office_location");
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                document.getElementById('officeLat').value = data.latitude || '';
+                document.getElementById('officeLng').value = data.longitude || '';
+                document.getElementById('officeRadius').value = data.radius || 500;
+                
+                // Data Migration: Convert old simple list to secure object list
+                if (Array.isArray(data.allowedWifis)) {
+                    currentWifiList = data.allowedWifis.map(item => {
+                        // If item is string, convert to object; otherwise keep as object
+                        return typeof item === 'string' ? { ssid: item, bssid: '' } : item;
+                    });
+                } else if (data.wifiSSID) {
+                    currentWifiList = [{ ssid: data.wifiSSID, bssid: '' }];
+                } else {
+                    currentWifiList = [];
+                }
+            } else {
+                currentWifiList = [];
+            }
+            renderWifiList();
+        } catch (e) {
+            console.error("Error loading settings:", e);
+            alert("Failed to load settings.");
+        }
+    };
+
+    // 2. Render List
+    function renderWifiList() {
+        const list = document.getElementById('wifiListContainer');
+        list.innerHTML = "";
+        currentWifiList.forEach((wifi, index) => {
+            const div = document.createElement('div');
+            div.className = "wifi-item";
+            div.innerHTML = `
+                <div>
+                    <div class="fw-bold"><i data-lucide="wifi" class="text-success me-1" style="width:14px; display:inline-block; vertical-align:middle;"></i> ${wifi.ssid}</div>
+                    <div class="small text-muted" style="font-family:monospace; font-size: 0.85em;">
+                        ${wifi.bssid ? `BSSID: ${wifi.bssid}` : '<span class="text-warning">⚠️ Any BSSID (Less Secure)</span>'}
+                    </div>
+                </div>
+                <button class="btn btn-sm text-danger border-0" onclick="removeWifi(${index})"><i data-lucide="trash-2" style="width:16px"></i></button>
+            `;
+            list.appendChild(div);
+        });
+        lucide.createIcons();
+    }
+
+    // 3. Add WiFi
+    window.addWifiToList = () => {
+        const ssidInput = document.getElementById('newWifiSSID');
+        const bssidInput = document.getElementById('newWifiBSSID');
+        
+        const ssid = ssidInput.value.trim();
+        let bssid = bssidInput.value.trim().toLowerCase(); 
+
+        if (!ssid) {
+            alert("WiFi Name (SSID) is required.");
+            return;
+        }
+
+        // Check for duplicates
+        const exists = currentWifiList.some(w => w.ssid === ssid && w.bssid === bssid);
+        if (exists) {
+            alert("This exact WiFi configuration already exists.");
+            return;
+        }
+
+        currentWifiList.push({ ssid, bssid });
+        ssidInput.value = "";
+        bssidInput.value = "";
+        renderWifiList();
+    };
+
+    // 4. Remove WiFi
+    window.removeWifi = (index) => {
+        currentWifiList.splice(index, 1);
+        renderWifiList();
+    };
+
+    // 5. Save Settings
+    window.saveOfficeSettings = async () => {
+        const lat = parseFloat(document.getElementById('officeLat').value);
+        const lng = parseFloat(document.getElementById('officeLng').value);
+        const rad = parseFloat(document.getElementById('officeRadius').value);
+
+        if (isNaN(lat) || isNaN(lng)) {
+            alert("Please enter valid GPS coordinates.");
+            return;
+        }
+
+        try {
+            await setDoc(doc(db, "settings", "office_location"), {
+                latitude: lat,
+                longitude: lng,
+                radius: rad,
+                allowedWifis: currentWifiList, // Saves array of {ssid, bssid} objects
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+
+            alert("✅ Secure Settings Saved Successfully!");
+            officeModal.hide();
+        } catch (e) {
+            console.error("Error saving:", e);
+            alert("Error saving settings: " + e.message);
+        }
+    };
+
+
+    // ==========================================
+    // Existing Task & Stats Logic
     // ==========================================
     function loadAllTasks() {
-        // A. Leave Requests
         onSnapshot(query(collection(db, "leaves"), where("status", "==", "Pending")), (snap) => {
             const count = snap.size;
             document.getElementById('count-leave').innerText = count;
             document.getElementById('badge-leave').style.display = count > 0 ? 'inline-block' : 'none';
         });
 
-        // B. Attendance Corrections
         onSnapshot(query(collection(db, "attendance_corrections"), where("status", "==", "Pending")), (snap) => {
             const count = snap.size;
             document.getElementById('count-att').innerText = count;
             document.getElementById('badge-att').style.display = count > 0 ? 'inline-block' : 'none';
         });
 
-        // C. Profile Updates
         onSnapshot(query(collection(db, "edit_requests"), where("status", "==", "pending")), (snap) => {
             const count = snap.size;
             document.getElementById('count-edit').innerText = count;
@@ -298,9 +485,6 @@
         });
     }
 
-    // ==========================================
-    // 2. Attendance Stats
-    // ==========================================
     async function loadAttendanceStats() {
         const todayStr = new Date().toISOString().split('T')[0];
         try {
@@ -323,7 +507,6 @@
                 }
             });
 
-            const totalStaff = activeStaffIds.size; 
             let presentCount = 0;
             let lateCount = 0;
             const presentIds = new Set();
@@ -374,9 +557,6 @@
 
     window.goToAttendance = (filter) => { window.location.href = `attendance.html?filter=${filter}`; };
 
-    // ==========================================
-    // 3. Tracking Stats
-    // ==========================================
     function loadTrackingStats() {
         const todayStr = new Date().toISOString().split('T')[0];
         onSnapshot(query(collection(db, "tracking_logs"), where("date", "==", todayStr)), (snap) => {
@@ -391,9 +571,6 @@
         });
     }
 
-    // ==========================================
-    // 4. Announcement
-    // ==========================================
     window.openAnnouncementModal = () => announceModal.show();
     window.submitAnnouncement = async () => {
         const text = document.getElementById('announceText').value;
