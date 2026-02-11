@@ -11,51 +11,34 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-        /* Top Quick Actions */
         .quick-action-btn {
             background: white; border: 1px solid #e2e8f0; border-radius: 12px;
             padding: 15px; text-align: center; transition: all 0.2s;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            height: 100px; text-decoration: none; color: var(--text-main);
-            cursor: pointer;
+            height: 100px; text-decoration: none; color: var(--text-main); cursor: pointer;
         }
         .quick-action-btn:hover {
             transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.05);
             border-color: var(--primary); color: var(--primary);
         }
-        
-        /* General Stat Cards */
         .stat-card { 
             background: white; border-radius: 16px; border: 1px solid #e2e8f0; 
             padding: 20px; height: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.01); 
             display: flex; flex-direction: column;
         }
-        
         .stat-value { font-size: 2rem; font-weight: 800; line-height: 1; }
-        
-        /* Task Row Styling */
         .task-row { 
-            transition: all 0.2s ease; 
-            border: 1px solid #e2e8f0; 
-            background: white;
-            text-decoration: none;
-            color: inherit;
+            transition: all 0.2s ease; border: 1px solid #e2e8f0; background: white;
+            text-decoration: none; color: inherit;
         }
         .task-row:hover { 
-            background-color: #f8fafc; 
-            border-color: var(--primary); 
-            transform: translateY(-2px);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            background-color: #f8fafc; border-color: var(--primary); 
+            transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
         }
-        
-        /* Status Dots */
         .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; }
         .bg-online { background-color: #22c55e; box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2); }
         .bg-offline { background-color: #94a3b8; }
-        
         .cursor-pointer { cursor: pointer; }
-
-        /* WiFi List Item Style */
         .wifi-item {
             display: flex; justify-content: space-between; align-items: center;
             padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0;
@@ -68,13 +51,10 @@
 <div id="header-placeholder"></div>
 
 <div class="container py-4">
-
     <div class="row g-3 mb-4 justify-content-center">
         <div class="col-6 col-md-2">
             <a href="manage_staff.html" class="quick-action-btn">
-                <div class="bg-primary bg-opacity-10 p-2 rounded-circle mb-2 text-primary">
-                    <i data-lucide="user" class="size-5"></i>
-                </div>
+                <div class="bg-primary bg-opacity-10 p-2 rounded-circle mb-2 text-primary"><i data-lucide="user" class="size-5"></i></div>
                 <div class="fw-bold small">Onboard Staff</div>
             </a>
         </div>
@@ -84,28 +64,32 @@
                 <div class="fw-bold small">Export Report</div>
             </a>
         </div>
-
         <div class="col-6 col-md-2">
             <a href="payroll.html" class="quick-action-btn">
                 <div class="bg-danger bg-opacity-10 p-2 rounded-circle mb-2 text-danger"><i data-lucide="dollar-sign" class="size-5"></i></div>
                 <div class="fw-bold small">Payroll</div>
             </a>
         </div>
-
         <div class="col-6 col-md-2">
             <button onclick="openAnnouncementModal()" class="quick-action-btn w-100 border-0 shadow-sm">
                 <div class="bg-warning bg-opacity-10 p-2 rounded-circle mb-2 text-warning"><i data-lucide="megaphone" class="size-5"></i></div>
                 <div class="fw-bold small">Announcement</div>
             </button>
         </div>
-        
         <div class="col-6 col-md-2">
             <a href="schedule_planner.html" class="quick-action-btn">
                 <div class="bg-info bg-opacity-10 p-2 rounded-circle mb-2 text-info"><i data-lucide="calendar-days" class="size-5"></i></div>
                 <div class="fw-bold small">Roster Plan</div>
             </a>
         </div>
-
+        <div class="col-6 col-md-2">
+            <a href="evidence_gallery.html" class="quick-action-btn">
+                <div class="bg-dark bg-opacity-10 p-2 rounded-circle mb-2 text-dark">
+                    <i data-lucide="images" class="size-5"></i>
+                </div>
+                <div class="fw-bold small">Photos</div>
+            </a>
+        </div>
         <div class="col-6 col-md-2">
             <button onclick="openOfficeSettingsModal()" class="quick-action-btn w-100 border-0 shadow-sm">
                 <div class="bg-secondary bg-opacity-10 p-2 rounded-circle mb-2 text-secondary"><i data-lucide="settings" class="size-5"></i></div>
@@ -115,14 +99,12 @@
     </div>
 
     <div class="row g-4">
-        
         <div class="col-lg-4 col-md-6">
             <div class="stat-card position-relative">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h6 class="fw-bold m-0 text-dark"><i data-lucide="clock" class="size-4 me-2 text-primary"></i>Today's Attendance</h6>
                     <span class="badge bg-light text-dark border" id="attDate">-</span>
                 </div>
-                
                 <div class="row align-items-center mt-4">
                     <div class="col-6 position-relative">
                         <canvas id="attChart" style="max-height: 130px;"></canvas>
@@ -132,21 +114,15 @@
                     </div>
                     <div class="col-6">
                         <div class="mb-3 cursor-pointer" onclick="goToAttendance('present')">
-                            <div class="d-flex align-items-center gap-2">
-                                <div class="dot bg-success"></div><span class="text-muted small">Present</span>
-                            </div>
+                            <div class="d-flex align-items-center gap-2"><div class="dot bg-success"></div><span class="text-muted small">Present</span></div>
                             <div class="h5 fw-bold m-0" id="countPresent">0</div>
                         </div>
                         <div class="mb-3 cursor-pointer" onclick="goToAttendance('late')">
-                            <div class="d-flex align-items-center gap-2">
-                                <div class="dot bg-warning" style="background-color: #f59e0b;"></div><span class="text-muted small">Late</span>
-                            </div>
+                            <div class="d-flex align-items-center gap-2"><div class="dot bg-warning" style="background-color: #f59e0b;"></div><span class="text-muted small">Late</span></div>
                             <div class="h5 fw-bold m-0 text-warning" id="countLate">0</div>
                         </div>
                         <div class="cursor-pointer" onclick="goToAttendance('absent')">
-                            <div class="d-flex align-items-center gap-2">
-                                <div class="dot bg-danger"></div><span class="text-muted small">Absent</span>
-                            </div>
+                            <div class="d-flex align-items-center gap-2"><div class="dot bg-danger"></div><span class="text-muted small">Absent</span></div>
                             <div class="h5 fw-bold m-0 text-danger" id="countAbsent">0</div>
                         </div>
                     </div>
@@ -159,54 +135,28 @@
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h6 class="fw-bold m-0 text-dark"><i data-lucide="alert-circle" class="size-4 me-2 text-danger"></i>Action Required</h6>
                 </div>
-                
                 <div class="d-flex flex-column gap-3 mt-2">
-                    
                     <a href="leave_approval.html" class="task-row d-flex align-items-center justify-content-between p-3 rounded">
                         <div class="d-flex align-items-center gap-3">
-                            <div class="bg-success bg-opacity-10 text-success p-2 rounded">
-                                <i data-lucide="calendar-check" class="size-6"></i>
-                            </div>
-                            <div>
-                                <div class="fw-bold text-dark" style="font-size: 0.9rem;">Leave Requests</div>
-                                <div class="text-muted small">Awaiting approval</div>
-                            </div>
+                            <div class="bg-success bg-opacity-10 text-success p-2 rounded"><i data-lucide="calendar-check" class="size-6"></i></div>
+                            <div><div class="fw-bold text-dark small">Leave Requests</div><div class="text-muted small">Awaiting approval</div></div>
                         </div>
-                        <span class="badge bg-danger rounded-pill" id="badge-leave" style="display:none;">
-                            <span id="count-leave">0</span>
-                        </span>
+                        <span class="badge bg-danger rounded-pill" id="badge-leave" style="display:none;"><span id="count-leave">0</span></span>
                     </a>
-
                     <a href="attendance.html" class="task-row d-flex align-items-center justify-content-between p-3 rounded">
                         <div class="d-flex align-items-center gap-3">
-                            <div class="bg-primary bg-opacity-10 text-primary p-2 rounded">
-                                <i data-lucide="fingerprint" class="size-6"></i>
-                            </div>
-                            <div>
-                                <div class="fw-bold text-dark" style="font-size: 0.9rem;">Attendance Fixes</div>
-                                <div class="text-muted small">Manual corrections</div>
-                            </div>
+                            <div class="bg-primary bg-opacity-10 text-primary p-2 rounded"><i data-lucide="fingerprint" class="size-6"></i></div>
+                            <div><div class="fw-bold text-dark small">Attendance Fixes</div><div class="text-muted small">Manual corrections</div></div>
                         </div>
-                        <span class="badge bg-danger rounded-pill" id="badge-att" style="display:none;">
-                            <span id="count-att">0</span>
-                        </span>
+                        <span class="badge bg-danger rounded-pill" id="badge-att" style="display:none;"><span id="count-att">0</span></span>
                     </a>
-
                     <a href="manage_staff.html" class="task-row d-flex align-items-center justify-content-between p-3 rounded">
                         <div class="d-flex align-items-center gap-3">
-                            <div class="bg-warning bg-opacity-10 text-warning p-2 rounded">
-                                <i data-lucide="user-cog" class="size-6"></i>
-                            </div>
-                            <div>
-                                <div class="fw-bold text-dark" style="font-size: 0.9rem;">Profile Updates</div>
-                                <div class="text-muted small">Staff modifications</div>
-                            </div>
+                            <div class="bg-warning bg-opacity-10 text-warning p-2 rounded"><i data-lucide="user-cog" class="size-6"></i></div>
+                            <div><div class="fw-bold text-dark small">Profile Updates</div><div class="text-muted small">Staff modifications</div></div>
                         </div>
-                        <span class="badge bg-danger rounded-pill" id="badge-edit" style="display:none;">
-                            <span id="count-edit">0</span>
-                        </span>
+                        <span class="badge bg-danger rounded-pill" id="badge-edit" style="display:none;"><span id="count-edit">0</span></span>
                     </a>
-
                 </div>
             </div>
         </div>
@@ -217,22 +167,12 @@
                     <h6 class="fw-bold m-0 text-dark"><i data-lucide="map-pin" class="size-4 me-2 text-info"></i>Fleet GPS Status</h6>
                     <div class="spinner-grow text-primary" style="width: 8px; height: 8px;" role="status"></div>
                 </div>
-                
                 <div class="d-flex justify-content-around text-center mb-auto mt-2">
-                    <div>
-                        <div class="stat-value text-primary" id="trackOnline">0</div>
-                        <div class="stat-label text-primary opacity-75"><span class="dot bg-online"></span>Active Now</div>
-                    </div>
+                    <div><div class="stat-value text-primary" id="trackOnline">0</div><div class="stat-label text-primary opacity-75"><span class="dot bg-online"></span>Active Now</div></div>
                     <div class="border-end"></div>
-                    <div>
-                        <div class="stat-value text-muted" id="trackOffline">0</div>
-                        <div class="stat-label"><span class="dot bg-offline"></span>Offline</div>
-                    </div>
+                    <div><div class="stat-value text-muted" id="trackOffline">0</div><div class="stat-label"><span class="dot bg-offline"></span>Offline</div></div>
                 </div>
-
-                <a href="live_tracking.html" class="btn btn-white border w-100 fw-bold shadow-sm text-primary mt-4">
-                    Open Live Map
-                </a>
+                <a href="live_tracking.html" class="btn btn-white border w-100 fw-bold shadow-sm text-primary mt-4">Open Live Map</a>
             </div>
         </div>
     </div>
@@ -241,16 +181,9 @@
 <div class="modal fade" id="announceModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
-                <h6 class="modal-title fw-bold">Post New Announcement</h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <textarea id="announceText" class="form-control" rows="3" placeholder="Type your message here..."></textarea>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-primary btn-sm" onclick="submitAnnouncement()">Post Message</button>
-            </div>
+            <div class="modal-header"><h6 class="modal-title fw-bold">Post New Announcement</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><textarea id="announceText" class="form-control" rows="3" placeholder="Type your message here..."></textarea></div>
+            <div class="modal-footer"><button class="btn btn-primary btn-sm" onclick="submitAnnouncement()">Post Message</button></div>
         </div>
     </div>
 </div>
@@ -258,52 +191,24 @@
 <div class="modal fade" id="officeSettingsModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">🏢 Company Office Settings</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
+            <div class="modal-header"><h5 class="modal-title">🏢 Company Office Settings</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
             <div class="modal-body">
                 <h6 class="fw-bold mb-3">📍 GPS Location</h6>
                 <div class="row g-2 mb-3">
-                    <div class="col-6">
-                        <label class="form-label small">Latitude</label>
-                        <input type="number" id="officeLat" class="form-control" step="any" placeholder="e.g. 3.1415">
-                    </div>
-                    <div class="col-6">
-                        <label class="form-label small">Longitude</label>
-                        <input type="number" id="officeLng" class="form-control" step="any" placeholder="e.g. 101.6869">
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label small">Allowed Radius (meters)</label>
-                        <input type="number" id="officeRadius" class="form-control" value="500">
-                    </div>
+                    <div class="col-6"><label class="form-label small">Latitude</label><input type="number" id="officeLat" class="form-control" step="any"></div>
+                    <div class="col-6"><label class="form-label small">Longitude</label><input type="number" id="officeLng" class="form-control" step="any"></div>
+                    <div class="col-12"><label class="form-label small">Allowed Radius</label><input type="number" id="officeRadius" class="form-control" value="500"></div>
                 </div>
-
                 <hr>
-
-                <h6 class="fw-bold mb-3">📶 Wi-Fi Whitelist (Secure BSSID)</h6>
+                <h6 class="fw-bold mb-3">📶 Wi-Fi Whitelist</h6>
                 <div class="row g-2 mb-2">
-                    <div class="col-5">
-                        <input type="text" id="newWifiSSID" class="form-control" placeholder="WiFi Name (SSID)">
-                    </div>
-                    <div class="col-5">
-                        <input type="text" id="newWifiBSSID" class="form-control" placeholder="MAC Address (BSSID)">
-                    </div>
-                    <div class="col-2">
-                        <button class="btn btn-outline-primary w-100" type="button" onclick="addWifiToList()">Add</button>
-                    </div>
+                    <div class="col-5"><input type="text" id="newWifiSSID" class="form-control" placeholder="SSID"></div>
+                    <div class="col-5"><input type="text" id="newWifiBSSID" class="form-control" placeholder="BSSID"></div>
+                    <div class="col-2"><button class="btn btn-outline-primary w-100" onclick="addWifiToList()">Add</button></div>
                 </div>
-                <div class="form-text text-muted small mb-2">
-                    Tip: BSSID (e.g., <code>c0:25:e9:8d:a0:1b</code>) ensures staff connect to the <b>specific</b> office router, preventing fake hotspots.
-                </div>
-                
-                <div id="wifiListContainer" style="max-height: 200px; overflow-y: auto;">
-                    </div>
+                <div id="wifiListContainer" style="max-height: 200px; overflow-y: auto;"></div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" onclick="saveOfficeSettings()">Save Changes</button>
-            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button><button type="button" class="btn btn-primary" onclick="saveOfficeSettings()">Save</button></div>
         </div>
     </div>
 </div>
@@ -314,7 +219,6 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
     import { getFirestore, collection, query, where, getDocs, onSnapshot, addDoc, serverTimestamp, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
     import { firebaseConfig } from "./firebase-config.js";
     import { initUnifiedHeader } from "./header-app.js";
 
@@ -328,11 +232,7 @@
     const announceModal = new bootstrap.Modal(document.getElementById('announceModal'));
     const officeModal = new bootstrap.Modal(document.getElementById('officeSettingsModal'));
 
-    onAuthStateChanged(auth, (user) => {
-        if (user) {
-            initDashboard();
-        }
-    });
+    onAuthStateChanged(auth, (user) => { if (user) initDashboard(); });
 
     function initDashboard() {
         document.getElementById('attDate').innerText = new Date().toLocaleDateString('en-GB', { day:'numeric', month:'short' });
@@ -341,152 +241,21 @@
         loadTrackingStats();
     }
 
-    // ==========================================
-    // 🟢 Office Settings Logic (Enhanced)
-    // ==========================================
-    let currentWifiList = []; // Structure: [{ ssid: 'Name', bssid: 'xx:xx' }]
-
-    // 1. Open Modal & Load Data
-    window.openOfficeSettingsModal = async () => {
-        officeModal.show();
-        try {
-            const docRef = doc(db, "settings", "office_location");
-            const docSnap = await getDoc(docRef);
-
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                document.getElementById('officeLat').value = data.latitude || '';
-                document.getElementById('officeLng').value = data.longitude || '';
-                document.getElementById('officeRadius').value = data.radius || 500;
-                
-                // Data Migration: Convert old simple list to secure object list
-                if (Array.isArray(data.allowedWifis)) {
-                    currentWifiList = data.allowedWifis.map(item => {
-                        // If item is string, convert to object; otherwise keep as object
-                        return typeof item === 'string' ? { ssid: item, bssid: '' } : item;
-                    });
-                } else if (data.wifiSSID) {
-                    currentWifiList = [{ ssid: data.wifiSSID, bssid: '' }];
-                } else {
-                    currentWifiList = [];
-                }
-            } else {
-                currentWifiList = [];
-            }
-            renderWifiList();
-        } catch (e) {
-            console.error("Error loading settings:", e);
-            alert("Failed to load settings.");
-        }
-    };
-
-    // 2. Render List
-    function renderWifiList() {
-        const list = document.getElementById('wifiListContainer');
-        list.innerHTML = "";
-        currentWifiList.forEach((wifi, index) => {
-            const div = document.createElement('div');
-            div.className = "wifi-item";
-            div.innerHTML = `
-                <div>
-                    <div class="fw-bold"><i data-lucide="wifi" class="text-success me-1" style="width:14px; display:inline-block; vertical-align:middle;"></i> ${wifi.ssid}</div>
-                    <div class="small text-muted" style="font-family:monospace; font-size: 0.85em;">
-                        ${wifi.bssid ? `BSSID: ${wifi.bssid}` : '<span class="text-warning">⚠️ Any BSSID (Less Secure)</span>'}
-                    </div>
-                </div>
-                <button class="btn btn-sm text-danger border-0" onclick="removeWifi(${index})"><i data-lucide="trash-2" style="width:16px"></i></button>
-            `;
-            list.appendChild(div);
-        });
-        lucide.createIcons();
+    function getLocalDateStr() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
-    // 3. Add WiFi
-    window.addWifiToList = () => {
-        const ssidInput = document.getElementById('newWifiSSID');
-        const bssidInput = document.getElementById('newWifiBSSID');
-        
-        const ssid = ssidInput.value.trim();
-        let bssid = bssidInput.value.trim().toLowerCase(); 
-
-        if (!ssid) {
-            alert("WiFi Name (SSID) is required.");
-            return;
-        }
-
-        // Check for duplicates
-        const exists = currentWifiList.some(w => w.ssid === ssid && w.bssid === bssid);
-        if (exists) {
-            alert("This exact WiFi configuration already exists.");
-            return;
-        }
-
-        currentWifiList.push({ ssid, bssid });
-        ssidInput.value = "";
-        bssidInput.value = "";
-        renderWifiList();
-    };
-
-    // 4. Remove WiFi
-    window.removeWifi = (index) => {
-        currentWifiList.splice(index, 1);
-        renderWifiList();
-    };
-
-    // 5. Save Settings
-    window.saveOfficeSettings = async () => {
-        const lat = parseFloat(document.getElementById('officeLat').value);
-        const lng = parseFloat(document.getElementById('officeLng').value);
-        const rad = parseFloat(document.getElementById('officeRadius').value);
-
-        if (isNaN(lat) || isNaN(lng)) {
-            alert("Please enter valid GPS coordinates.");
-            return;
-        }
-
-        try {
-            await setDoc(doc(db, "settings", "office_location"), {
-                latitude: lat,
-                longitude: lng,
-                radius: rad,
-                allowedWifis: currentWifiList, // Saves array of {ssid, bssid} objects
-                updatedAt: serverTimestamp()
-            }, { merge: true });
-
-            alert("✅ Secure Settings Saved Successfully!");
-            officeModal.hide();
-        } catch (e) {
-            console.error("Error saving:", e);
-            alert("Error saving settings: " + e.message);
-        }
-    };
-
-
     // ==========================================
-    // Existing Task & Stats Logic
+    // 🟢 FIXED: Attendance Stats with ID Mapping
     // ==========================================
-    function loadAllTasks() {
-        onSnapshot(query(collection(db, "leaves"), where("status", "==", "Pending")), (snap) => {
-            const count = snap.size;
-            document.getElementById('count-leave').innerText = count;
-            document.getElementById('badge-leave').style.display = count > 0 ? 'inline-block' : 'none';
-        });
-
-        onSnapshot(query(collection(db, "attendance_corrections"), where("status", "==", "Pending")), (snap) => {
-            const count = snap.size;
-            document.getElementById('count-att').innerText = count;
-            document.getElementById('badge-att').style.display = count > 0 ? 'inline-block' : 'none';
-        });
-
-        onSnapshot(query(collection(db, "edit_requests"), where("status", "==", "pending")), (snap) => {
-            const count = snap.size;
-            document.getElementById('count-edit').innerText = count;
-            document.getElementById('badge-edit').style.display = count > 0 ? 'inline-block' : 'none';
-        });
-    }
-
     async function loadAttendanceStats() {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getLocalDateStr();
+        console.log("📊 Loading Stats for:", todayStr);
+
         try {
             const [usersSnap, attSnap, schedSnap] = await Promise.all([
                 getDocs(query(collection(db, "users"), where("role", "==", "staff"))),
@@ -494,56 +263,101 @@
                 getDocs(query(collection(db, "schedules"), where("date", "==", todayStr)))
             ]);
 
-            const activeStaffIds = new Set();
-            usersSnap.forEach(doc => { if (doc.data().status !== 'disabled') activeStaffIds.add(doc.id); });
+            // 🟢 1. Build Staff Map: Document ID -> Auth UID
+            // Because Schedules use Doc ID, but Attendance uses Auth UID.
+            // We'll standardize everything to use Document ID for counting.
+            const staffDocIds = new Set();
+            const authUidToDocId = {}; // Map AuthUID -> DocID
 
-            const scheduledIds = new Set();
-            const scheduleMap = {};
-            schedSnap.forEach(doc => {
-                const d = doc.data();
-                if(d.start && activeStaffIds.has(d.userId)) {
-                    scheduledIds.add(d.userId);
-                    scheduleMap[d.userId] = d.start.toDate();
-                }
-            });
-
-            let presentCount = 0;
-            let lateCount = 0;
-            const presentIds = new Set();
-
-            attSnap.forEach(doc => {
+            usersSnap.forEach(doc => {
                 const data = doc.data();
-                if (data.verificationStatus !== 'Rejected') {
-                    presentCount++;
-                    presentIds.add(data.uid);
-                    
-                    let checkInTime = data.timeIn ? data.timeIn.toDate() : (data.timestamp ? data.timestamp.toDate() : null);
-                    if (checkInTime) {
-                        let threshold = scheduleMap[data.uid] ? new Date(scheduleMap[data.uid].getTime() + 15 * 60000) : new Date(todayStr + "T09:15:00");
-                        if (data.session === 'Clock In' && checkInTime > threshold) lateCount++;
+                if (data.status !== 'disabled') {
+                    staffDocIds.add(doc.id);
+                    if (data.authUid) {
+                        authUidToDocId[data.authUid] = doc.id;
                     }
                 }
             });
 
+            console.log(`📊 Staff: ${staffDocIds.size}, AuthMap Size: ${Object.keys(authUidToDocId).length}`);
+
+            // 🟢 2. Map Attendance to Doc IDs
+            const attendanceMap = {}; // DocID -> Records
+            attSnap.forEach(doc => {
+                const d = doc.data();
+                if (d.verificationStatus !== 'Rejected') {
+                    // Try to resolve Doc ID from Auth UID
+                    let docId = authUidToDocId[d.uid]; 
+                    
+                    // Fallback: If not found in map, maybe d.uid IS the docId (rare but possible)
+                    if (!docId && staffDocIds.has(d.uid)) docId = d.uid;
+
+                    if (docId && staffDocIds.has(docId)) {
+                        if (!attendanceMap[docId]) attendanceMap[docId] = [];
+                        attendanceMap[docId].push(d);
+                    }
+                }
+            });
+
+            // 🟢 3. Map Schedules (Uses Doc ID directly)
+            const scheduleMap = {}; 
+            schedSnap.forEach(doc => {
+                const d = doc.data();
+                if (d.start && staffDocIds.has(d.userId)) {
+                    const startTime = d.start.toDate();
+                    if (!scheduleMap[d.userId] || startTime < scheduleMap[d.userId]) {
+                        scheduleMap[d.userId] = startTime;
+                    }
+                }
+            });
+
+            // 🟢 4. Calculate Final Counts
+            let presentCount = 0;
+            let lateCount = 0;
             let absentCount = 0;
-            scheduledIds.forEach(uid => { if (!presentIds.has(uid)) absentCount++; });
 
-            const denominator = scheduledIds.size > 0 ? scheduledIds.size : (presentCount > 0 ? presentCount : 1);
-            const presentPercent = Math.min(100, Math.round((presentCount / denominator) * 100));
+            staffDocIds.forEach(docId => {
+                const records = attendanceMap[docId] || [];
+                const schedStart = scheduleMap[docId];
 
+                if (records.length > 0) {
+                    presentCount++;
+                    // Check Late
+                    const clockIn = records
+                        .filter(r => r.session === 'Clock In')
+                        .sort((a, b) => (a.timestamp?.toDate() || 0) - (b.timestamp?.toDate() || 0))[0];
+                    
+                    if (clockIn) {
+                        const time = clockIn.timeIn ? clockIn.timeIn.toDate() : clockIn.timestamp.toDate();
+                        let threshold = schedStart 
+                            ? new Date(schedStart.getTime() + 15 * 60000) 
+                            : new Date(todayStr + "T09:15:00");
+                        if (time > threshold) lateCount++;
+                    }
+                } else {
+                    if (schedStart) absentCount++;
+                }
+            });
+
+            console.log(`📊 Result -> Present: ${presentCount}, Late: ${lateCount}, Absent: ${absentCount}`);
+
+            // Update UI
             document.getElementById('countPresent').innerText = presentCount;
             document.getElementById('countLate').innerText = lateCount;
             document.getElementById('countAbsent').innerText = absentCount;
-            document.getElementById('attPercent').innerText = `${presentPercent}%`;
+            
+            const total = Math.max(Object.keys(scheduleMap).length, presentCount);
+            const percent = total === 0 ? 0 : Math.min(100, Math.round((presentCount / total) * 100));
+            document.getElementById('attPercent').innerText = `${percent}%`;
 
             updateChart(presentCount, absentCount, lateCount);
-        } catch (e) { console.error("Error loading attendance:", e); }
+
+        } catch (e) { console.error("Error loading stats:", e); }
     }
 
     function updateChart(present, absent, late) {
         const ctx = document.getElementById('attChart').getContext('2d');
         if (attChartInstance) attChartInstance.destroy();
-
         const onTime = Math.max(0, present - late);
         attChartInstance = new Chart(ctx, {
             type: 'doughnut',
@@ -557,19 +371,79 @@
 
     window.goToAttendance = (filter) => { window.location.href = `attendance.html?filter=${filter}`; };
 
+    // ... Other functions (loadTrackingStats, Office Settings) remain same ...
+    
     function loadTrackingStats() {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getLocalDateStr();
         onSnapshot(query(collection(db, "tracking_logs"), where("date", "==", todayStr)), (snap) => {
             let online = 0, offline = 0;
             const now = new Date();
             snap.forEach(doc => {
-                const lastUpdate = doc.data().lastUpdate ? doc.data().lastUpdate.toDate() : new Date(0);
-                if ((now - lastUpdate) / 60000 <= 15) online++; else offline++;
+                const last = doc.data().lastUpdate ? doc.data().lastUpdate.toDate() : new Date(0);
+                if ((now - last) / 60000 <= 15) online++; else offline++;
             });
             document.getElementById('trackOnline').innerText = online;
             document.getElementById('trackOffline').innerText = offline;
         });
     }
+
+    function loadAllTasks() {
+        onSnapshot(query(collection(db, "leaves"), where("status", "==", "Pending")), (snap) => document.getElementById('count-leave').innerText = snap.size);
+        onSnapshot(query(collection(db, "attendance_corrections"), where("status", "==", "Pending")), (snap) => document.getElementById('count-att').innerText = snap.size);
+        onSnapshot(query(collection(db, "edit_requests"), where("status", "==", "pending")), (snap) => document.getElementById('count-edit').innerText = snap.size);
+    }
+
+    // Office Settings Logic
+    let currentWifiList = [];
+    window.openOfficeSettingsModal = async () => {
+        officeModal.show();
+        try {
+            const docSnap = await getDoc(doc(db, "settings", "office_location"));
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                document.getElementById('officeLat').value = data.latitude || '';
+                document.getElementById('officeLng').value = data.longitude || '';
+                document.getElementById('officeRadius').value = data.radius || 500;
+                if (Array.isArray(data.allowedWifis)) {
+                    currentWifiList = data.allowedWifis.map(item => typeof item === 'string' ? { ssid: item, bssid: '' } : item);
+                } else if (data.wifiSSID) {
+                    currentWifiList = [{ ssid: data.wifiSSID, bssid: '' }];
+                } else currentWifiList = [];
+            } else currentWifiList = [];
+            renderWifiList();
+        } catch (e) { alert("Failed to load settings."); }
+    };
+
+    function renderWifiList() {
+        const list = document.getElementById('wifiListContainer');
+        list.innerHTML = "";
+        currentWifiList.forEach((wifi, index) => {
+            list.innerHTML += `<div class="wifi-item"><div><div class="fw-bold"><i data-lucide="wifi" class="text-success me-1" style="width:14px; display:inline-block; vertical-align:middle;"></i> ${wifi.ssid}</div><div class="small text-muted" style="font-family:monospace; font-size: 0.85em;">${wifi.bssid ? `BSSID: ${wifi.bssid}` : '<span class="text-warning">⚠️ Any BSSID</span>'}</div></div><button class="btn btn-sm text-danger border-0" onclick="removeWifi(${index})"><i data-lucide="trash-2" style="width:16px"></i></button></div>`;
+        });
+        lucide.createIcons();
+    }
+
+    window.addWifiToList = () => {
+        const ssid = document.getElementById('newWifiSSID').value.trim();
+        const bssid = document.getElementById('newWifiBSSID').value.trim().toLowerCase();
+        if (!ssid) return alert("WiFi Name (SSID) is required.");
+        currentWifiList.push({ ssid, bssid });
+        document.getElementById('newWifiSSID').value = "";
+        document.getElementById('newWifiBSSID').value = "";
+        renderWifiList();
+    };
+
+    window.removeWifi = (index) => { currentWifiList.splice(index, 1); renderWifiList(); };
+
+    window.saveOfficeSettings = async () => {
+        const lat = parseFloat(document.getElementById('officeLat').value);
+        const lng = parseFloat(document.getElementById('officeLng').value);
+        const rad = parseFloat(document.getElementById('officeRadius').value);
+        try {
+            await setDoc(doc(db, "settings", "office_location"), { latitude: lat, longitude: lng, radius: rad, allowedWifis: currentWifiList, updatedAt: serverTimestamp() }, { merge: true });
+            alert("✅ Settings Saved!"); officeModal.hide();
+        } catch (e) { alert("Error saving: " + e.message); }
+    };
 
     window.openAnnouncementModal = () => announceModal.show();
     window.submitAnnouncement = async () => {
