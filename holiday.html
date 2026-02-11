@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Holiday Manager - FieldTrack Pro</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="style.css" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* Loading Overlay */
+        #loadingOverlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(255, 255, 255, 0.95); z-index: 9999; 
+            display: flex; flex-direction: column; justify-content: center; align-items: center; 
+        }
+
+        :root { --primary: #2563eb; --bg: #f8fafc; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg); min-height: 100vh; }
+        .card { border: none; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .list-group-item { border-left: none; border-right: none; padding: 1rem; }
+        .list-group-item:first-child { border-top: none; }
+        .btn-primary { background-color: var(--primary); border-color: var(--primary); }
+    </style>
+</head>
+<body>
+
+<div id="header-placeholder"></div>
+
+<div id="loadingOverlay">
+    <div class="spinner-border text-primary mb-3" role="status"></div>
+    <h5 class="fw-bold text-dark" id="loadingText">Verifying Access...</h5>
+</div>
+
+<div id="mainContainer" class="container py-4 d-none" style="max-width: 600px;">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h5 class="fw-bold m-0">Holiday Manager</h5>
+        <a href="schedule_planner.html" class="btn btn-sm btn-outline-secondary">
+            <i data-lucide="arrow-left" class="size-4 me-1"></i> Back to Schedule
+        </a>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body p-4">
+            <h6 class="fw-bold mb-3">Add New Holiday</h6>
+            <div class="mb-3">
+                <label class="form-label small fw-bold text-muted">Holiday Name</label>
+                <input type="text" id="hName" class="form-control" placeholder="e.g. Labour Day">
+            </div>
+            <div class="mb-3">
+                <label class="form-label small fw-bold text-muted">Date</label>
+                <input type="date" id="hDate" class="form-control">
+            </div>
+            <button onclick="addHoliday()" class="btn btn-primary w-100 fw-bold">
+                <i data-lucide="plus" class="size-4 me-1"></i> Add to Calendar
+            </button>
+            <div id="status" class="text-center mt-2 small"></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header bg-white py-3">
+            <h6 class="fw-bold m-0 text-primary">Active Holiday List</h6>
+        </div>
+        <div class="card-body p-0">
+            <div id="holidayList" class="list-group list-group-flush">
+                <div class="text-center text-muted py-4 small">Loading...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, doc, getDoc, updateDoc, arrayUnion, arrayRemove, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+    // Import Header Logic
+    import { firebaseConfig } from "./firebase-config.js";
+    import { initUnifiedHeader } from "./header-app.js";
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    const holidayDocRef = doc(db, "settings", "holidays");
+
+    // --- Auth Check & Admin Validation ---
+    onAuthStateChanged(auth, async (user) => {
+        if (!user) {
+            window.location.href = "index.html";
+            return;
+        }
+
+        try {
+            // Verify Admin Role
+            const adminDoc = await getDoc(doc(db, "users", user.uid));
+            if (adminDoc.exists() && adminDoc.data().role === 'admin') {
+                // Success: Init UI
+                initUnifiedHeader(auth, db);
+                document.getElementById('loadingText').innerText = "Loading Holidays...";
+                
+                loadHolidays(); // Load Data
+
+                document.getElementById('loadingOverlay').classList.add('d-none');
+                document.getElementById('mainContainer').classList.remove('d-none');
+            } else {
+                // Fail: Kick out
+                alert("Unauthorized Access. Admins only.");
+                await signOut(auth);
+                window.location.href = "index.html";
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Auth Error: " + e.message);
+            window.location.href = "index.html";
+        }
+    });
+
+    async function loadHolidays() {
+        const listDiv = document.getElementById('holidayList');
+        try {
+            const docSnap = await getDoc(holidayDocRef);
+            if (docSnap.exists()) {
+                const list = docSnap.data().holiday_list || [];
+                if (list.length === 0) {
+                    listDiv.innerHTML = "<div class='text-center py-3 text-muted small'>No holidays found.</div>";
+                    return;
+                }
+                // Sort by date
+                list.sort((a,b) => a.date.localeCompare(b.date));
+
+                listDiv.innerHTML = list.map(h => `
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-bold text-dark">${h.name}</div>
+                            <div class="text-muted small"><i data-lucide="calendar" class="size-3 me-1"></i>${h.date}</div>
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger border-0" onclick="window.deleteHoliday('${h.name}', '${h.date}')">
+                            <i data-lucide="trash-2" class="size-4"></i>
+                        </button>
+                    </div>
+                `).join('');
+                lucide.createIcons();
+            } else {
+                listDiv.innerHTML = "<div class='text-center py-3 text-muted small'>No holidays configured yet.</div>";
+            }
+        } catch (e) {
+            listDiv.innerHTML = `<div class='text-center py-3 text-danger small'>Error: ${e.message}</div>`;
+        }
+    }
+
+    window.addHoliday = async function() {
+        const name = document.getElementById('hName').value;
+        const date = document.getElementById('hDate').value;
+        const status = document.getElementById('status');
+
+        if(!name || !date) { alert("Please enter details"); return; }
+
+        status.innerHTML = "<span class='text-primary'>Saving...</span>";
+        try {
+            // Check if doc exists, if not create it
+            const docSnap = await getDoc(holidayDocRef);
+            if (!docSnap.exists()) {
+                await setDoc(holidayDocRef, { holiday_list: [{ name: name, date: date }] });
+            } else {
+                await updateDoc(holidayDocRef, {
+                    holiday_list: arrayUnion({ name: name, date: date })
+                });
+            }
+            
+            status.innerHTML = "<span class='text-success'>Saved!</span>";
+            document.getElementById('hName').value = "";
+            document.getElementById('hDate').value = "";
+            loadHolidays();
+            setTimeout(() => status.innerHTML = "", 2000);
+        } catch (e) {
+            status.innerHTML = `<span class='text-danger'>Error: ${e.message}</span>`;
+            console.error(e);
+        }
+    }
+
+    window.deleteHoliday = async function(name, date) {
+        if(!confirm(`Remove ${name}?`)) return;
+        try {
+            await updateDoc(holidayDocRef, {
+                holiday_list: arrayRemove({ name: name, date: date })
+            });
+            loadHolidays();
+        } catch (e) { alert("Error: " + e.message); }
+    }
+
+    lucide.createIcons();
+</script>
+</body>
+</html>

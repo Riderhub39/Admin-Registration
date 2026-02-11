@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payroll Management - FieldTrack Pro</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <style>
+        #loadingOverlay { 
+            display: none; 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(255, 255, 255, 0.95); z-index: 9999; 
+            flex-direction: column; justify-content: center; align-items: center; 
+        }
+
+        @media print {
+            body * { visibility: hidden; }
+            #printArea, #printArea * { visibility: visible; }
+            #printArea { position: absolute; left: 0; top: 0; width: 100%; font-family: 'Courier New', Courier, monospace; }
+            .no-print { display: none !important; }
+            .modal-dialog { max-width: 100%; margin: 0; }
+            .modal-content { border: none; box-shadow: none; }
+        }
+
+        .payslip-preview { font-family: 'Courier New', Courier, monospace; border: 1px solid #ccc; padding: 40px; background: white; max-width: 800px; margin: 0 auto; }
+        .payslip-header { text-align: left; margin-bottom: 20px; }
+        .company-name { font-weight: bold; font-size: 1.2rem; }
+        .company-address { font-size: 0.8rem; margin-bottom: 10px; }
+        
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9rem; margin-bottom: 20px; border-bottom: 1px dashed #000; padding-bottom: 10px;}
+        .info-row { display: flex; justify-content: space-between; }
+        
+        .finance-table { width: 100%; border-top: 2px solid #000; border-bottom: 2px solid #000; margin-bottom: 10px; font-size: 0.9rem; }
+        .finance-table th { text-align: left; padding: 5px; border-bottom: 1px solid #000; }
+        .finance-table td { padding: 5px; vertical-align: top; }
+        
+        .total-section { border-top: 1px dashed #000; padding-top: 10px; margin-top: 10px; }
+        .status-Draft { border-left: 4px solid #fbbf24; background-color: #fffbeb; }
+        .status-Published { border-left: 4px solid #22c55e; background-color: #f0fdf4; }
+        .form-section-title { font-size: 0.8rem; font-weight: bold; text-transform: uppercase; color: #64748b; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-top: 15px;}
+        .bg-calc { background-color: #f8fafc; }
+        
+        .stats-box { background: #f1f5f9; padding: 10px; border-radius: 6px; font-size: 0.8rem; border: 1px solid #e2e8f0; }
+        .stats-label { color: #64748b; display: block; margin-bottom: 2px; }
+        .stats-val { font-weight: bold; color: #0f172a; font-size: 1rem; }
+    </style>
+</head>
+<body>
+
+    <div id="loadingOverlay">
+        <div class="spinner-border text-primary mb-3" role="status"></div>
+        <h5 class="fw-light" id="loadingText">Processing...</h5>
+        <button class="btn btn-sm btn-link text-muted mt-3" onclick="document.getElementById('loadingOverlay').style.display='none'">Force Close</button>
+    </div>
+
+    <div class="d-flex" id="wrapper">
+        <div id="sidebar-placeholder" style="width: 250px;" class="d-none d-md-block bg-white border-end"></div>
+
+        <div id="page-content-wrapper" class="w-100 bg-light">
+            <div id="header-placeholder"></div>
+
+            <div class="container-fluid px-4 py-4">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h3 class="fw-bold text-dark mb-0">Payroll Center</h3>
+                        <p class="text-muted small">Manage payslips, commissions & deductions</p>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <input id="globalMonthPicker" class="form-control" 
+                               style="width: 180px; cursor: pointer;" 
+                               onkeydown="return false"
+                               onclick="try{this.showPicker()}catch(e){}"
+                               onchange="loadPayroll()">
+                        
+                        <button onclick="loadPayroll()" class="btn btn-outline-primary d-flex align-items-center gap-2">
+                            <i data-lucide="refresh-cw" class="size-4"></i> Refresh
+                        </button>
+                        <button onclick="openCreateModal()" class="btn btn-primary d-flex align-items-center gap-2">
+                            <i data-lucide="plus-circle" class="size-4"></i> Create Payslip
+                        </button>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-4">
+                    <div class="col-md-4">
+                        <div class="card p-3 border-0 shadow-sm">
+                            <small class="text-muted text-uppercase fw-bold">Total Payout (Net)</small>
+                            <h3 class="fw-bold text-primary mt-1" id="statTotal">RM 0.00</h3>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card p-3 border-0 shadow-sm">
+                            <small class="text-muted text-uppercase fw-bold">Total Employer EPF</small>
+                            <h3 class="fw-bold text-dark mt-1" id="statEPF">RM 0.00</h3>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card p-3 border-0 shadow-sm d-flex align-items-center justify-content-center bg-success text-white" 
+                             style="cursor: pointer;" onclick="publishAll()">
+                            <div class="text-center">
+                                <i data-lucide="send" class="mb-1"></i>
+                                <div class="fw-bold">Publish All Drafts</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-white py-3">
+                        <div class="row fw-bold text-muted small text-uppercase">
+                            <div class="col-3">Employee</div>
+                            <div class="col-2">Basic + Comm</div>
+                            <div class="col-2">Gross Pay</div>
+                            <div class="col-2">Net Pay</div>
+                            <div class="col-1">Status</div>
+                            <div class="col-2 text-end">Action</div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0" id="payrollList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="payslipFormModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-light">
+                    <h5 class="modal-title" id="formModalTitle">Create Payslip</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="payslipForm">
+                        <input type="hidden" id="editDocId">
+                        
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label">Select Staff</label>
+                                <select id="staffSelect" class="form-select" onchange="autoFillStaffData()">
+                                    <option value="">-- Choose Staff --</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">For Month</label>
+                                <input id="formMonthPicker" class="form-control" 
+                                       style="cursor: pointer;"
+                                       onkeydown="return false"
+                                       onclick="try{this.showPicker()}catch(e){}"
+                                       onchange="autoFillStaffData()" required>
+                            </div>
+                        </div>
+
+                        <div class="form-section-title text-primary"><i data-lucide="clock" class="size-4 me-1" style="vertical-align: text-bottom;"></i> Attendance Analytics (Auto-Calculated)</div>
+                        <div class="row g-2 mb-4">
+                            <div class="col-3">
+                                <div class="stats-box">
+                                    <span class="stats-label">Working Days</span>
+                                    <span class="stats-val" id="dispDays">- / -</span>
+                                    <small class="text-muted d-block" style="font-size:0.6rem">Actual / Sched</small>
+                                </div>
+                            </div>
+                            <div class="col-3">
+                                <div class="stats-box">
+                                    <span class="stats-label">Working Hours</span>
+                                    <span class="stats-val" id="dispHours">- / -</span>
+                                    <small class="text-muted d-block" style="font-size:0.6rem">Actual / Sched</small>
+                                </div>
+                            </div>
+                            <div class="col-3">
+                                <div class="stats-box border-danger bg-danger-subtle">
+                                    <span class="stats-label text-danger">Total Late</span>
+                                    <span class="stats-val text-danger" id="dispLate">-</span>
+                                    <small class="text-muted d-block" style="font-size:0.6rem">Minutes</small>
+                                </div>
+                            </div>
+                            <div class="col-3">
+                                <div class="stats-box border-success bg-success-subtle">
+                                    <span class="stats-label text-success">Total OT</span>
+                                    <span class="stats-val text-success" id="dispOT">-</span>
+                                    <small class="text-muted d-block" style="font-size:0.6rem">Hours</small>
+                                </div>
+                            </div>
+                            <input type="hidden" id="metaDaysAct" value="0">
+                            <input type="hidden" id="metaDaysSch" value="0">
+                            <input type="hidden" id="metaHrsAct" value="0">
+                            <input type="hidden" id="metaHrsSch" value="0">
+                            <input type="hidden" id="metaLate" value="0">
+                            <input type="hidden" id="metaOT" value="0">
+                        </div>
+
+                        <div class="form-section-title">Earnings</div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label text-muted small">Basic Salary (Full)</label>
+                                <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpBasic" class="form-control bg-light" step="0.01" oninput="calcTotals()"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-muted small fw-bold text-primary">Commission</label>
+                                <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpComm" class="form-control" step="0.01" placeholder="0.00" oninput="calcTotals()"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label text-muted small">Overtime (OT)</label>
+                                <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpOT" class="form-control" step="0.01" placeholder="0.00" oninput="calcTotals()"></div>
+                                <div class="form-text" style="font-size: 0.7rem">Suggested: <span id="suggOT">RM 0.00</span></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label text-muted small">Allowance / Bonus</label>
+                                <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpAllowance" class="form-control" step="0.01" placeholder="0.00" oninput="calcTotals()"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold">Gross Pay (Pro-rated)</label>
+                                <div class="input-group"><span class="input-group-text bg-calc">RM</span><input type="text" id="dispGross" class="form-control bg-calc fw-bold" readonly></div>
+                            </div>
+                        </div>
+
+                        <div class="form-section-title mt-4">Deductions (Employee Share)</div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-3"><label class="form-label text-muted small">EPF (Emp)</label><input type="number" id="inpEPF" class="form-control" step="0.01" placeholder="0.00" oninput="calcTotals()"></div>
+                            <div class="col-md-3"><label class="form-label text-muted small">SOCSO (Emp)</label><input type="number" id="inpSOCSO" class="form-control" step="0.01" placeholder="0.00" oninput="calcTotals()"></div>
+                            <div class="col-md-3"><label class="form-label text-muted small">EIS (Emp)</label><input type="number" id="inpEIS" class="form-control" step="0.01" placeholder="0.00" oninput="calcTotals()"></div>
+                            <div class="col-md-3"><label class="form-label text-muted small">PCB / Tax</label><input type="number" id="inpPCB" class="form-control" step="0.01" placeholder="0.00" oninput="calcTotals()"></div>
+                            
+                            <div class="col-md-3">
+                                <label class="form-label text-muted small text-danger">Late Deduction</label>
+                                <div class="input-group">
+                                    <span class="input-group-text text-danger">RM</span>
+                                    <input type="number" id="inpLateDed" class="form-control text-danger border-danger" step="0.01" placeholder="0.00" oninput="calcTotals()">
+                                </div>
+                                <div class="form-text" style="font-size: 0.65rem">Auto: (Basic / SchedHrs / 60) * LateMins</div>
+                            </div>
+                        </div>
+
+                        <div class="form-section-title mt-4">Employer Contributions (Majikan)</div>
+                        <div class="row g-3 mb-4 bg-light p-2 rounded">
+                            <div class="col-md-4"><label class="form-label text-muted small">EPF (Employer)</label><input type="number" id="inpEmpEPF" class="form-control form-control-sm" step="0.01"></div>
+                            <div class="col-md-4"><label class="form-label text-muted small">SOCSO (Employer)</label><input type="number" id="inpEmpSOCSO" class="form-control form-control-sm" step="0.01"></div>
+                            <div class="col-md-4"><label class="form-label text-muted small">EIS (Employer)</label><input type="number" id="inpEmpEIS" class="form-control form-control-sm" step="0.01"></div>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center border-top pt-3">
+                            <div>
+                                <small class="text-muted d-block">Status</small>
+                                <select id="formStatus" class="form-select form-select-sm" style="width: 120px;">
+                                    <option value="Draft">Draft</option>
+                                    <option value="Published">Published</option>
+                                </select>
+                            </div>
+                            <div class="text-end">
+                                <div class="text-muted small">NET PAY</div>
+                                <h2 class="fw-bold text-primary mb-0" id="dispNet">RM 0.00</h2>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary px-4" onclick="savePayslipForm()">Save Payslip</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="printModal" tabindex="-1">
+        <div class="modal-dialog modal-lg" style="max-width: 900px;">
+            <div class="modal-content">
+                <div class="modal-header no-print">
+                    <h5 class="modal-title">Payslip Preview</h5>
+                    <div>
+                        <button type="button" class="btn btn-outline-dark btn-sm me-2" onclick="window.print()">
+                            <i data-lucide="printer" class="size-4 me-1"></i> Print
+                        </button>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body bg-light overflow-auto">
+                    <div id="printArea"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { firebaseConfig } from './firebase-config.js';
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getFirestore, collection, query, where, getDocs, doc, setDoc, updateDoc, writeBatch, serverTimestamp, deleteDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { initUnifiedHeader } from "./header-app.js";
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        let currentPayrollData = [];
+        let staffMap = {}; 
+        let formModal, printModal;
+
+        window.onerror = function(message, source, lineno, colno, error) {
+            console.error("Global Error:", message);
+            const overlay = document.getElementById('loadingOverlay');
+            if(overlay && overlay.style.display !== 'none') {
+                document.getElementById('loadingText').innerText = "Error: " + message;
+                document.getElementById('loadingText').classList.add('text-danger');
+            }
+        };
+
+        window.formatMoney = (amount) => (amount || 0).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        window.showLoading = (show) => {
+            const el = document.getElementById('loadingOverlay');
+            if(el) el.style.display = show ? 'flex' : 'none';
+        };
+
+        // 🟢🟢🟢 Adaptive Date Logic 🟢🟢🟢
+        function initAdaptiveDatePickers() {
+            // Check for Chromium based browsers (Chrome, Edge, Opera)
+            const ua = navigator.userAgent;
+            const isChromium = /Chrome/.test(ua) && /Google Inc/.test(navigator.vendor); 
+            // Better Check: Chromium sends "Chrome" and "Safari". Firefox sends "Firefox". Safari sends "Safari" but not "Chrome".
+            // However, a simpler check is often:
+            const useMonth = (ua.indexOf("Chrome") !== -1 || ua.indexOf("Edg") !== -1);
+
+            const inputType = useMonth ? "month" : "date";
+            console.log("Browser Detection: ", useMonth ? "Chromium (Month)" : "Other (Date)");
+
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+
+            const pickers = ['globalMonthPicker', 'formMonthPicker'];
+            pickers.forEach(id => {
+                const el = document.getElementById(id);
+                if(el) {
+                    el.type = inputType;
+                    if(inputType === 'month') {
+                        el.value = `${year}-${month}`;
+                    } else {
+                        el.value = `${year}-${month}-${day}`;
+                    }
+                }
+            });
+        }
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            try {
+                showLoading(true);
+                initUnifiedHeader(auth, db);
+                
+                if (typeof bootstrap !== 'undefined') {
+                    formModal = new bootstrap.Modal(document.getElementById('payslipFormModal'));
+                    printModal = new bootstrap.Modal(document.getElementById('printModal'));
+                }
+                
+                // 🟢 Run Adaptive Init
+                initAdaptiveDatePickers();
+                
+                fetch('header.html').then(res => res.text()).then(html => {});
+
+                await loadStaffData(); 
+                await loadPayroll();
+
+            } catch (e) {
+                console.error("Init Error:", e);
+                alert("Initialization Failed: " + e.message);
+            } finally {
+                showLoading(false);
+            }
+        });
+
+        async function loadStaffData() {
+            try {
+                const q = query(collection(db, "users")); 
+                const snap = await getDocs(q);
+                staffMap = {}; 
+                const select = document.getElementById('staffSelect');
+                select.innerHTML = '<option value="">-- Choose Staff --</option>';
+
+                snap.forEach(doc => {
+                    const s = doc.data();
+                    const personal = s.personal || {}; 
+                    const payroll = s.payroll || {};
+
+                    const displayName = personal.name || s.name || (personal.email ? personal.email.split('@')[0] : 'Unknown Staff');
+                    const displayId = personal.empCode || s.staffId || 'ID--';
+                    
+                    staffMap[doc.id] = { 
+                        id: doc.id, 
+                        authUid: s.authUid, 
+                        ...s, 
+                        displayName: displayName, 
+                        displayId: displayId,
+                        payroll: payroll 
+                    };
+
+                    if (s.status === 'active' || s.status === 'editable') {
+                        select.innerHTML += `<option value="${doc.id}">${displayName} (${displayId})</option>`;
+                    }
+                });
+            } catch (e) { console.error("Staff load error", e); }
+        }
+
+        window.autoFillStaffData = async () => {
+            const uid = document.getElementById('staffSelect').value;
+            
+            // 🟢 Robust Date Extraction
+            let rawDate = document.getElementById('formMonthPicker').value;
+            const month = rawDate ? rawDate.substring(0, 7) : "";
+            
+            if (!uid) return;
+
+            const staff = staffMap[uid]; 
+            
+            if(staff && !document.getElementById('inpBasic').value) {
+                document.getElementById('inpBasic').value = staff.payroll?.basic || 0;
+            }
+
+            if (month) {
+                await calculateAttendanceStats(uid, month);
+            }
+            
+            calcTotals();
+        };
+
+        // 🟢🟢🟢 考勤计算逻辑 🟢🟢🟢
+        async function calculateAttendanceStats(uid, monthStr) {
+            document.getElementById('dispDays').innerText = "Calculating...";
+            document.getElementById('dispHours').innerText = "...";
+            
+            try {
+                const staff = staffMap[uid];
+                if (!staff) return;
+
+                if (!monthStr) {
+                    let rawDate = document.getElementById('formMonthPicker').value;
+                    monthStr = rawDate ? rawDate.substring(0, 7) : "";
+                }
+                if (!monthStr) return;
+
+                const [year, month] = monthStr.split('-');
+                const startDate = `${monthStr}-01`;
+                const lastDayVal = new Date(year, month, 0).getDate();
+                const endDate = `${monthStr}-${lastDayVal}`;
+
+                console.group(`📊 Analysis: ${staff.displayName} (${monthStr})`);
+                
+                const targetIds = new Set();
+                if (uid) targetIds.add(String(uid));
+                if (staff.authUid) targetIds.add(String(staff.authUid));
+                if (staff.displayId) targetIds.add(String(staff.displayId));
+                
+                // A. Scheduled
+                const schedQ = query(collection(db, "schedules"), 
+                    where("date", ">=", startDate), 
+                    where("date", "<=", endDate)
+                );
+                const schedSnap = await getDocs(schedQ);
+                const scheduleMap = {}; 
+                let scheduledDays = 0;
+                let scheduledHoursTotal = 0;
+
+                const parseTime = (val, dateStr) => {
+                    if (!val) return null;
+                    if (typeof val.toDate === 'function') return val.toDate();
+                    if (val.seconds) return new Date(val.seconds * 1000);
+                    if (typeof val === 'string') return new Date(`${dateStr}T${val}:00`);
+                    return null;
+                };
+
+                schedSnap.forEach(doc => {
+                    const s = doc.data();
+                    if (s.userId && targetIds.has(String(s.userId))) {
+                        const start = parseTime(s.start, s.date);
+                        const end = parseTime(s.end, s.date);
+
+                        if (start && end) {
+                            scheduleMap[s.date] = start; 
+                            scheduledDays++;
+                            let diffMs = end - start;
+                            if (diffMs > (6 * 60 * 60 * 1000)) diffMs -= (1 * 60 * 60 * 1000);
+                            const h = diffMs / (1000 * 60 * 60);
+                            if (h > 0) scheduledHoursTotal += h;
+                        }
+                    }
+                });
+                
+                // B. Actual
+                const attQ = query(collection(db, "attendance"), 
+                    where("date", ">=", startDate), 
+                    where("date", "<=", endDate)
+                );
+                const attSnap = await getDocs(attQ);
+                const dailyRecords = {}; 
+                attSnap.forEach(doc => {
+                    const a = doc.data();
+                    if (a.uid && targetIds.has(String(a.uid)) && a.verificationStatus !== 'Rejected') {
+                        const d = a.date; 
+                        if (!dailyRecords[d]) dailyRecords[d] = [];
+                        dailyRecords[d].push(a);
+                    }
+                });
+
+                let actualDays = 0;
+                let actualHours = 0;
+                let totalLateMins = 0;
+                let totalOTHours = 0;
+
+                Object.keys(dailyRecords).forEach(date => {
+                    const records = dailyRecords[date];
+                    let firstInTime = null;
+                    let lastOutTime = null;
+                    let dayOT = 0;
+                    let hasBreakOut = false;
+                    let hasBreakIn = false;
+
+                    records.forEach(r => {
+                        let t = parseTime(r.timestamp || r.timeIn || r.manualIn, r.date);
+                        if (r.session === 'Clock In' || r.clockIn) {
+                            const tIn = parseTime(r.manualIn || r.timeIn || r.timestamp, r.date);
+                            if (!firstInTime || (tIn && tIn < firstInTime)) firstInTime = tIn;
+                        }
+                        if (r.session === 'Clock Out' || r.clockOut) {
+                            const tOut = parseTime(r.manualOut || r.timeOut || r.timestamp, r.date);
+                            if (!lastOutTime || (tOut && tOut > lastOutTime)) lastOutTime = tOut;
+                        }
+                        if (r.session === 'Break Out') hasBreakOut = true;
+                        if (r.session === 'Break In') hasBreakIn = true;
+                        if (r.overtimeHours) dayOT += (parseFloat(r.overtimeHours) || 0);
+                    });
+
+                    if (firstInTime) {
+                        actualDays++;
+                        if (lastOutTime && lastOutTime > firstInTime) {
+                            let diffMs = lastOutTime - firstInTime;
+                            if (hasBreakOut && hasBreakIn) diffMs -= (1 * 60 * 60 * 1000);
+                            actualHours += (diffMs / (1000 * 60 * 60));
+                        }
+                        if (scheduleMap[date]) {
+                            const schedStart = scheduleMap[date];
+                            const bufferTime = new Date(schedStart.getTime() + 15 * 60000); 
+                            if (firstInTime > bufferTime) {
+                                const lateMs = firstInTime - schedStart;
+                                totalLateMins += Math.floor(lateMs / 60000);
+                            }
+                        }
+                    }
+                    totalOTHours += dayOT;
+                });
+
+                console.groupEnd();
+
+                document.getElementById('dispDays').innerText = `${actualDays} / ${scheduledDays}`;
+                document.getElementById('dispHours').innerText = `${actualHours.toFixed(1)}h / ${scheduledHoursTotal.toFixed(1)}h`;
+                document.getElementById('dispLate').innerText = `${totalLateMins}m`;
+                document.getElementById('dispOT').innerText = `${totalOTHours.toFixed(1)}h`;
+
+                document.getElementById('metaDaysAct').value = actualDays;
+                document.getElementById('metaDaysSch').value = scheduledDays;
+                document.getElementById('metaHrsAct').value = actualHours.toFixed(1);
+                document.getElementById('metaHrsSch').value = scheduledHoursTotal.toFixed(1);
+                document.getElementById('metaLate').value = totalLateMins;
+                document.getElementById('metaOT').value = totalOTHours.toFixed(1);
+
+                calcTotals();
+
+            } catch (e) {
+                console.error("Stats error", e);
+                document.getElementById('dispDays').innerText = "Error";
+            }
+        }
+
+        window.calcTotals = () => {
+            const getVal = (id) => parseFloat(document.getElementById(id)?.value) || 0;
+            
+            const actDays = parseFloat(document.getElementById('metaDaysAct').value) || 0;
+            const schDays = parseFloat(document.getElementById('metaDaysSch').value) || 26; 
+            const schHours = parseFloat(document.getElementById('metaHrsSch').value) || 0;
+            const lateMins = parseFloat(document.getElementById('metaLate').value) || 0;
+            
+            const fullBasic = getVal('inpBasic');
+            
+            let proRatedBasic = fullBasic;
+            const daysRatio = schDays > 0 ? (actDays / schDays) : 1;
+            if (schDays > 0 && actDays < schDays) {
+                proRatedBasic = fullBasic * daysRatio;
+                document.getElementById('dispGross').title = `Pro-rated: ${actDays}/${schDays} days`;
+                document.getElementById('dispGross').classList.add('text-danger'); 
+            } else {
+                document.getElementById('dispGross').title = "Full Basic";
+                document.getElementById('dispGross').classList.remove('text-danger');
+            }
+
+            const comm = getVal('inpComm');
+            const ot = getVal('inpOT');
+            const allow = getVal('inpAllowance');
+            const gross = proRatedBasic + comm + ot + allow;
+
+            let lateDed = 0;
+            if (schHours > 0 && lateMins > 0) {
+                const minuteRate = fullBasic / (schHours * 60);
+                lateDed = minuteRate * lateMins;
+                
+                if(document.activeElement.id !== 'inpLateDed') {
+                    document.getElementById('inpLateDed').value = lateDed.toFixed(2);
+                } else {
+                    lateDed = getVal('inpLateDed'); 
+                }
+            } else if (document.activeElement.id !== 'inpLateDed') {
+                 document.getElementById('inpLateDed').value = 0; 
+            } else {
+                 lateDed = getVal('inpLateDed');
+            }
+
+            const epf = getVal('inpEPF');
+            const socso = getVal('inpSOCSO');
+            const eis = getVal('inpEIS');
+            const pcb = getVal('inpPCB');
+            
+            const totalDed = epf + socso + eis + pcb + lateDed;
+
+            document.getElementById('dispGross').value = formatMoney(gross);
+            document.getElementById('dispNet').innerText = "RM " + formatMoney(gross - totalDed);
+        };
+
+        window.loadPayroll = async () => {
+            let rawDate = document.getElementById('globalMonthPicker').value;
+            const month = rawDate ? rawDate.substring(0, 7) : "";
+            
+            if(!month) return;
+            
+            showLoading(true);
+            const listDiv = document.getElementById('payrollList');
+            listDiv.innerHTML = '';
+            
+            try {
+                const q = query(collection(db, "payslips"), where("month", "==", month));
+                const snap = await getDocs(q);
+                
+                currentPayrollData = [];
+                let totalNet = 0;
+                let totalEmpEPF = 0;
+
+                if (snap.empty) {
+                    listDiv.innerHTML = `<div class="text-center py-5 text-muted">No records for ${month}.<br>Click 'Create Payslip' to add one.</div>`;
+                    updateStats(0, 0);
+                    return; 
+                }
+
+                snap.forEach(doc => {
+                    const d = doc.data();
+                    d.id = doc.id;
+                    currentPayrollData.push(d);
+                    
+                    totalNet += (d.net || 0);
+                    totalEmpEPF += (d.employer_epf || 0);
+
+                    const liveStaff = staffMap[d.uid];
+                    const displayName = liveStaff ? liveStaff.displayName : (d.staffName || 'Unknown Staff');
+                    const displayCode = liveStaff ? liveStaff.displayId : (d.staffCode || '--');
+
+                    d.staffName = displayName; 
+
+                    const commDisplay = (d.earnings?.commission > 0) ? `<br><small class='text-success'>+Comm: ${d.earnings.commission}</small>` : '';
+
+                    const row = document.createElement('div');
+                    row.className = `row align-items-center py-3 border-bottom px-3 bg-white status-${d.status}`;
+                    row.innerHTML = `
+                        <div class="col-3">
+                            <div class="fw-bold text-primary" style="cursor:pointer" onclick="openEditModal('${d.id}')">${displayName}</div>
+                            <small class="text-muted">${displayCode}</small>
+                        </div>
+                        <div class="col-2">
+                            RM ${formatMoney(d.basic)}
+                            ${commDisplay}
+                        </div>
+                        <div class="col-2">RM ${formatMoney(d.gross)}</div>
+                        <div class="col-2 fw-bold">RM ${formatMoney(d.net)}</div>
+                        <div class="col-1"><span class="badge ${d.status === 'Published' ? 'bg-success' : 'bg-warning text-dark'}">${d.status}</span></div>
+                        <div class="col-2 text-end">
+                            <button class="btn btn-sm btn-light border" onclick="openEditModal('${d.id}')"><i data-lucide="edit-2" class="size-4"></i></button>
+                            <button class="btn btn-sm btn-light border" onclick="viewPayslip('${d.id}')"><i data-lucide="printer" class="size-4"></i></button>
+                        </div>
+                    `;
+                    listDiv.appendChild(row);
+                });
+
+                updateStats(totalNet, totalEmpEPF);
+                lucide.createIcons();
+            } catch (e) { console.error(e); } 
+            finally { showLoading(false); }
+        };
+
+        window.openCreateModal = () => {
+            if(!formModal) { alert("System loading..."); return; }
+            document.getElementById('payslipForm').reset();
+            document.getElementById('editDocId').value = "";
+            document.getElementById('formModalTitle').innerText = "Create New Payslip";
+            document.getElementById('staffSelect').disabled = false;
+            
+            // Sync month pickers. Use value directly (handled by Adaptive logic)
+            const globalDate = document.getElementById('globalMonthPicker').value;
+            if(globalDate) {
+                document.getElementById('formMonthPicker').value = globalDate;
+            }
+
+            document.getElementById('dispNet').innerText = "RM 0.00";
+            document.getElementById('dispDays').innerText = "- / -";
+            document.getElementById('dispHours').innerText = "- / -";
+            document.getElementById('dispLate').innerText = "-";
+            document.getElementById('dispOT').innerText = "-";
+            document.getElementById('metaHrsSch').value = 0;
+            document.getElementById('metaLate').value = 0;
+            
+            formModal.show();
+        };
+
+        window.openEditModal = (id) => {
+            if(!formModal) return;
+            const d = currentPayrollData.find(x => x.id === id);
+            if(!d) return;
+
+            document.getElementById('editDocId').value = id;
+            document.getElementById('formModalTitle').innerText = "Edit Payslip - " + d.staffName;
+            
+            document.getElementById('staffSelect').value = d.uid;
+            document.getElementById('staffSelect').disabled = true;
+            
+            // 🟢 Adaptive Fill (Check current type)
+            const el = document.getElementById('formMonthPicker');
+            if(el.type === 'date') {
+                el.value = d.month + "-01"; // Add day for Date picker
+            } else {
+                el.value = d.month; // Month picker takes YYYY-MM
+            }
+
+            document.getElementById('inpBasic').value = d.basic;
+            document.getElementById('inpComm').value = d.earnings.commission || 0;
+            document.getElementById('inpOT').value = d.earnings.ot || 0;
+            document.getElementById('inpAllowance').value = d.earnings.allowance || 0;
+
+            document.getElementById('inpEPF').value = d.deductions.epf || 0;
+            document.getElementById('inpSOCSO').value = d.deductions.socso || 0;
+            document.getElementById('inpEIS').value = d.deductions.eis || 0;
+            document.getElementById('inpPCB').value = d.deductions.tax || 0;
+            document.getElementById('inpLateDed').value = d.deductions.late || 0;
+
+            document.getElementById('inpEmpEPF').value = d.employer_epf || 0;
+            document.getElementById('inpEmpSOCSO').value = d.employer_socso || 0;
+            document.getElementById('inpEmpEIS').value = d.employer_eis || 0;
+
+            document.getElementById('formStatus').value = d.status || 'Draft';
+            
+            if (d.attendanceStats) {
+                document.getElementById('dispDays').innerText = `${d.attendanceStats.actDays} / ${d.attendanceStats.schDays}`;
+                document.getElementById('dispHours').innerText = `${d.attendanceStats.actHrs}h / ${d.attendanceStats.schHrs}h`;
+                document.getElementById('dispLate').innerText = `${d.attendanceStats.late}m`;
+                document.getElementById('dispOT').innerText = `${d.attendanceStats.ot}h`;
+                
+                document.getElementById('metaDaysAct').value = d.attendanceStats.actDays;
+                document.getElementById('metaDaysSch').value = d.attendanceStats.schDays;
+                document.getElementById('metaHrsSch').value = d.attendanceStats.schHrs || 0;
+                document.getElementById('metaLate').value = d.attendanceStats.late;
+            } else {
+                calculateAttendanceStats(d.uid, d.month);
+            }
+
+            calcTotals();
+            formModal.show();
+        };
+
+        window.savePayslipForm = async () => {
+            const docId = document.getElementById('editDocId').value;
+            const uid = document.getElementById('staffSelect').value;
+            
+            // 🟢 Robust Date Extraction
+            let rawDate = document.getElementById('formMonthPicker').value;
+            const month = rawDate ? rawDate.substring(0, 7) : "";
+            
+            if(!uid || !month) { alert("Please select staff and month"); return; }
+
+            showLoading(true);
+            const staff = staffMap[uid]; 
+            const getVal = (id) => parseFloat(document.getElementById(id).value) || 0;
+
+            const basic = getVal('inpBasic');
+            const comm = getVal('inpComm');
+            const ot = getVal('inpOT');
+            const allow = getVal('inpAllowance');
+            
+            const actDays = parseFloat(document.getElementById('metaDaysAct').value) || 0;
+            const schDays = parseFloat(document.getElementById('metaDaysSch').value) || 26;
+            
+            let proRatedBasic = basic;
+            if (schDays > 0 && actDays < schDays) {
+                proRatedBasic = basic * (actDays / schDays);
+            }
+            const gross = proRatedBasic + comm + ot + allow;
+
+            const epf = getVal('inpEPF');
+            const socso = getVal('inpSOCSO');
+            const eis = getVal('inpEIS');
+            const pcb = getVal('inpPCB');
+            const lateDed = getVal('inpLateDed'); 
+            const totalDed = epf + socso + eis + pcb + lateDed;
+
+            const empEPF = getVal('inpEmpEPF');
+            const empSOCSO = getVal('inpEmpSOCSO');
+            const empEIS = getVal('inpEmpEIS');
+
+            const [year, mth] = month.split('-');
+            const lastDay = new Date(year, mth, 0).getDate();
+            const displayPeriod = `01-${mth}-${year} TO ${lastDay}-${mth}-${year}`;
+
+            const stats = {
+                actDays: document.getElementById('metaDaysAct').value,
+                schDays: document.getElementById('metaDaysSch').value,
+                actHrs: document.getElementById('metaHrsAct').value,
+                schHrs: document.getElementById('metaHrsSch').value,
+                late: document.getElementById('metaLate').value,
+                ot: document.getElementById('metaOT').value
+            };
+
+            const payload = {
+                uid: uid,
+                month: month,
+                staffName: staff ? staff.displayName : (currentPayrollData.find(x=>x.id==docId)?.staffName),
+                staffCode: staff ? staff.displayId : '43',
+                icNo: staff ? (staff.personal?.icNo || '-') : '-',
+                epfNo: staff ? (staff.statutory?.epf?.no || '-') : '-',
+                socsoNo: staff ? (staff.statutory?.socso?.no || '-') : '-',
+                department: staff ? (staff.employment?.dept || 'MANAGEMENT') : 'MANAGEMENT',
+                payGroup: "STANDARD",
+                
+                period: displayPeriod,
+                paymentDate: `${year}-${mth}-${lastDay}`,
+
+                basic: basic, 
+                earnings: { commission: comm, ot: ot, allowance: allow, total: gross },
+                deductions: { epf: epf, socso: socso, eis: eis, tax: pcb, late: lateDed, total: totalDed },
+                
+                employer_epf: empEPF,
+                employer_socso: empSOCSO,
+                employer_eis: empEIS,
+
+                attendanceStats: stats,
+
+                gross: gross,
+                net: gross - totalDed,
+                status: document.getElementById('formStatus').value,
+                updatedAt: serverTimestamp()
+            };
+
+            try {
+                if(docId) {
+                    await updateDoc(doc(db, "payslips", docId), payload);
+                } else {
+                    payload.createdAt = serverTimestamp();
+                    await setDoc(doc(collection(db, "payslips")), payload);
+                }
+                formModal.hide();
+                loadPayroll();
+            } catch (e) {
+                alert("Error saving: " + e.message);
+            } finally {
+                showLoading(false);
+            }
+        };
+
+        window.publishAll = async () => {
+            if(!confirm("Publish all Drafts?")) return;
+            showLoading(true);
+            const batch = writeBatch(db);
+            currentPayrollData.forEach(d => {
+                if(d.status === 'Draft') batch.update(doc(db, "payslips", d.id), { status: "Published" });
+            });
+            await batch.commit();
+            loadPayroll();
+        };
+
+        window.viewPayslip = (id) => {
+            const d = currentPayrollData.find(x => x.id === id);
+            if(!d) return;
+
+            let extraEarnRows = "";
+            if(d.earnings.commission > 0) extraEarnRows += `<tr><td>COMMISSION</td><td style="text-align: right;">${formatMoney(d.earnings.commission)}</td><td></td><td></td></tr>`;
+            if(d.earnings.ot > 0) extraEarnRows += `<tr><td>OVERTIME</td><td style="text-align: right;">${formatMoney(d.earnings.ot)}</td><td></td><td></td></tr>`;
+            if(d.earnings.allowance > 0) extraEarnRows += `<tr><td>ALLOWANCE</td><td style="text-align: right;">${formatMoney(d.earnings.allowance)}</td><td></td><td></td></tr>`;
+
+            let extraDedRows = "";
+            if(d.deductions.eis > 0) extraDedRows += `<tr><td></td><td></td><td style="padding-left: 20px;">EIS (Employee)</td><td style="text-align: right;">${formatMoney(d.deductions.eis)}</td></tr>`;
+            if(d.deductions.tax > 0) extraDedRows += `<tr><td></td><td></td><td style="padding-left: 20px;">PCB / TAX</td><td style="text-align: right;">${formatMoney(d.deductions.tax)}</td></tr>`;
+            if(d.deductions.late > 0) extraDedRows += `<tr><td></td><td></td><td style="padding-left: 20px; color:red;">LATE DEDUCTION</td><td style="text-align: right; color:red;">${formatMoney(d.deductions.late)}</td></tr>`;
+
+            const stats = d.attendanceStats || { actDays:0, schDays:0, actHrs:0, late:0, ot:0 };
+            const statsHtml = `
+                <div style="margin-top: 20px; padding: 10px; border: 1px solid #000; font-size: 0.8rem;">
+                    <div style="font-weight: bold; border-bottom: 1px solid #000; margin-bottom: 5px;">ATTENDANCE SUMMARY</div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <div>Working Days: <b>${stats.actDays}</b> / ${stats.schDays}</div>
+                        <div>Working Hours: <b>${stats.actHrs}</b> hrs</div>
+                        <div>Total Late: <b>${stats.late}</b> mins</div>
+                        <div>Total Overtime: <b>${stats.ot}</b> hrs</div>
+                    </div>
+                </div>
+            `;
+
+            const html = `
+                <div class="payslip-preview">
+                    <div class="payslip-header">
+                        <div class="company-name">RH RIDER HUB MOTOR (M) SDN. BHD.</div>
+                        <div class="company-address">NO.26&28, JALAN MERU IMPIAN B3, CASA KAYANGAN @ PUSAT PERNIAGAAN MERU IMPIAN,<br>BANDAR MERU RAYA, 30020 IPOH, Perak</div>
+                        <div class="mt-3">Payment Date: ${d.paymentDate || '-'}</div>
+                    </div>
+
+                    <div class="info-grid">
+                        <div class="info-col">
+                            <div class="info-row"><span>Employee Name</span> <span>: ${d.staffName}</span></div>
+                            <div class="info-row"><span>Department</span> <span>: ${d.department}</span></div>
+                            <div class="info-row"><span>Employee Code</span> <span>: ${d.staffCode}</span></div>
+                            <div class="info-row"><span>Pay Group</span> <span>: ${d.payGroup}</span></div>
+                        </div>
+                        <div class="info-col">
+                            <div class="info-row"><span>IC Number</span> <span>: ${d.icNo}</span></div>
+                            <div class="info-row"><span>EPF Number</span> <span>: ${d.epfNo}</span></div>
+                            <div class="info-row"><span>SOCSO Number</span> <span>: ${d.socsoNo}</span></div>
+                            <div class="info-row"><span>Pay Period</span> <span>: ${d.period}</span></div>
+                        </div>
+                    </div>
+
+                    <table class="finance-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 35%">EARNINGS DESCRIPTION</th>
+                                <th style="width: 15%; text-align: right;">AMOUNT</th>
+                                <th style="width: 35%; padding-left: 20px;">DEDUCTIONS DESCRIPTION</th>
+                                <th style="width: 15%; text-align: right;">AMOUNT</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>BASIC PAY</td>
+                                <td style="text-align: right;">${formatMoney(d.basic)}</td>
+                                <td style="padding-left: 20px;">EPF (Employee)</td>
+                                <td style="text-align: right;">${formatMoney(d.deductions.epf)}</td>
+                            </tr>
+                            <tr>
+                                <td></td><td></td>
+                                <td style="padding-left: 20px;">SOCSO (Employee)</td>
+                                <td style="text-align: right;">${formatMoney(d.deductions.socso)}</td>
+                            </tr>
+                            ${extraEarnRows}
+                            ${extraDedRows}
+                            <tr>
+                                <td style="font-weight: bold; padding-top: 10px;">Total Earnings</td>
+                                <td style="text-align: right; font-weight: bold; padding-top: 10px;">${formatMoney(d.gross)}</td>
+                                <td style="padding-left: 20px; font-weight: bold; padding-top: 10px;">Total Deductions</td>
+                                <td style="text-align: right; font-weight: bold; padding-top: 10px;">${formatMoney(d.deductions.total)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="total-section">
+                        <div class="row">
+                            <div class="col-6">
+                                <div class="d-flex justify-content-between"><span>Gross Wages</span> <span>${formatMoney(d.gross)}</span></div>
+                                <div class="d-flex justify-content-between"><span>Employer EPF</span> <span>${formatMoney(d.employer_epf)}</span></div>
+                                <div class="d-flex justify-content-between"><span>Employer EIS</span> <span>${formatMoney(d.employer_eis)}</span></div>
+                                <div class="d-flex justify-content-between"><span>Employer SOCSO</span> <span>${formatMoney(d.employer_socso)}</span></div>
+                            </div>
+                            <div class="col-6 text-end">
+                                <div style="font-size: 1.2rem; font-weight: bold; margin-top: 20px;">
+                                    Nett Wages : RM ${formatMoney(d.net)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    ${statsHtml} <div style="margin-top: 30px; font-size: 0.7rem; text-align: center;">
+                        This is a computer generated document. No signature is required.
+                    </div>
+                </div>
+            `;
+            document.getElementById('printArea').innerHTML = html;
+            printModal.show();
+        };
+
+        function updateStats(net, epf) {
+            document.getElementById('statTotal').innerText = "RM " + formatMoney(net);
+            document.getElementById('statEPF').innerText = "RM " + formatMoney(epf);
+        }
+    </script>
+</body>
+</html>

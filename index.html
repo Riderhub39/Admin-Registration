@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - FieldTrack Pro</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { background-color: #f8fafc; height: 100vh; display: flex; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; }
+        .login-card { width: 100%; max-width: 400px; border: none; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border-radius: 16px; }
+        .brand-logo { width: 64px; height: 64px; background: #eff6ff; color: #2563eb; border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
+        .form-control:focus { box-shadow: none; border-color: #2563eb; }
+        .btn-primary { padding: 10px; border-radius: 8px; font-weight: 600; }
+        /* 禁用状态样式 */
+        .btn:disabled { cursor: not-allowed; opacity: 0.7; }
+    </style>
+</head>
+<body>
+
+<div class="card login-card p-4 p-md-5">
+    <div class="card-body">
+        <div class="brand-logo">
+            <i data-lucide="shield-check" class="size-8"></i>
+        </div>
+        <h4 class="text-center fw-bold mb-1">FieldTrack Pro</h4>
+        <p class="text-center text-muted small mb-4">Secure Access Portal</p>
+
+        <form id="loginForm">
+            <div class="mb-3">
+                <label class="form-label small fw-bold text-secondary">Email Address</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-white border-end-0"><i data-lucide="mail" class="size-4 text-muted"></i></span>
+                    <input type="email" id="email" class="form-control border-start-0 ps-0" placeholder="user@company.com" required>
+                </div>
+            </div>
+            <div class="mb-4">
+                <label class="form-label small fw-bold text-secondary">Password</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-white border-end-0"><i data-lucide="lock" class="size-4 text-muted"></i></span>
+                    <input type="password" id="password" class="form-control border-start-0 ps-0" placeholder="••••••••" required>
+                </div>
+            </div>
+            <button type="submit" id="loginBtn" class="btn btn-primary w-100 mb-3">Sign In</button>
+        </form>
+
+        <div id="errorMsg" class="alert alert-danger d-none small py-2 text-center border-0 bg-danger bg-opacity-10 text-danger"></div>
+        
+        <div id="lockoutMsg" class="alert alert-warning d-none small py-2 text-center border-0 bg-warning bg-opacity-10 text-warning-emphasis">
+            Too many attempts. Please wait <span id="timer">60</span>s.
+        </div>
+        
+        <div class="text-center">
+            <small class="text-muted" style="font-size: 0.75rem;">Only authorized personnel may access this system.</small>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyB_NOJgB425rk89CVwVeqvqsXe9sMZymFk",
+        authDomain: "fieldtrack-pro-a16b4.firebaseapp.com",
+        projectId: "fieldtrack-pro-a16b4",
+        storageBucket: "fieldtrack-pro-a16b4.firebasestorage.app",
+        messagingSenderId: "73078824026",
+        appId: "1:73078824026:web:d864447ac1942e9d55cc63"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // ==========================================
+    // 防暴力破解逻辑 (Rate Limiting)
+    // ==========================================
+    const MAX_ATTEMPTS = 5; // 最大失败次数
+    const LOCKOUT_TIME = 60 * 1000; // 锁定时间 60秒
+    let failedAttempts = 0;
+    let lockoutTimerInterval;
+
+    // 页面加载时检查是否处于锁定状态
+    checkLockout();
+
+    function checkLockout() {
+        const lockoutTimestamp = localStorage.getItem('loginLockoutUntil');
+        if (lockoutTimestamp) {
+            const now = Date.now();
+            const remaining = parseInt(lockoutTimestamp) - now;
+
+            if (remaining > 0) {
+                // 仍然处于锁定状态
+                startLockoutUI(Math.ceil(remaining / 1000));
+            } else {
+                // 锁定已过期
+                localStorage.removeItem('loginLockoutUntil');
+                resetUI();
+            }
+        }
+    }
+
+    function startLockoutUI(seconds) {
+        const btn = document.getElementById('loginBtn');
+        const emailInput = document.getElementById('email');
+        const passInput = document.getElementById('password');
+        const lockoutMsg = document.getElementById('lockoutMsg');
+        const timerSpan = document.getElementById('timer');
+        const errorDiv = document.getElementById('errorMsg');
+
+        // 禁用界面
+        btn.disabled = true;
+        emailInput.disabled = true;
+        passInput.disabled = true;
+        
+        // 隐藏普通错误，显示倒计时
+        errorDiv.classList.add('d-none');
+        lockoutMsg.classList.remove('d-none');
+        
+        let timeLeft = seconds;
+        timerSpan.innerText = timeLeft;
+
+        // 清除旧的计时器（防止重叠）
+        if (lockoutTimerInterval) clearInterval(lockoutTimerInterval);
+
+        lockoutTimerInterval = setInterval(() => {
+            timeLeft--;
+            timerSpan.innerText = timeLeft;
+
+            if (timeLeft <= 0) {
+                clearInterval(lockoutTimerInterval);
+                localStorage.removeItem('loginLockoutUntil');
+                resetUI();
+            }
+        }, 1000);
+    }
+
+    function triggerLockout() {
+        const lockoutUntil = Date.now() + LOCKOUT_TIME;
+        localStorage.setItem('loginLockoutUntil', lockoutUntil);
+        failedAttempts = 0; // 重置失败计数
+        startLockoutUI(60);
+    }
+
+    function resetUI() {
+        const btn = document.getElementById('loginBtn');
+        const emailInput = document.getElementById('email');
+        const passInput = document.getElementById('password');
+        const lockoutMsg = document.getElementById('lockoutMsg');
+
+        btn.disabled = false;
+        btn.innerHTML = 'Sign In';
+        emailInput.disabled = false;
+        passInput.disabled = false;
+        lockoutMsg.classList.add('d-none');
+    }
+
+    // ==========================================
+    // 登录逻辑
+    // ==========================================
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        // 再次检查锁定状态（防止手动移除 disabled 属性）
+        if (localStorage.getItem('loginLockoutUntil') && Date.now() < parseInt(localStorage.getItem('loginLockoutUntil'))) {
+            return;
+        }
+
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const btn = document.getElementById('loginBtn');
+        const errorDiv = document.getElementById('errorMsg');
+
+        // UI Loading State
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Verifying...';
+        btn.disabled = true;
+        errorDiv.classList.add('d-none');
+
+        try {
+            // A. 验证用户
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
+
+            // 登录成功，清除失败记录
+            failedAttempts = 0;
+            localStorage.removeItem('loginLockoutUntil');
+
+            // B. 检查角色
+            const userDocRef = doc(db, "users", user.uid);
+            const userSnap = await getDoc(userDocRef);
+
+            if (userSnap.exists()) {
+                const userData = userSnap.data();
+                const role = userData.role;
+
+                if (role === 'admin') {
+                    window.location.href = "home.html";
+                } else if (role === 'staff') {
+                    alert("Staff Portal is currently under construction.");
+                    resetUI();
+                } else {
+                    throw new Error("Unauthorized: Account has no assigned role.");
+                }
+            } else {
+                throw new Error("User profile not found in database. Contact Admin.");
+            }
+
+        } catch (error) {
+            console.error("Login Error:", error);
+            
+            // 增加失败计数
+            failedAttempts++;
+
+            let msg = "Login failed. Please check credentials.";
+            
+            // === 核心防护逻辑 ===
+            // 1. Firebase 自身检测到滥用
+            if (error.code === 'auth/too-many-requests') {
+                msg = "Access temporarily blocked due to unusual activity.";
+                triggerLockout(); // 直接触发长时间锁定
+            } 
+            // 2. 达到本地最大尝试次数
+            else if (failedAttempts >= MAX_ATTEMPTS) {
+                triggerLockout(); // 触发长时间锁定
+                return; // 退出，不再显示普通错误
+            }
+            // 3. 普通错误处理
+            else {
+                if(error.code === 'auth/invalid-credential') msg = `Invalid email or password. (${MAX_ATTEMPTS - failedAttempts} attempts left)`;
+                else if(error.message) msg = error.message;
+                
+                resetUI(); // 恢复按钮供下次尝试
+            }
+
+            errorDiv.textContent = msg;
+            errorDiv.classList.remove('d-none');
+        }
+    });
+
+    lucide.createIcons();
+</script>
+</body>
+</html>

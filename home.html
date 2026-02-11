@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Command Center - FieldTrack Pro</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="style.css" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        /* 顶部快捷按钮 */
+        .quick-action-btn {
+            background: white; border: 1px solid #e2e8f0; border-radius: 12px;
+            padding: 15px; text-align: center; transition: all 0.2s;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100px; text-decoration: none; color: var(--text-main);
+        }
+        .quick-action-btn:hover {
+            transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+            border-color: var(--primary); color: var(--primary);
+        }
+        
+        /* 通用统计卡片 */
+        .stat-card { 
+            background: white; border-radius: 16px; border: 1px solid #e2e8f0; 
+            padding: 20px; height: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.01); 
+            display: flex; flex-direction: column;
+        }
+        
+        .stat-value { font-size: 2rem; font-weight: 800; line-height: 1; }
+        
+        /* 待办任务卡片样式 */
+        .task-row { 
+            transition: all 0.2s ease; 
+            border: 1px solid #e2e8f0; 
+            background: white;
+            text-decoration: none;
+            color: inherit;
+        }
+        .task-row:hover { 
+            background-color: #f8fafc; 
+            border-color: var(--primary); 
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+        
+        /* 状态点 */
+        .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        .bg-online { background-color: #22c55e; box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2); }
+        .bg-offline { background-color: #94a3b8; }
+        
+        .cursor-pointer { cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="header-placeholder"></div>
+
+<div class="container py-4">
+
+    <div class="row g-3 mb-4 justify-content-center">
+        <div class="col-6 col-md-2">
+    <a href="manage_staff.html" class="quick-action-btn">
+        <div class="bg-primary bg-opacity-10 p-2 rounded-circle mb-2 text-primary">
+            <i data-lucide="user" class="size-5"></i>
+        </div>
+        <div class="fw-bold small">Onboard Staff</div>
+    </a>
+</div>
+        <div class="col-6 col-md-2">
+            <a href="attendance.html" class="quick-action-btn">
+                <div class="bg-success bg-opacity-10 p-2 rounded-circle mb-2 text-success"><i data-lucide="file-spreadsheet" class="size-5"></i></div>
+                <div class="fw-bold small">Export Report</div>
+            </a>
+        </div>
+
+        <div class="col-6 col-md-2">
+            <a href="payroll.html" class="quick-action-btn">
+                <div class="bg-danger bg-opacity-10 p-2 rounded-circle mb-2 text-danger"><i data-lucide="dollar-sign" class="size-5"></i></div>
+                <div class="fw-bold small">Payroll</div>
+            </a>
+        </div>
+
+        <div class="col-6 col-md-2">
+            <button onclick="openAnnouncementModal()" class="quick-action-btn w-100 border-0 shadow-sm" style="border: 1px solid #e2e8f0;">
+                <div class="bg-warning bg-opacity-10 p-2 rounded-circle mb-2 text-warning"><i data-lucide="megaphone" class="size-5"></i></div>
+                <div class="fw-bold small">Announcement</div>
+            </button>
+        </div>
+        
+        <div class="col-6 col-md-2">
+            <a href="schedule_planner.html" class="quick-action-btn">
+                <div class="bg-info bg-opacity-10 p-2 rounded-circle mb-2 text-info"><i data-lucide="calendar-days" class="size-5"></i></div>
+                <div class="fw-bold small">Roster Plan</div>
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        
+        <div class="col-lg-4 col-md-6">
+            <div class="stat-card position-relative">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="fw-bold m-0 text-dark"><i data-lucide="clock" class="size-4 me-2 text-primary"></i>Today's Attendance</h6>
+                    <span class="badge bg-light text-dark border" id="attDate">-</span>
+                </div>
+                
+                <div class="row align-items-center mt-4">
+                    <div class="col-6 position-relative">
+                        <canvas id="attChart" style="max-height: 130px;"></canvas>
+                        <div class="position-absolute top-50 start-50 translate-middle text-center" style="margin-top: 5px;">
+                            <div class="h4 fw-bold m-0" id="attPercent">0%</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="mb-3 cursor-pointer" onclick="goToAttendance('present')">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="dot bg-success"></div><span class="text-muted small">Present</span>
+                            </div>
+                            <div class="h5 fw-bold m-0" id="countPresent">0</div>
+                        </div>
+                        <div class="mb-3 cursor-pointer" onclick="goToAttendance('late')">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="dot bg-warning" style="background-color: #f59e0b;"></div><span class="text-muted small">Late</span>
+                            </div>
+                            <div class="h5 fw-bold m-0 text-warning" id="countLate">0</div>
+                        </div>
+                        <div class="cursor-pointer" onclick="goToAttendance('absent')">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="dot bg-danger"></div><span class="text-muted small">Absent</span>
+                            </div>
+                            <div class="h5 fw-bold m-0 text-danger" id="countAbsent">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 col-md-6">
+            <div class="stat-card">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="fw-bold m-0 text-dark"><i data-lucide="alert-circle" class="size-4 me-2 text-danger"></i>Action Required</h6>
+                </div>
+                
+                <div class="d-flex flex-column gap-3 mt-2">
+                    
+                    <a href="leave_approval.html" class="task-row d-flex align-items-center justify-content-between p-3 rounded">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="bg-success bg-opacity-10 text-success p-2 rounded">
+                                <i data-lucide="calendar-check" class="size-6"></i>
+                            </div>
+                            <div>
+                                <div class="fw-bold text-dark" style="font-size: 0.9rem;">Leave Requests</div>
+                                <div class="text-muted small">Awaiting approval</div>
+                            </div>
+                        </div>
+                        <span class="badge bg-danger rounded-pill" id="badge-leave" style="display:none;">
+                            <span id="count-leave">0</span>
+                        </span>
+                    </a>
+
+                    <a href="attendance.html" class="task-row d-flex align-items-center justify-content-between p-3 rounded">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="bg-primary bg-opacity-10 text-primary p-2 rounded">
+                                <i data-lucide="fingerprint" class="size-6"></i>
+                            </div>
+                            <div>
+                                <div class="fw-bold text-dark" style="font-size: 0.9rem;">Attendance Fixes</div>
+                                <div class="text-muted small">Manual corrections</div>
+                            </div>
+                        </div>
+                        <span class="badge bg-danger rounded-pill" id="badge-att" style="display:none;">
+                            <span id="count-att">0</span>
+                        </span>
+                    </a>
+
+                    <a href="manage_staff.html" class="task-row d-flex align-items-center justify-content-between p-3 rounded">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="bg-warning bg-opacity-10 text-warning p-2 rounded">
+                                <i data-lucide="user-cog" class="size-6"></i>
+                            </div>
+                            <div>
+                                <div class="fw-bold text-dark" style="font-size: 0.9rem;">Profile Updates</div>
+                                <div class="text-muted small">Staff modifications</div>
+                            </div>
+                        </div>
+                        <span class="badge bg-danger rounded-pill" id="badge-edit" style="display:none;">
+                            <span id="count-edit">0</span>
+                        </span>
+                    </a>
+
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 col-md-12">
+            <div class="stat-card bg-light border-0 d-flex flex-column" style="background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h6 class="fw-bold m-0 text-dark"><i data-lucide="map-pin" class="size-4 me-2 text-info"></i>Fleet GPS Status</h6>
+                    <div class="spinner-grow text-primary" style="width: 8px; height: 8px;" role="status"></div>
+                </div>
+                
+                <div class="d-flex justify-content-around text-center mb-auto mt-2">
+                    <div>
+                        <div class="stat-value text-primary" id="trackOnline">0</div>
+                        <div class="stat-label text-primary opacity-75"><span class="dot bg-online"></span>Active Now</div>
+                    </div>
+                    <div class="border-end"></div>
+                    <div>
+                        <div class="stat-value text-muted" id="trackOffline">0</div>
+                        <div class="stat-label"><span class="dot bg-offline"></span>Offline</div>
+                    </div>
+                </div>
+
+                <a href="live_tracking.html" class="btn btn-white border w-100 fw-bold shadow-sm text-primary mt-4">
+                    Open Live Map
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="announceModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title fw-bold">Post New Announcement</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <textarea id="announceText" class="form-control" rows="3" placeholder="Type your message here..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary btn-sm" onclick="submitAnnouncement()">Post Message</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, collection, query, where, getDocs, onSnapshot, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    import { firebaseConfig } from "./firebase-config.js";
+    import { initUnifiedHeader } from "./header-app.js";
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    initUnifiedHeader(auth, db);
+
+    let attChartInstance = null;
+    const announceModal = new bootstrap.Modal(document.getElementById('announceModal'));
+
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            initDashboard();
+        }
+    });
+
+    function initDashboard() {
+        document.getElementById('attDate').innerText = new Date().toLocaleDateString('en-GB', { day:'numeric', month:'short' });
+        loadAttendanceStats();
+        loadAllTasks(); 
+        loadTrackingStats();
+    }
+
+    // ==========================================
+    // 1. Task Logic (Updates Counts for Cards)
+    // ==========================================
+    function loadAllTasks() {
+        // A. Leave Requests
+        onSnapshot(query(collection(db, "leaves"), where("status", "==", "Pending")), (snap) => {
+            const count = snap.size;
+            document.getElementById('count-leave').innerText = count;
+            document.getElementById('badge-leave').style.display = count > 0 ? 'inline-block' : 'none';
+        });
+
+        // B. Attendance Corrections
+        onSnapshot(query(collection(db, "attendance_corrections"), where("status", "==", "Pending")), (snap) => {
+            const count = snap.size;
+            document.getElementById('count-att').innerText = count;
+            document.getElementById('badge-att').style.display = count > 0 ? 'inline-block' : 'none';
+        });
+
+        // C. Profile Updates
+        onSnapshot(query(collection(db, "edit_requests"), where("status", "==", "pending")), (snap) => {
+            const count = snap.size;
+            document.getElementById('count-edit').innerText = count;
+            document.getElementById('badge-edit').style.display = count > 0 ? 'inline-block' : 'none';
+        });
+    }
+
+    // ==========================================
+    // 2. Attendance Stats
+    // ==========================================
+    async function loadAttendanceStats() {
+        const todayStr = new Date().toISOString().split('T')[0];
+        try {
+            const [usersSnap, attSnap, schedSnap] = await Promise.all([
+                getDocs(query(collection(db, "users"), where("role", "==", "staff"))),
+                getDocs(query(collection(db, "attendance"), where("date", "==", todayStr))),
+                getDocs(query(collection(db, "schedules"), where("date", "==", todayStr)))
+            ]);
+
+            const activeStaffIds = new Set();
+            usersSnap.forEach(doc => { if (doc.data().status !== 'disabled') activeStaffIds.add(doc.id); });
+
+            const scheduledIds = new Set();
+            const scheduleMap = {};
+            schedSnap.forEach(doc => {
+                const d = doc.data();
+                if(d.start && activeStaffIds.has(d.userId)) {
+                    scheduledIds.add(d.userId);
+                    scheduleMap[d.userId] = d.start.toDate();
+                }
+            });
+
+            const totalStaff = activeStaffIds.size; 
+            let presentCount = 0;
+            let lateCount = 0;
+            const presentIds = new Set();
+
+            attSnap.forEach(doc => {
+                const data = doc.data();
+                if (data.verificationStatus !== 'Rejected') {
+                    presentCount++;
+                    presentIds.add(data.uid);
+                    
+                    let checkInTime = data.timeIn ? data.timeIn.toDate() : (data.timestamp ? data.timestamp.toDate() : null);
+                    if (checkInTime) {
+                        let threshold = scheduleMap[data.uid] ? new Date(scheduleMap[data.uid].getTime() + 15 * 60000) : new Date(todayStr + "T09:15:00");
+                        if (data.session === 'Clock In' && checkInTime > threshold) lateCount++;
+                    }
+                }
+            });
+
+            let absentCount = 0;
+            scheduledIds.forEach(uid => { if (!presentIds.has(uid)) absentCount++; });
+
+            const denominator = scheduledIds.size > 0 ? scheduledIds.size : (presentCount > 0 ? presentCount : 1);
+            const presentPercent = Math.min(100, Math.round((presentCount / denominator) * 100));
+
+            document.getElementById('countPresent').innerText = presentCount;
+            document.getElementById('countLate').innerText = lateCount;
+            document.getElementById('countAbsent').innerText = absentCount;
+            document.getElementById('attPercent').innerText = `${presentPercent}%`;
+
+            updateChart(presentCount, absentCount, lateCount);
+        } catch (e) { console.error("Error loading attendance:", e); }
+    }
+
+    function updateChart(present, absent, late) {
+        const ctx = document.getElementById('attChart').getContext('2d');
+        if (attChartInstance) attChartInstance.destroy();
+
+        const onTime = Math.max(0, present - late);
+        attChartInstance = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['On Time', 'Late', 'Absent'],
+                datasets: [{ data: [onTime, late, absent], backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'], borderWidth: 0, cutout: '75%' }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } } }
+        });
+    }
+
+    window.goToAttendance = (filter) => { window.location.href = `attendance.html?filter=${filter}`; };
+
+    // ==========================================
+    // 3. Tracking Stats
+    // ==========================================
+    function loadTrackingStats() {
+        const todayStr = new Date().toISOString().split('T')[0];
+        onSnapshot(query(collection(db, "tracking_logs"), where("date", "==", todayStr)), (snap) => {
+            let online = 0, offline = 0;
+            const now = new Date();
+            snap.forEach(doc => {
+                const lastUpdate = doc.data().lastUpdate ? doc.data().lastUpdate.toDate() : new Date(0);
+                if ((now - lastUpdate) / 60000 <= 15) online++; else offline++;
+            });
+            document.getElementById('trackOnline').innerText = online;
+            document.getElementById('trackOffline').innerText = offline;
+        });
+    }
+
+    // ==========================================
+    // 4. Announcement
+    // ==========================================
+    window.openAnnouncementModal = () => announceModal.show();
+    window.submitAnnouncement = async () => {
+        const text = document.getElementById('announceText').value;
+        if (!text) return;
+        try {
+            await addDoc(collection(db, "announcements"), { message: text, createdAt: serverTimestamp(), author: auth.currentUser.email });
+            alert("Announcement Posted!");
+            document.getElementById('announceText').value = "";
+            announceModal.hide();
+        } catch (e) { alert("Error posting."); }
+    };
+
+    lucide.createIcons();
+</script>
+</body>
+</html>

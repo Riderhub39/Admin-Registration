@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Attendance Manager - FieldTrack Pro</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="style.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* 页面特定样式 */
+        /* Loading Overlay */
+        #loadingOverlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(255, 255, 255, 0.95); z-index: 9999; 
+            display: flex; flex-direction: column; justify-content: center; align-items: center; 
+        }
+
+        .control-hub { 
+            background: white; border-bottom: 1px solid #e2e8f0; 
+            padding: 16px 0; position: sticky; 
+            top: 58px; /* Sticky below header */
+            z-index: 1020; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Card Styling */
+        .user-card {
+            border: 1px solid #e2e8f0; border-radius: 12px; background: white;
+            transition: all 0.2s ease; margin-bottom: 12px;
+        }
+        .user-card:hover { transform: translateY(-1px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); border-color: #cbd5e1; }
+        
+        .card-header-custom { padding: 16px 20px; background: white; cursor: pointer; border-radius: 12px; }
+
+        .staff-avatar { 
+            width: 42px; height: 42px; background: #eff6ff; color: #3b82f6; 
+            border-radius: 10px; display: flex; align-items: center; justify-content: center; 
+            font-weight: 700; font-size: 1.1rem; object-fit: cover; border: 1px solid #dbeafe;
+        }
+
+        .stat-box { text-align: center; }
+        .stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600; margin-bottom: 2px; }
+        .stat-value { font-size: 1rem; font-weight: 700; color: var(--text-main); }
+
+        .inner-list-item { border-bottom: 1px solid #f1f5f9; padding: 12px 24px; font-size: 0.95rem; }
+        .inner-list-item:last-child { border-bottom: none; }
+        
+        /* Highlight Classes */
+        .row-absent { background-color: #fef2f2 !important; border-left: 4px solid #ef4444 !important; }
+        .row-late { background-color: #fffbeb; border-left: 4px solid #f59e0b; }
+
+        .badge-soft-secondary { background: #e2e8f0; color: #475569; font-weight: 600; }
+        .text-mono { font-family: 'Consolas', monospace; letter-spacing: -0.5px; }
+        
+        .stat-card { background: white; border-radius: 12px; padding: 20px; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .nav-link.active { color: var(--primary-blue); font-weight: 600; }
+        .chevron-icon { transition: transform 0.3s; }
+        .collapsed .chevron-icon { transform: rotate(0deg); }
+        .chevron-icon { transform: rotate(180deg); }
+    </style>
+</head>
+<body>
+
+    <div id="header-placeholder"></div>
+
+    <div id="loadingOverlay">
+        <div class="spinner-border text-primary mb-3" role="status"></div>
+        <h5 class="fw-bold text-dark" id="loadingText">Verifying Access...</h5>
+    </div>
+
+    <div id="mainContainer" class="d-none">
+        
+        <div class="control-hub px-4">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <div class="btn-group" role="group">
+                        <input type="radio" class="btn-check" name="viewMode" id="modeDay" autocomplete="off" checked onchange="toggleMode('day')">
+                        <label class="btn btn-outline-primary" for="modeDay">Day View</label>
+
+                        <input type="radio" class="btn-check" name="viewMode" id="modeMonth" autocomplete="off" onchange="toggleMode('month')">
+                        <label class="btn btn-outline-primary" for="modeMonth">Month View</label>
+                    </div>
+
+                    <div id="dayControls" class="d-flex align-items-center gap-2">
+                        <button class="btn btn-light border" onclick="changeDate(-1)"><i data-lucide="chevron-left"></i></button>
+                        <input type="date" id="dateFilter" class="form-control fw-bold" style="width: 150px;">
+                        <button class="btn btn-light border" onclick="changeDate(1)"><i data-lucide="chevron-right"></i></button>
+                    </div>
+
+                    <div id="monthControls" class="d-flex align-items-center gap-2 d-none">
+                        <input type="month" id="monthFilter" class="form-control fw-bold" style="width: 160px;">
+                        <select id="monthStatusFilter" class="form-select fw-bold" style="width: 180px;" onchange="loadData()">
+                            <option value="all">Show All Status</option>
+                            <option value="late">Show Late Only</option>
+                            <option value="absent">Show Absent Only</option>
+                        </select>
+                    </div>
+
+                    <div class="position-relative ms-2">
+                        <input type="text" id="searchInput" class="form-control ps-5" placeholder="Search employee..." style="width: 220px;" onkeyup="handleSearch()">
+                        <i data-lucide="search" class="position-absolute top-50 start-0 translate-middle-y ms-3 text-muted size-4"></i>
+                    </div>
+
+                    <button class="btn btn-primary ms-2" onclick="loadData()">
+                        <i data-lucide="refresh-cw" class="size-4 me-2"></i> Load
+                    </button>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-success d-flex align-items-center gap-2" onclick="exportData()">
+                        <i data-lucide="download" class="size-4"></i> Export Excel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="container-fluid px-4 pt-3">
+            <ul class="nav nav-tabs mb-4" id="attendanceTabs" role="tablist">
+                <li class="nav-item">
+                    <button class="nav-link active" id="tab-dashboard" data-bs-toggle="tab" data-bs-target="#content-dashboard">
+                        <i data-lucide="pie-chart" class="size-4 me-2"></i>Dashboard
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" id="tab-logs" data-bs-toggle="tab" data-bs-target="#content-logs">
+                        <i data-lucide="list" class="size-4 me-2"></i>Detailed Records
+                        <span id="tabVerifyBadge" class="badge bg-warning text-dark rounded-pill ms-1 d-none">0</span>
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" id="tab-corrections" data-bs-toggle="tab" data-bs-target="#content-corrections">
+                        <i data-lucide="alert-circle" class="size-4 me-2"></i>Corrections 
+                        <span id="tabCorrectionBadge" class="badge bg-danger rounded-pill ms-1 d-none">0</span>
+                    </button>
+                </li>
+            </ul>
+
+            <div class="tab-content" id="myTabContent">
+                
+                <div class="tab-pane fade show active" id="content-dashboard">
+                    <div class="row g-4 mb-4">
+                        <div class="col-md-4"><div class="stat-card"><div class="text-muted small fw-bold mb-1">TOTAL ACTIVE STAFF</div><div class="fs-3 fw-bold text-dark" id="statTotalStaff">0</div></div></div>
+                        <div class="col-md-4"><div class="stat-card"><div class="text-muted small fw-bold mb-1">PRESENT (Day)</div><div class="fs-3 fw-bold text-success" id="statPresent">0</div></div></div>
+                        <div class="col-md-4"><div class="stat-card border-danger bg-danger bg-opacity-10"><div class="text-danger small fw-bold mb-1">ABSENT (Scheduled)</div><div class="fs-3 fw-bold text-danger" id="statAbsent">0</div></div></div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card border-0 shadow-sm rounded-4">
+                                <div class="card-header bg-white py-3 fw-bold text-danger"><i data-lucide="user-x" class="size-4 me-2"></i> Absent List (Scheduled Only)</div>
+                                <div class="card-body p-0"><ul class="list-group list-group-flush" id="absentList"><li class="list-group-item text-center text-muted py-4">Loading...</li></ul></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card border-0 shadow-sm rounded-4">
+                                <div class="card-header bg-white py-3 fw-bold text-dark"><i data-lucide="clock" class="size-4 me-2"></i> Late Arrivals</div>
+                                <div class="card-body p-0"><ul class="list-group list-group-flush" id="lateList"><li class="list-group-item text-center text-muted py-4">No late arrivals detected.</li></ul></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="content-logs">
+                    <div id="loadingState" class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted">Loading records...</p></div>
+                    <div id="emptyState" class="text-center py-5 d-none"><i data-lucide="calendar-x" class="size-12 text-muted mb-2"></i><p class="text-muted">No records found for current selection.</p></div>
+                    <div id="attendanceList" class="d-flex flex-column gap-3 pb-5"></div>
+                </div>
+
+                <div class="tab-pane fade" id="content-corrections">
+                    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                        <div class="card-header bg-warning bg-opacity-10 py-3 fw-bold text-dark">Pending Requests</div>
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0 align-middle">
+                                <thead class="bg-light text-secondary small fw-bold"><tr><th class="ps-4">Staff</th><th>Original Time</th><th>Requested Time</th><th>Reason</th><th class="text-end pe-4">Decision</th></tr></thead>
+                                <tbody id="correctionListBody"></tbody>
+                            </table>
+                        </div>
+                        <div id="noCorrectionsMsg" class="text-center py-5 text-muted d-none"><i data-lucide="check-circle" class="size-12 text-success mb-2"></i><p>All clean! No pending corrections.</p></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="photoModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-body p-0 bg-dark"><img id="modalImg" src="" class="img-fluid" onerror="this.src='https://placehold.co/400?text=Image+Error'"></div></div></div></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, getDocs, query, where, doc, updateDoc, deleteDoc, onSnapshot, writeBatch, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        import { firebaseConfig } from "./firebase-config.js";
+        import { initUnifiedHeader } from "./header-app.js";
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        let currentDate = new Date().toISOString().split('T')[0];
+        let usersMap = {};
+        let schedulesMap = {}; 
+        let docIdToAuthMap = {}; 
+        let attendanceData = []; 
+        let currentMode = 'day'; 
+
+        document.getElementById('dateFilter').value = currentDate;
+        document.getElementById('monthFilter').value = new Date().toISOString().slice(0, 7); 
+        const photoModal = new bootstrap.Modal(document.getElementById('photoModal'));
+
+        // --- Auth & Role Check ---
+        onAuthStateChanged(auth, async (user) => {
+            if (!user) {
+                window.location.href = "index.html";
+                return;
+            }
+
+            try {
+                // Verify Admin Role
+                const adminDoc = await getDoc(doc(db, "users", user.uid));
+                if (adminDoc.exists() && adminDoc.data().role === 'admin') {
+                    // Success: Init UI
+                    initUnifiedHeader(auth, db);
+                    document.getElementById('loadingText').innerText = "Loading Attendance...";
+                    await initApp();
+                    
+                    document.getElementById('loadingOverlay').classList.add('d-none');
+                    document.getElementById('mainContainer').classList.remove('d-none');
+                } else {
+                    // Fail: Kick out
+                    alert("Unauthorized Access. Admins only.");
+                    await signOut(auth);
+                    window.location.href = "index.html";
+                }
+            } catch (e) {
+                console.error(e);
+                alert("Auth Error: " + e.message);
+                window.location.href = "index.html";
+            }
+        });
+
+        async function initApp() {
+            await fetchUsers();
+            loadData();
+            listenToCorrections();
+        }
+
+        async function fetchUsers() {
+            try {
+                const q = query(collection(db, "users"), where("role", "==", "staff"));
+                const snap = await getDocs(q);
+                snap.forEach(doc => {
+                    const d = doc.data();
+                    const authUid = d.authUid;
+                    if (authUid) {
+                        docIdToAuthMap[doc.id] = authUid;
+                        if (d.id) docIdToAuthMap[String(d.id)] = authUid;
+                        if (d.empCode) docIdToAuthMap[d.empCode] = authUid;
+                    }
+                    const key = authUid || doc.id;
+                    usersMap[key] = {
+                        name: d.personal?.name || d.personal?.shortName || "Unknown",
+                        photo: d.faceIdPhoto && d.faceIdPhoto.startsWith('http') ? d.faceIdPhoto : null,
+                        email: d.personal?.email,
+                        status: d.status || 'active'
+                    };
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        window.toggleMode = (mode) => {
+            currentMode = mode;
+            if(mode === 'day') {
+                document.getElementById('dayControls').classList.remove('d-none');
+                document.getElementById('monthControls').classList.add('d-none');
+            } else {
+                document.getElementById('dayControls').classList.add('d-none');
+                document.getElementById('monthControls').classList.remove('d-none');
+            }
+            document.getElementById('attendanceList').innerHTML = '<div class="text-center py-4 text-muted">Click Load to view data</div>';
+        }
+
+        window.handleSearch = () => {
+            const term = document.getElementById('searchInput').value.toLowerCase();
+            const cards = document.querySelectorAll('.user-card-container');
+            cards.forEach(card => {
+                const name = card.getAttribute('data-name').toLowerCase();
+                if(name.includes(term)) card.style.display = 'block';
+                else card.style.display = 'none';
+            });
+        }
+
+        function normalizeDate(dateStr) {
+            if(!dateStr) return "";
+            const parts = dateStr.split('-');
+            if(parts.length !== 3) return dateStr;
+            return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+        }
+
+        window.loadData = async function() {
+            const loading = document.getElementById('loadingState');
+            const empty = document.getElementById('emptyState');
+            const listContainer = document.getElementById('attendanceList');
+            const searchVal = document.getElementById('searchInput').value.trim();
+            const statusFilter = document.getElementById('monthStatusFilter').value; 
+
+            listContainer.innerHTML = '';
+            loading.classList.remove('d-none');
+            empty.classList.add('d-none');
+
+            attendanceData = [];
+            let presentUids = new Set();
+            let unverifiedCount = 0; // 🔥 待认证计数
+
+            try {
+                let startDate, endDate;
+                if (currentMode === 'day') {
+                    startDate = document.getElementById('dateFilter').value;
+                    currentDate = startDate;
+                    endDate = startDate;
+                } else {
+                    const monthStr = document.getElementById('monthFilter').value;
+                    startDate = monthStr + "-01";
+                    const [y, m] = monthStr.split('-');
+                    const lastDay = new Date(y, m, 0).getDate();
+                    endDate = monthStr + "-" + lastDay;
+                }
+
+                const attQuery = query(collection(db, "attendance"), where("date", ">=", startDate), where("date", "<=", endDate));
+                const attSnap = await getDocs(attQuery);
+
+                const schedQuery = query(collection(db, "schedules"), where("date", ">=", startDate), where("date", "<=", endDate));
+                const schedSnap = await getDocs(schedQuery);
+                
+                schedulesMap = {};
+                schedSnap.forEach(doc => {
+                    const d = doc.data();
+                    const effectiveUid = docIdToAuthMap[d.userId] || d.userId;
+                    if(effectiveUid && d.date) {
+                        const normDate = normalizeDate(d.date); 
+                        schedulesMap[effectiveUid + "_" + normDate] = { 
+                            id: doc.id,
+                            start: d.start, 
+                            end: d.end 
+                        };
+                    }
+                });
+
+                attSnap.forEach(doc => { 
+                    const d = doc.data();
+                    if (usersMap[d.uid] && d.verificationStatus !== 'Rejected') {
+                        if(d.date) d.date = normalizeDate(d.date);
+                        attendanceData.push({ id: doc.id, ...d });
+                        if(currentMode === 'day') presentUids.add(d.uid);
+                        
+                        // 🔥 统计待认证
+                        if (d.verificationStatus !== 'Verified') {
+                            unverifiedCount++;
+                        }
+                    }
+                });
+                
+                // 🔥 更新 Badge
+                const verifyBadge = document.getElementById('tabVerifyBadge');
+                if (unverifiedCount > 0) {
+                    verifyBadge.innerText = unverifiedCount;
+                    verifyBadge.classList.remove('d-none');
+                } else {
+                    verifyBadge.classList.add('d-none');
+                }
+
+                attendanceData.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
+                loading.classList.add('d-none');
+                
+                const grouped = {};
+                attendanceData.forEach(item => {
+                    if(!grouped[item.uid]) grouped[item.uid] = [];
+                    grouped[item.uid].push(item);
+                });
+
+                let visibleCardsCount = 0;
+                if (currentMode === 'day') {
+                    const targetDate = normalizeDate(startDate);
+                    Object.keys(usersMap).forEach(uid => {
+                        const userRecords = grouped[uid] || [];
+                        if (renderDayUserCard(uid, userRecords, listContainer, targetDate)) visibleCardsCount++;
+                    });
+                } else {
+                    Object.keys(usersMap).forEach(uid => {
+                        const userRecords = grouped[uid] || [];
+                        if (renderMonthUserCard(uid, userRecords, listContainer, statusFilter)) visibleCardsCount++;
+                    });
+                }
+                
+                if(searchVal) window.handleSearch();
+                if(currentMode === 'day') renderDashboard(attendanceData, presentUids);
+                
+                if (visibleCardsCount === 0) {
+                    empty.classList.remove('d-none');
+                } else {
+                    empty.classList.add('d-none');
+                }
+                lucide.createIcons();
+            } catch (e) {
+                console.error(e);
+                loading.classList.add('d-none');
+                alert("Error: " + e.message);
+            }
+        }
+
+        // 🟢 1. Day Mode Card
+        function renderDayUserCard(uid, records, container, targetDate) {
+            const user = usersMap[uid] || { name: 'Unknown', photo: null, status: 'active' };
+            const collapseId = `collapse-${uid}`;
+            const userSched = schedulesMap[uid + "_" + targetDate];
+            
+            // 隐藏条件：没有排班 且 没有记录
+            if (!userSched && records.length === 0) return false;
+
+            const today = new Date().toISOString().split('T')[0];
+            const isPastOrToday = targetDate <= today;
+
+            let summaryIn = "--:--", summaryOut = "--:--", pendingCount = 0;
+            records.forEach(r => {
+                if(r.verificationStatus !== 'Verified') pendingCount++;
+                else {
+                    const sess = r.session || '';
+                    if(sess === 'Clock In' && summaryIn === "--:--") summaryIn = formatTime(r.manualIn || r.timeIn || r.timestamp);
+                    if(sess === 'Clock Out') summaryOut = formatTime(r.manualOut || r.timeOut || r.timestamp);
+                }
+            });
+
+            // Absent 仅当有排班且未打卡
+            const isAbsent = isPastOrToday && summaryIn === "--:--" && userSched;
+            
+            const card = document.createElement('div');
+            card.className = `user-card user-card-container ${isAbsent ? 'row-absent' : ''}`;
+            card.setAttribute('data-name', user.name);
+            
+            let statusColor = isAbsent ? "bg-danger" : (pendingCount > 0 ? "bg-warning" : (summaryIn !== "--:--" ? "bg-success" : "bg-secondary"));
+            
+            let schedText = "Off Day";
+            if(userSched) {
+                schedText = `${formatTime(userSched.start)} - ${formatTime(userSched.end)}`;
+                // 🔥 删除排班按钮
+                schedText += `<button class="btn btn-sm btn-link text-danger p-0 ms-2" onclick="deleteSchedule('${userSched.id}', '${user.name.replace(/'/g, "\\'")}', event)" title="Remove Schedule"><i data-lucide="trash-2" class="size-3"></i></button>`;
+            }
+
+            let disabledBadge = user.status === 'disabled' ? `<span class="badge bg-secondary ms-2" style="font-size:0.6rem;">Disabled</span>` : '';
+
+            const headerHtml = `
+                <div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#${collapseId}">
+                    <div class="row align-items-center">
+                        <div class="col-md-4 d-flex align-items-center gap-3 border-end border-light">
+                            <div class="position-relative">
+                                ${user.photo ? `<img src="${user.photo}" class="staff-avatar">` : `<div class="staff-avatar">${user.name.charAt(0)}</div>`}
+                                <span class="position-absolute top-0 start-100 translate-middle p-1 border border-light rounded-circle ${statusColor}"></span>
+                            </div>
+                            <div class="text-truncate">
+                                <h6 class="fw-bold ${isAbsent ? 'text-danger' : 'text-dark'} m-0 text-truncate">
+                                    ${user.name} ${disabledBadge}
+                                </h6>
+                                <small class="${isAbsent ? 'text-danger' : 'text-muted'}">Shift: <span class="fw-bold">${schedText}</span></small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="row g-0 text-center">
+                                <div class="col-6 stat-box border-end border-light"><div class="stat-label">Clock In</div><div class="stat-value ${isAbsent ? 'text-danger' : 'text-primary'} font-monospace">${isAbsent ? 'ABSENT' : summaryIn}</div></div>
+                                <div class="col-6 stat-box"><div class="stat-label">Clock Out</div><div class="stat-value text-success font-monospace">${summaryOut}</div></div>
+                            </div>
+                        </div>
+                        <div class="col-md-2 text-end d-flex flex-column align-items-end justify-content-center">
+                            ${pendingCount > 0 ? `<span class="badge bg-warning text-dark mb-1">${pendingCount} Pending</span>` : ''}
+                            ${isAbsent ? `<span class="badge bg-danger mb-1">No Record</span>` : ''}
+                            <i data-lucide="chevron-down" class="text-muted chevron-icon"></i>
+                        </div>
+                    </div>
+                </div>
+            `;
+            let listHtml = `<div id="${collapseId}" class="collapse"><div class="list-group list-group-flush">`;
+            if (records.length > 0) records.forEach(item => { listHtml += renderRecordItem(item); });
+            else if (isAbsent) listHtml += `<div class="p-4 text-center text-danger small fw-bold">Employee failed to clock in for this scheduled shift.</div>`;
+            listHtml += '</div></div>';
+
+            card.innerHTML = headerHtml + listHtml;
+            container.appendChild(card);
+            return true;
+        }
+
+        // 🟢 2. Month Mode Card
+        function renderMonthUserCard(uid, allRecords, container, filterType) {
+            const user = usersMap[uid] || { name: 'Unknown', photo: null };
+            const collapseId = `collapse-month-${uid}`;
+            const dayMap = {};
+            allRecords.forEach(r => { if(!dayMap[r.date]) dayMap[r.date] = []; dayMap[r.date].push(r); });
+
+            const [y, m] = document.getElementById('monthFilter').value.split('-');
+            const daysInMonth = new Date(y, m, 0).getDate();
+            const today = new Date().toISOString().split('T')[0];
+            let stats = { present: 0, late: 0, totalWorkMs: 0, totalExpectedMs: 0, totalOTMs: 0 };
+            let scheduledDaysCount = 0, rowsHtml = "";
+
+            for(let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${y}-${m}-${d.toString().padStart(2, '0')}`;
+                const isPastOrToday = dateStr <= today;
+                const sched = schedulesMap[uid + "_" + dateStr];
+                const dayRecords = dayMap[dateStr] || [];
+
+                let tInObj = null, tOutObj = null, hbO = false, hbI = false;
+                dayRecords.forEach(r => {
+                    if(r.verificationStatus === 'Verified') {
+                        if(r.session === 'Clock In') tInObj = r.manualIn ? null : (r.timeIn || r.timestamp);
+                        if(r.session === 'Clock Out') tOutObj = r.timeOut || r.timestamp;
+                        if(r.session === 'Break Out') hbO = true;
+                        if(r.session === 'Break In') hbI = true;
+                    }
+                });
+
+                if (isPastOrToday && sched && sched.start && sched.end) {
+                    scheduledDaysCount++;
+                    let dailyExp = (sched.end.toDate() - sched.start.toDate());
+                    if (dailyExp > (6 * 3600000)) dailyExp -= 3600000;
+                    stats.totalExpectedMs += dailyExp;
+                }
+
+                let dWork = 0, isLate = false, isAbsent = false, sText = "Absent", sClass = "text-danger fw-bold";
+                if(tInObj) {
+                    stats.present++; sText = "";
+                    if(sched && sched.start) {
+                        const buffer = new Date(sched.start.toDate().getTime() + 15*60000);
+                        if(tInObj.toDate() > buffer) { stats.late++; isLate = true; }
+                    }
+                } else if (isPastOrToday && sched) isAbsent = true; 
+                else if (!sched) { sText = "Off Day"; sClass = "text-muted small"; }
+
+                if(tInObj && tOutObj) {
+                    dWork = tOutObj.toDate() - tInObj.toDate();
+                    if(hbO && hbI) dWork -= 3600000;
+                    if(dWork > 0) stats.totalWorkMs += dWork;
+                    if(sched && sched.end && tOutObj.toDate() > sched.end.toDate()) stats.totalOTMs += (tOutObj.toDate() - sched.end.toDate());
+                }
+
+                if (dayRecords.length > 0 || (isPastOrToday && sched)) {
+                    const timeDisp = tInObj ? `<span class="text-dark fw-bold">${formatTime(tInObj)}</span> - <span class="text-dark fw-bold">${formatTime(tOutObj)}</span>` : sText;
+                    let rowCls = isAbsent ? "row-absent" : (isLate ? "row-late" : "");
+                    let sInfo = sched ? `<div class="small text-muted mt-1" style="font-size:0.75rem">Shift: ${formatTime(sched.start)} - ${formatTime(sched.end)}</div>` : "";
+                    rowsHtml += `<li class="inner-list-item d-flex justify-content-between align-items-center ${rowCls}"><div class="d-flex align-items-center gap-3"><span class="badge badge-soft-secondary text-mono" style="min-width: 90px;">${dateStr}</span><div><div class="${tInObj ? '' : sClass}">${timeDisp} ${isLate ? '<span class="badge bg-warning ms-2">LATE</span>':''}</div>${sInfo}</div></div><div class="text-end"><span class="small text-muted fw-bold">${tInObj ? msToHM(dWork) : '-'}</span></div></li>`;
+                }
+            }
+
+            if (filterType === 'late' && stats.late === 0) return false;
+            if (filterType === 'absent' && stats.present >= scheduledDaysCount) return false;
+
+            const card = document.createElement('div');
+            card.className = 'user-card user-card-container';
+            card.setAttribute('data-name', user.name);
+            card.innerHTML = `<div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#${collapseId}"><div class="row align-items-center"><div class="col-md-4 d-flex align-items-center gap-3 border-end border-light">${user.photo ? `<img src="${user.photo}" class="staff-avatar">` : `<div class="staff-avatar">${user.name.charAt(0)}</div>`}<div class="text-truncate"><h6 class="fw-bold text-dark m-0 text-truncate">${user.name}</h6><small class="text-muted" style="font-size:0.8rem">${user.email || 'Staff'}</small></div></div><div class="col-md-7"><div class="row g-0"><div class="col-3 stat-box"><div class="stat-label">Attendance</div><div class="stat-value ${stats.present < scheduledDaysCount ? 'text-warning' : 'text-success'}">${stats.present} <span class="text-muted fw-normal fs-6">/ ${scheduledDaysCount}</span></div></div><div class="col-3 stat-box"><div class="stat-label">Late</div><div class="stat-value ${stats.late > 0 ? 'text-danger' : 'text-muted'}">${stats.late}</div></div><div class="col-3 stat-box"><div class="stat-label">Hours</div><div class="stat-value text-dark" style="font-size:0.9rem">${msToHM(stats.totalWorkMs)} <span class="text-muted">/ ${msToHM(stats.totalExpectedMs)}</span></div></div><div class="col-3 stat-box"><div class="stat-label">OT</div><div class="stat-value text-primary">${msToHM(stats.totalOTMs)}</div></div></div></div><div class="col-md-1 text-end"><i data-lucide="chevron-down" class="text-muted chevron-icon"></i></div></div></div><div id="${collapseId}" class="collapse"><ul class="list-group list-group-flush">${rowsHtml}</ul></div>`;
+            container.appendChild(card);
+            return true;
+        }
+
+        function renderRecordItem(item) {
+            const isVerified = item.verificationStatus === 'Verified';
+            const rowClass = isVerified ? 'record-item verified' : 'record-item pending';
+            let actionName = item.session || "Unknown", actionColor = "text-dark", actionTime = "--:--", icon = "circle";
+            if (actionName === 'Clock In') { actionTime = formatTime(item.manualIn || item.timeIn || item.timestamp); actionColor = "text-primary"; icon = "log-in"; }
+            else if (actionName === 'Clock Out') { actionTime = formatTime(item.manualOut || item.timeOut || item.timestamp); actionColor = "text-success"; icon = "log-out"; }
+            else if (actionName === 'Break Out') { actionTime = formatTime(item.breakOut || item.timestamp); actionColor = "text-warning"; icon = "coffee"; }
+            else if (actionName === 'Break In') { actionTime = formatTime(item.breakIn || item.timestamp); actionColor = "text-info"; icon = "briefcase"; }
+            else actionTime = formatTime(item.timestamp);
+            let photoAction = item.photoUrl && item.photoUrl.startsWith('http') ? `<a href="#" onclick="viewPhoto('${item.photoUrl}')" class="btn btn-sm btn-white border shadow-sm d-flex align-items-center gap-2"><i data-lucide="image" class="size-4"></i> View Proof</a>` : '<span class="text-muted small ms-3">No Photo</span>';
+            let buttons = isVerified ? `<span class="badge badge-verified py-2 px-3"><i data-lucide="check-circle" class="size-4 me-1"></i> Verified</span>` : `<div class="d-flex gap-2 justify-content-end mt-2"><button class="btn btn-sm btn-primary fw-bold px-3 shadow-sm" onclick="quickVerify('${item.id}')">Verify</button><button class="btn btn-sm btn-outline-danger px-3" onclick="rejectRecord('${item.id}')" title="Reject"><i data-lucide="x-circle" class="size-4 me-1"></i> Reject</button></div>`;
+            return `<div class="list-group-item p-3 ${rowClass}"><div class="row align-items-center"><div class="col-md-3"><div class="d-flex align-items-center gap-2"><div class="bg-light p-2 rounded-circle border"><i data-lucide="${icon}" class="size-4 ${actionColor}"></i></div><div><div class="fw-bold ${actionColor}">${actionName}</div><div class="fs-5 fw-bold text-dark">${actionTime}</div></div></div></div><div class="col-md-5"><div class="d-flex align-items-center gap-3"><div class="d-flex align-items-start gap-2 text-truncate"><i data-lucide="map-pin" class="size-4 text-muted mt-1 flex-shrink-0"></i><span class="small text-secondary text-truncate" style="max-width: 250px;" title="${item.address}">${item.address || "GPS Only"}</span></div>${photoAction}</div></div><div class="col-md-4 text-end">${buttons}</div></div></div>`;
+        }
+
+        function msToHM(ms) { if (!ms || ms < 0) return "0h 0m"; const mins = Math.floor(ms / 60000); return `${Math.floor(mins / 60)}h ${mins % 60}m`; }
+        window.quickVerify = async (docId) => { if(confirm("Verify this record?")) { await updateDoc(doc(db, "attendance", docId), { verificationStatus: "Verified" }); loadData(); } };
+        window.rejectRecord = async (docId) => { if(confirm("Mark record as Rejected?")) { await updateDoc(doc(db, "attendance", docId), { verificationStatus: "Rejected" }); loadData(); } };
+        window.changeDate = (days) => { const el = document.getElementById('dateFilter'); const d = new Date(el.value); d.setDate(d.getDate() + days); el.value = d.toISOString().split('T')[0]; loadData(); }
+        window.viewPhoto = (url) => { document.getElementById('modalImg').src = url; photoModal.show(); }
+        function formatTime(val) { if(!val) return "--:--"; if(val.seconds) return new Date(val.seconds*1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12: false}); if(typeof val === 'string') return val; return "--:--"; }
+
+        // 🔥 Delete Schedule Action
+        window.deleteSchedule = async (schedId, name, e) => {
+            if(e) e.stopPropagation();
+            if(!confirm(`Remove schedule for ${name}? This will remove them from the daily view and correct 'Absent' status.`)) return;
+            try {
+                await deleteDoc(doc(db, "schedules", schedId));
+                loadData(); // Reload to refresh list and stats
+            } catch(err) { alert("Error: " + err.message); }
+        }
+
+        window.exportData = function() {
+            if(!attendanceData || attendanceData.length === 0) { alert("No data to export."); return; }
+            let csv = "Date,Name,Email,Clock In,Clock Out,Status\n";
+            const grouped = {};
+            attendanceData.forEach(item => { const key = item.uid + "_" + (item.date || currentDate); if(!grouped[key]) grouped[key] = []; grouped[key].push(item); });
+            Object.values(grouped).forEach(records => {
+                const r = records[0]; const user = usersMap[r.uid] || { name: 'Unknown', email: '-' };
+                let tIn="--:--", tOut="--:--", pendingCount = 0;
+                records.forEach(rec => {
+                    if (rec.verificationStatus !== 'Verified') pendingCount++;
+                    else {
+                        const s = rec.session || ''; const gt = (v) => v ? formatTime(v) : null;
+                        if(s==='Clock In') tIn=gt(rec.manualIn)||gt(rec.timeIn)||formatTime(rec.timestamp);
+                        if(s==='Clock Out') tOut=gt(rec.manualOut)||gt(rec.timeOut)||formatTime(rec.timestamp);
+                    }
+                });
+                csv += `${r.date},${(user.name||"").replace(/,/g, ' ')},${user.email},${tIn},${tOut},${pendingCount > 0 ? 'Pending':'Verified'}\n`;
+            });
+            const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob); link.download = `attendance_export.csv`;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
+
+        function renderDashboard(attendanceData, presentUids) {
+            const allStaffIds = Object.keys(usersMap);
+            const presentCount = presentUids.size;
+
+            // 🔥 Stats Calculation (Fixed Logic)
+            let absentCount = 0;
+            let activeStaffCount = 0;
+            const targetDate = normalizeDate(document.getElementById('dateFilter').value);
+            const absentStaffIds = [];
+
+            allStaffIds.forEach(uid => {
+                const user = usersMap[uid];
+                if (user.status === 'disabled') return; // Skip disabled for total stats
+                
+                activeStaffCount++;
+                
+                const schedKey = uid + "_" + targetDate;
+                const hasSchedule = !!schedulesMap[schedKey];
+                const isPresent = presentUids.has(uid);
+
+                // Count absent ONLY if Scheduled AND Not Present
+                if (hasSchedule && !isPresent) {
+                    absentCount++;
+                    absentStaffIds.push(uid);
+                }
+            });
+
+            document.getElementById('statTotalStaff').innerText = activeStaffCount;
+            document.getElementById('statPresent').innerText = presentCount;
+            document.getElementById('statAbsent').innerText = absentCount;
+
+            const absentListEl = document.getElementById('absentList');
+            const lateListEl = document.getElementById('lateList');
+            absentListEl.innerHTML = '';
+            lateListEl.innerHTML = '';
+
+            // Render Absent List
+            if (absentCount === 0) {
+                absentListEl.innerHTML = `<li class="list-group-item text-center text-success py-3 fw-bold">🎉 All scheduled staff present!</li>`;
+            } else {
+                absentStaffIds.forEach(uid => {
+                    const user = usersMap[uid];
+                    absentListEl.innerHTML += `
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="staff-avatar bg-secondary bg-opacity-25 text-dark" style="width:36px;height:36px;font-size:0.9rem">
+                                    ${user.name.charAt(0)}
+                                </div>
+                                <div class="fw-bold">${user.name}</div>
+                            </div>
+                            <span class="badge badge-absent">Absent</span>
+                        </li>`;
+                });
+            }
+
+            // Render Late List
+            let lateCount = 0;
+            attendanceData.forEach(record => {
+                if (record.session === 'Clock In' && record.verificationStatus === 'Verified') {
+                    const schedKey = record.uid + "_" + targetDate;
+                    const sched = schedulesMap[schedKey];
+                    if (sched && sched.start) {
+                        const actualIn = record.manualIn ? null : (record.timeIn || record.timestamp);
+                        if (actualIn) {
+                            const actualDate = actualIn.toDate();
+                            const schedStart = sched.start.toDate();
+                            const bufferTime = new Date(schedStart.getTime() + 15 * 60000); // 15m Grace
+                            if (actualDate > bufferTime) {
+                                lateCount++;
+                                const user = usersMap[record.uid];
+                                lateListEl.innerHTML += `
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <div class="d-flex align-items-center gap-3">
+                                            <div class="staff-avatar bg-warning bg-opacity-25 text-warning" style="width:36px;height:36px;font-size:0.9rem">${user.name.charAt(0)}</div>
+                                            <div><div class="fw-bold">${user.name}</div><small class="text-muted">In: ${formatTime(actualIn)}</small></div>
+                                        </div>
+                                        <span class="badge bg-danger">Late</span>
+                                    </li>`;
+                            }
+                        }
+                    }
+                }
+            });
+
+            if (lateCount === 0) {
+                lateListEl.innerHTML = `<li class="list-group-item text-center text-muted py-4">No late arrivals detected.</li>`;
+            }
+        }
+
+        function listenToCorrections() {
+            onSnapshot(query(collection(db, "attendance_corrections"), where("status", "==", "Pending")), (snap) => {
+                const badge = document.getElementById('tabCorrectionBadge');
+                badge.innerText = snap.size; badge.classList.toggle('d-none', snap.size === 0);
+                const tbody = document.getElementById('correctionListBody'); tbody.innerHTML = '';
+                if(snap.size === 0) { document.getElementById('noCorrectionsMsg').classList.remove('d-none'); return; }
+                else document.getElementById('noCorrectionsMsg').classList.add('d-none');
+                snap.forEach(docSnap => {
+                    const d = docSnap.data();
+                    tbody.innerHTML += `<tr><td class="ps-4"><b>${d.email?.split('@')[0]}</b><br><small>${d.targetDate}</small></td><td>${d.originalIn}<br>${d.originalOut}</td><td class="text-primary">${d.requestedIn}<br>${d.requestedOut}</td><td>${d.remarks || '-'}</td><td class="text-end pe-4"><button onclick="handleCorrection('${docSnap.id}', '${d.attendanceId}', '${d.requestedIn}', '${d.requestedOut}', 'approve')" class="btn btn-sm btn-success">✔</button><button onclick="handleCorrection('${docSnap.id}', null, null, null, 'reject')" class="btn btn-sm btn-danger">✖</button></td></tr>`;
+                });
+            });
+        }
+        
+        window.handleCorrection = async (reqId, attId, nIn, nOut, action) => {
+            if(!confirm(`Confirm ${action}?`)) return;
+            const batch = writeBatch(db);
+            if(action === 'approve' && attId) {
+                batch.update(doc(db, "attendance", attId), { manualIn: nIn, manualOut: nOut, verificationStatus: "Corrected" });
+                batch.update(doc(db, "attendance_corrections", reqId), { status: "Approved", resolvedAt: serverTimestamp() });
+            } else batch.update(doc(db, "attendance_corrections", reqId), { status: "Rejected", resolvedAt: serverTimestamp() });
+            await batch.commit(); if(action === 'approve') loadData();
+        }
+
+        lucide.createIcons();
+    </script>
+</body>
+</html>

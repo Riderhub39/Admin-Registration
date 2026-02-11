@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Staff Details - HRIS</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="style.css" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <style>
+        /* 保持原有样式，微调 Overlay */
+        #loadingOverlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(255, 255, 255, 0.95); z-index: 9999; 
+            display: flex; flex-direction: column; justify-content: center; align-items: center; 
+        }
+        
+        .nav-tabs .nav-link { color: #64748b; font-weight: 500; padding: 0.8rem 1rem; }
+        .nav-tabs .nav-link.active { color: var(--primary); border-bottom: 3px solid var(--primary); font-weight: 600; }
+        .bg-readonly { background-color: #f1f5f9 !important; cursor: not-allowed; color: #64748b; }
+        
+        /* Error Highlighting */
+        .form-control.is-invalid { border-color: #dc3545; background-color: #fff8f8; }
+    </style>
+</head>
+<body>
+
+<div id="header-placeholder"></div>
+
+<div id="loadingOverlay">
+    <div class="spinner-border text-primary mb-3" role="status"></div>
+    <h5 class="fw-bold text-dark" id="loadingText">Verifying Access...</h5>
+</div>
+
+<div class="container-fluid py-3 d-none" id="mainContainer">
+    <div class="d-flex justify-content-between align-items-center mb-3 mx-2">
+        <div class="d-flex align-items-center gap-3">
+            <a href="manage_staff.html" class="btn btn-sm btn-outline-secondary"><i data-lucide="arrow-left" class="size-4"></i> Back</a>
+            <div>
+                <h5 class="fw-bold text-dark m-0" id="headerName">Loading...</h5>
+                <small class="text-muted" id="headerCode">EMP ID: -</small>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0">
+            <div class="card-body py-2 d-flex align-items-center gap-2">
+                <small class="fw-bold text-muted text-uppercase me-1">Account Status:</small>
+                <select id="statusSelect" class="form-select form-select-sm border-2 fw-bold" style="width: 140px;">
+                    <option value="editable">Editable</option>
+                    <option value="active">Active</option>
+                    <option value="disabled">Disabled</option>
+                </select>
+                <button id="btnUpdateStatus" class="btn btn-sm btn-primary fw-bold">
+                    <i data-lucide="check" class="size-4 me-1"></i> Confirm
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mx-2 shadow-sm">
+        <div class="card-header bg-white p-0 border-bottom">
+            <ul class="nav nav-tabs card-header-tabs m-0" role="tablist">
+                <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#personal">1. Personal</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#employment">2. Employment</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#statutory">3. Statutory</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#payroll">4. Payroll</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#family">5. Family</a></li>
+                <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#address">6. Address</a></li>
+            </ul>
+        </div>
+
+        <div class="card-body p-4 pt-3">
+            <form id="masterForm">
+                <div class="tab-content">
+                    
+                    <div class="tab-pane fade show active" id="personal">
+                        <div class="section-title">Identity & Access</div>
+                        <div class="row g-2">
+                            <div class="col-md-2"><label class="form-label">Employee Code *</label><input type="text" id="Employee Code" class="form-control fw-bold bg-readonly" readonly></div>
+                            <div class="col-md-4"><label class="form-label">Employee Name *</label><input type="text" id="Employee Name" class="form-control" required></div>
+                            <div class="col-md-3"><label class="form-label">Short Name</label><input type="text" id="Short Name" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Bio ID</label><input type="text" id="Finger Print/Face ID" class="form-control bg-readonly" readonly></div>
+                        </div>
+                        <div class="section-title">Demographics</div>
+                        <div class="row g-2">
+                            <div class="col-md-3"><label class="form-label">MyKad/Ic No</label><input type="text" id="MYKAD/IC (Malaysian or PR)" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Old Ic No</label><input type="text" id="Old Ic No" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Birth Date</label><input type="date" id="Birth Date" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Gender</label><input type="text" id="Gender" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Marital Status</label><input type="text" id="Marital Status" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Nationality</label><input type="text" id="Nationality" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Race</label><input type="text" id="Race" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Religion</label><input type="text" id="Religion" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Employment Type</label><input type="text" id="Employment Type" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Blood Type</label><input type="text" id="Blood Type" class="form-control"></div>
+                        </div>
+                        <div class="section-title">Foreigner Details</div>
+                        <div class="row g-2">
+                            <div class="col-md-3"><label class="form-label">Foreign ID No</label><input type="text" id="Foreign ID No" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Passport No</label><input type="text" id="Passport No" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Passport Expiry</label><input type="date" id="Passport Expiry Date" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Pass Expiry</label><input type="date" id="Pass Expiry Date" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Arrival Date</label><input type="date" id="Arrival Date" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">FOMEMA Expiry</label><input type="date" id="FOMEMA Expiry Date" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Issue Date</label><input type="date" id="Issue Date" class="form-control"></div>
+                        </div>
+                        <div class="section-title">Contact</div>
+                        <div class="row g-2">
+                            <div class="col-md-6"><label class="form-label">Email Address</label><input type="text" id="Email Address" class="form-control"></div>
+                            <div class="col-md-6"><label class="form-label">Mobile Number</label><input type="text" id="Mobile Number" class="form-control" placeholder="e.g. 0123456789"></div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="employment">
+                        <div class="section-title">Timeline</div>
+                        <div class="row g-2">
+                            <div class="col-md-3"><label class="form-label">Join Date</label><input type="date" id="Join Date" class="form-control" required></div>
+                            <div class="col-md-2"><label class="form-label">Probation (Months)</label><input type="number" id="Probation (Months)" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Confirmation</label><input type="date" id="Confirmation Date" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Termination</label><input type="date" id="Termination Date" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Contract End</label><input type="date" id="End of Contract Date" class="form-control"></div>
+                        </div>
+                        <div class="section-title">Organization</div>
+                        <div class="row g-2">
+                            <div class="col-md-3"><label class="form-label">Department</label><input type="text" id="Department Code" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Section</label><input type="text" id="Section Code" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Designation</label><input type="text" id="Designation Code" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Desig Group</label><input type="text" id="Desig Group Code" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Category</label><input type="text" id="Category Code" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Status</label><input type="text" id="Employee Status" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Holiday Grp</label><input type="text" id="Holiday Group Code" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Leave Cat</label><input type="text" id="Leave Category Code" class="form-control"></div>
+                        </div>
+                        <div class="section-title">Schedule</div>
+                        <div class="row g-2">
+                            <div class="col-md-3"><label class="form-label">Shift</label><input type="text" id="Working Hours/Shift" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Exclude Days</label><input type="text" id="Exclude Days" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Hrs/Day</label><input type="text" id="Hours Worked /Day" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Days/Week</label><input type="text" id="Days Worked /Week" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Hrs/Week</label><input type="text" id="Hours Worked Per Week" class="form-control"></div>
+                            <div class="col-md-2"><div class="form-check pt-3"><input type="checkbox" id="Part Time" class="form-check-input"><label class="form-check-label">Part Time</label></div></div>
+                            <div class="col-md-2"><div class="form-check pt-3"><input type="checkbox" id="Flexi Hours" class="form-check-input"><label class="form-check-label">Flexi Hours</label></div></div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="statutory">
+                        <div class="section-title">EPF</div>
+                        <div class="row g-2">
+                            <div class="col-md-2"><label class="form-label">Category</label><input type="text" id="EPF Category" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">EPF No</label><input type="text" id="EPF Number" class="form-control"></div>
+                            <div class="col-md-4"><label class="form-label">EPF Name</label><input type="text" id="EPF Emp Name" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Employer EPF No</label><input type="text" id="Employer EPF No" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Contribution</label><input type="text" id="EPF Contribution" class="form-control"></div>
+                        </div>
+                        <div class="section-title">SOCSO & EIS</div>
+                        <div class="row g-2">
+                            <div class="col-md-2"><label class="form-label">Category</label><input type="text" id="SOCSO Category" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Security No</label><input type="text" id="SOCSO Security No" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Employer No</label><input type="text" id="Employer SOCSO No" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">EIS Contrib</label><input type="text" id="EIS Contribution" class="form-control"></div>
+                        </div>
+                        <div class="section-title">Tax (LHDN)</div>
+                        <div class="row g-2">
+                            <div class="col-md-3"><label class="form-label">Tax No</label><input type="text" id="INCOME TAX NO" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Res. Status</label><input type="text" id="TAX Resident Status" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Res. Type</label><input type="text" id="TAX Resident Type" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Disable?</label><input type="text" id="Tax Disable Person" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Spouse Sts</label><input type="text" id="Tax Spouse Status" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Spouse Dis?</label><input type="text" id="Tax Spouse Disabled" class="form-control"></div>
+                        </div>
+                        <div class="section-title">Others</div>
+                        <div class="row g-2">
+                            <div class="col-md-3"><label class="form-label">PTPTN No</label><input type="text" id="PTPTN Acc No" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Zakat No</label><input type="text" id="Zakat Acc No" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">HRDF No</label><input type="text" id="Employer HRDF No" class="form-control"></div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="payroll">
+                        <div class="section-title">Salary & Rates</div>
+                        <div class="row g-2">
+                            <div class="col-md-3"><label class="form-label">Basic Salary</label><input type="text" id="Basic Salary" class="form-control fw-bold"></div>
+                            <div class="col-md-3"><label class="form-label">Pay Group</label><input type="text" id="Pay Day Group" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Daily Rate Code</label><input type="text" id="Daily Rate Code" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Paid Type</label><input type="text" id="Paid Type" class="form-control"></div>
+                        </div>
+                        <div class="section-title">Overtime</div>
+                        <div class="row g-2">
+                            <div class="col-md-3"><label class="form-label">OT Type</label><input type="text" id="OT Type" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Rate</label><input type="text" id="Flat/Hourly Rate" class="form-control"></div>
+                        </div>
+                        <div class="section-title">Bank Details (GIRO 1)</div>
+                        <div class="row g-2">
+                            <div class="col-md-4"><label class="form-label">Bank Name</label><input type="text" id="bank_name_1" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Branch ID</label><input type="text" id="branch_id_1" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Account No</label><input type="text" id="acc_no_1" class="form-control"></div>
+                            <div class="col-md-1"><label class="form-label">Pay %</label><input type="text" id="pct_1" class="form-control"></div>
+                            <div class="col-md-1"><label class="form-label">Chq %</label><input type="text" id="chq_pct_1" class="form-control"></div>
+                        </div>
+                        <div class="section-title">Bank Details (GIRO 2)</div>
+                        <div class="row g-2">
+                            <div class="col-md-4"><label class="form-label">Bank Name 2</label><input type="text" id="bank_name_2" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Branch ID 2</label><input type="text" id="branch_id_2" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Account No 2</label><input type="text" id="acc_no_2" class="form-control"></div>
+                            <div class="col-md-1"><label class="form-label">Pay %</label><input type="text" id="pct_2" class="form-control"></div>
+                            <div class="col-md-1"><label class="form-label">Chq %</label><input type="text" id="chq_pct_2" class="form-control"></div>
+                        </div>
+                        <div class="section-title">Split Payment</div>
+                        <div class="row g-2">
+                            <div class="col-md-3"><label class="form-label">Multiple Pay %</label><input type="text" id="Multiple Pay %" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Fixed Amt</label><input type="text" id="Multiple Pay Fixed Amt" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Cash %</label><input type="text" id="Cash Percentage" class="form-control"></div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="family">
+                        <div class="section-title">Spouse</div>
+                        <div class="row g-2">
+                            <div class="col-md-4"><label class="form-label">Spouse Name</label><input type="text" id="Spouse Name" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">ID/Passport</label><input type="text" id="Spouse MyKad/Passport" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">Phone</label><input type="text" id="Spouse Phone" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Occupation</label><input type="text" id="Spouse Occupation" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">DOB</label><input type="date" id="Spouse DOB" class="form-control"></div>
+                        </div>
+
+                        <div class="section-title d-flex justify-content-between align-items-center">
+                            <span>Children</span>
+                            <button type="button" class="btn btn-xs btn-outline-primary" onclick="addChildRow()">
+                                <i data-lucide="plus" class="size-3 me-1"></i> Add Child
+                            </button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm table-child" id="childrenTable">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th style="width:110px;">DOB</th>
+                                        <th style="width:90px;">Gender</th>
+                                        <th>Cert/IC No</th>
+                                        <th style="width:70px;">M'sian?</th>
+                                        <th>Tax Cat</th>
+                                        <th style="width:70px;">Tax %</th>
+                                        <th style="width:40px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="childrenBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="address">
+                        <div class="section-title">Local Address</div>
+                        <div class="row g-2">
+                            <div class="col-md-2"><label class="form-label">Door No</label><input type="text" id="Local Address Door No" class="form-control"></div>
+                            <div class="col-md-4"><label class="form-label">Location</label><input type="text" id="Local Address Location" class="form-control"></div>
+                            <div class="col-md-6"><label class="form-label">Street</label><input type="text" id="Local Address Street" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">City</label><input type="text" id="Local Address City" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">State</label><input type="text" id="Local Address State" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Country</label><input type="text" id="Local Address Country" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Pincode</label><input type="text" id="Local Address Pincode" class="form-control"></div>
+                        </div>
+                        <div class="section-title">Foreign Address</div>
+                        <div class="row g-2">
+                            <div class="col-md-2"><label class="form-label">Door No</label><input type="text" id="Foreign Address Door No" class="form-control"></div>
+                            <div class="col-md-4"><label class="form-label">Location</label><input type="text" id="Foreign Address Location" class="form-control"></div>
+                            <div class="col-md-6"><label class="form-label">Street</label><input type="text" id="Foreign Address Street" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">City</label><input type="text" id="Foreign Address City" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">State</label><input type="text" id="Foreign Address State" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Country</label><input type="text" id="Foreign Address Country" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Pincode</label><input type="text" id="Foreign Address Pincode" class="form-control"></div>
+                        </div>
+                        <div class="section-title">Emergency Contact</div>
+                        <div class="row g-2">
+                            <div class="col-md-4"><label class="form-label">Name</label><input type="text" id="Emergency Contact Person" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Relationship</label><input type="text" id="Emergency Contact Relationship" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Number</label><input type="text" id="Emergency Contact Number" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label">ID/Passport</label><input type="text" id="Emergency Contact MYKAD/IC OR Passport No" class="form-control"></div>
+                        </div>
+                    </div>
+
+                </div>
+                
+                <div class="mt-4 pt-3 border-top text-end">
+                    <button type="button" id="btnSaveChanges" class="btn btn-success px-4 fw-bold" disabled>
+                        <i data-lucide="save" class="size-4 me-2"></i> Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs, deleteField } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+    // 引入配置文件和 Header 逻辑
+    import { firebaseConfig } from "./firebase-config.js";
+    import { initUnifiedHeader } from "./header-app.js";
+
+    // --- 1. EmailJS Init ---
+    (function(){
+        emailjs.init("yTP2W2IzGSKqHDqWa");
+    })();
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    let currentUserData = null; 
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const uid = urlParams.get('uid');
+
+    // --- Auth Check & Admin Validation ---
+    onAuthStateChanged(auth, async (user) => {
+        if (!user) {
+            window.location.href = "index.html";
+            return;
+        }
+
+        try {
+            // Verify Admin Role
+            const adminDoc = await getDoc(doc(db, "users", user.uid));
+            if (adminDoc.exists() && adminDoc.data().role === 'admin') {
+                // Access Granted
+                initUnifiedHeader(auth, db);
+                document.getElementById('loadingText').innerText = "Loading Profile...";
+                document.getElementById('mainContainer').classList.remove('d-none');
+                
+                if(uid) loadUserData(uid);
+                else { alert("No User ID provided"); window.location.href="manage_staff.html"; }
+            } else {
+                // Access Denied
+                alert("Unauthorized Access. Admins only.");
+                await signOut(auth);
+                window.location.href = "index.html";
+            }
+        } catch (e) {
+            console.error(e);
+            window.location.href = "index.html";
+        }
+    });
+
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if(!el) return;
+        if(el.type === 'checkbox') el.checked = (val === true || val === 'YES');
+        else if(el.type === 'date' && val) el.value = val; 
+        else el.value = val || '';
+    };
+
+    const getVal = (id) => {
+        const el = document.getElementById(id);
+        if(!el) return '';
+        if(el.type === 'checkbox') return el.checked;
+        return el.value;
+    };
+
+    window.createChildRow = function(name, dob, gender, cert, isMy, taxCat, taxPct) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><input type="text" class="form-control form-control-sm" value="${name || ''}"></td>
+            <td><input type="date" class="form-control form-control-sm" value="${dob || ''}"></td>
+            <td><select class="form-select form-select-sm"><option value="MALE" ${gender==='MALE'?'selected':''}>Male</option><option value="FEMALE" ${gender==='FEMALE'?'selected':''}>Female</option></select></td>
+            <td><input type="text" class="form-control form-control-sm" value="${cert || ''}"></td>
+            <td class="text-center"><input type="checkbox" class="form-check-input" ${isMy?'checked':''}></td>
+            <td><input type="text" class="form-control form-control-sm" value="${taxCat || ''}"></td>
+            <td><input type="number" class="form-control form-control-sm" value="${taxPct || ''}"></td>
+            <td class="text-center"><button type="button" class="btn btn-sm text-danger border-0 p-0" onclick="this.closest('tr').remove()"><i data-lucide="trash-2" class="size-4"></i></button></td>
+        `;
+        return tr;
+    };
+
+    window.addChildRow = function() {
+        document.getElementById('childrenBody').appendChild(createChildRow('','','','',false,'',''));
+        lucide.createIcons();
+    };
+
+    window.scrapeChildrenData = function() {
+        const children = [];
+        const rows = document.querySelectorAll('#childrenBody tr');
+        rows.forEach(row => {
+            const inputs = row.querySelectorAll('input, select');
+            if(inputs[0].value) { 
+                children.push({
+                    name: inputs[0].value,
+                    dob: inputs[1].value,
+                    gender: inputs[2].value,
+                    cert: inputs[3].value,
+                    isMalaysian: inputs[4].checked,
+                    taxCat: inputs[5].value,
+                    taxPct: inputs[6].value
+                });
+            }
+        });
+        return children;
+    };
+
+    const toggleFormState = (status) => {
+        const isEditable = (status === 'editable');
+        const form = document.getElementById('masterForm');
+        const saveBtn = document.getElementById('btnSaveChanges');
+        const inputs = form.querySelectorAll('input, select, textarea, button'); 
+
+        inputs.forEach(input => {
+            if(input.id === 'Employee Code' || input.id === 'Finger Print/Face ID') {
+                input.disabled = true; 
+            } else {
+                input.disabled = !isEditable;
+            }
+        });
+
+        saveBtn.disabled = !isEditable;
+
+        const select = document.getElementById('statusSelect');
+        select.value = status.includes('complete') ? 'active' : status;
+        
+        let borderClass = '';
+        let textClass = '';
+        if (status === 'editable') {
+            borderClass = 'border-warning';
+            textClass = 'text-warning';
+        } else if (status === 'disabled') {
+            borderClass = 'border-danger';
+            textClass = 'text-danger';
+        } else {
+            borderClass = 'border-success';
+            textClass = 'text-success';
+        }
+        
+        select.className = `form-select form-select-sm border-2 fw-bold ${borderClass} ${textClass}`;
+    };
+
+    async function calculateAnnualEntitlement(joinDateStr) {
+        if (!joinDateStr) return 0;
+
+        let rules = { t1: {min:1, days:8}, t2: {min:2, days:12}, t3: {min:5, days:16} }; 
+        try {
+            const snap = await getDoc(doc(db, "settings", "leave_rules"));
+            if(snap.exists()) rules = snap.data();
+        } catch(e) { console.error("Could not load leave rules, using default.", e); }
+
+        const joinDate = new Date(joinDateStr);
+        const today = new Date();
+        const diffTime = Math.abs(today - joinDate);
+        const yearsService = diffTime / (1000 * 60 * 60 * 24 * 365.25);
+
+        let entitlement = 0;
+        if (yearsService >= rules.t3.min) {
+            entitlement = rules.t3.days;
+        } else if (yearsService >= rules.t2.min) {
+            entitlement = rules.t2.days;
+        } else if (yearsService >= rules.t1.min) { 
+            entitlement = rules.t1.days;
+        }
+        return entitlement;
+    }
+
+    async function loadUserData(userId) {
+        try {
+            const docRef = doc(db, "users", userId);
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                currentUserData = data; 
+
+                if (data.status === 'editable' && data.unlockExpiresAt) {
+                    const now = new Date();
+                    const expiry = data.unlockExpiresAt.toDate(); 
+                    if (now > expiry) {
+                        console.log("Session expired. Reverting to active.");
+                        await updateDoc(docRef, { status: 'active', unlockExpiresAt: null });
+                        data.status = 'active'; 
+                        alert("The editing window has expired. Profile is now locked.");
+                    }
+                }
+                
+                document.getElementById('headerName').innerText = data.personal?.name || "Unknown";
+                document.getElementById('headerCode').innerText = `EMP ID: ${data.personal?.empCode}`;
+                
+                if(data.personal) {
+                    setVal('Employee Code', data.personal.empCode);
+                    setVal('Employee Name', data.personal.name);
+                    setVal('Short Name', data.personal.shortName);
+                    setVal('Finger Print/Face ID', data.personal.bioId);
+                    setVal('MYKAD/IC (Malaysian or PR)', data.personal.icNo);
+                    setVal('Old Ic No', data.personal.oldIc);
+                    setVal('Birth Date', data.personal.dob);
+                    setVal('Gender', data.personal.gender);
+                    setVal('Marital Status', data.personal.marital);
+                    setVal('Nationality', data.personal.nationality);
+                    setVal('Race', data.personal.race);
+                    setVal('Religion', data.personal.religion);
+                    setVal('Employment Type', data.personal.empType);
+                    setVal('Blood Type', data.personal.blood);
+                    setVal('Email Address', data.personal.email);
+                    setVal('Mobile Number', data.personal.mobile);
+                }
+
+                if(data.foreign) {
+                    setVal('Foreign ID No', data.foreign.id);
+                    setVal('Passport No', data.foreign.passport);
+                    setVal('Passport Expiry Date', data.foreign.passportExp);
+                    setVal('Pass Expiry Date', data.foreign.passExp);
+                    setVal('Arrival Date', data.foreign.arrival);
+                    setVal('FOMEMA Expiry Date', data.foreign.fomema);
+                    setVal('Issue Date', data.foreign.issue);
+                }
+
+                // ... (Keeping all other field mappings from original code) ...
+                if(data.employment) {
+                    setVal('Join Date', data.employment.joinDate);
+                    setVal('Probation (Months)', data.employment.probation);
+                    setVal('Confirmation Date', data.employment.confirmDate);
+                    setVal('Termination Date', data.employment.termDate);
+                    setVal('End of Contract Date', data.employment.contractEnd);
+                    setVal('Department Code', data.employment.dept);
+                    setVal('Section Code', data.employment.section);
+                    setVal('Designation Code', data.employment.designation);
+                    setVal('Desig Group Code', data.employment.desigGroup);
+                    setVal('Category Code', data.employment.category);
+                    setVal('Employee Status', data.employment.status);
+                    setVal('Holiday Group Code', data.employment.holidayGrp);
+                    setVal('Leave Category Code', data.employment.leaveCat);
+                    setVal('Working Hours/Shift', data.employment.shift);
+                    setVal('Exclude Days', data.employment.excludeDays);
+                    setVal('Hours Worked /Day', data.employment.hrsDay);
+                    setVal('Days Worked /Week', data.employment.daysWeek);
+                    setVal('Hours Worked Per Week', data.employment.hrsWeek);
+                    setVal('Part Time', data.employment.isPartTime);
+                    setVal('Flexi Hours', data.employment.isFlexi);
+                }
+
+                if(data.statutory) {
+                    setVal('EPF Category', data.statutory.epf?.cat);
+                    setVal('EPF Number', data.statutory.epf?.no);
+                    setVal('EPF Emp Name', data.statutory.epf?.name);
+                    setVal('Employer EPF No', data.statutory.epf?.employerNo);
+                    setVal('EPF Contribution', data.statutory.epf?.contrib);
+                    setVal('SOCSO Category', data.statutory.socso?.cat);
+                    setVal('SOCSO Security No', data.statutory.socso?.no);
+                    setVal('Employer SOCSO No', data.statutory.socso?.employerNo);
+                    setVal('EIS Contribution', data.statutory.eis);
+                    setVal('INCOME TAX NO', data.statutory.tax?.no);
+                    setVal('TAX Resident Status', data.statutory.tax?.resStatus);
+                    setVal('TAX Resident Type', data.statutory.tax?.resType);
+                    setVal('Tax Disable Person', data.statutory.tax?.disable);
+                    setVal('Tax Spouse Status', data.statutory.tax?.spouseStatus);
+                    setVal('Tax Spouse Disabled', data.statutory.tax?.spouseDisable);
+                    setVal('PTPTN Acc No', data.statutory.ptptn);
+                    setVal('Zakat Acc No', data.statutory.zakat);
+                    setVal('Employer HRDF No', data.statutory.hrdf);
+                }
+
+                if(data.payroll) {
+                    setVal('Basic Salary', data.payroll.basic);
+                    setVal('Pay Day Group', data.payroll.payGroup);
+                    setVal('Daily Rate Code', data.payroll.dailyRateCode);
+                    setVal('Paid Type', data.payroll.paidType);
+                    setVal('OT Type', data.payroll.ot?.type);
+                    setVal('Flat/Hourly Rate', data.payroll.ot?.rate);
+                    setVal('Multiple Pay %', data.payroll.split?.multiPayPct);
+                    setVal('Multiple Pay Fixed Amt', data.payroll.split?.multiPayFixed);
+                    setVal('Cash Percentage', data.payroll.split?.cashPct);
+                    setVal('bank_name_1', data.payroll.bank1?.name);
+                    setVal('branch_id_1', data.payroll.bank1?.branch);
+                    setVal('acc_no_1', data.payroll.bank1?.acc);
+                    setVal('pct_1', data.payroll.bank1?.pct);
+                    setVal('chq_pct_1', data.payroll.bank1?.chq);
+                    setVal('bank_name_2', data.payroll.bank2?.name);
+                    setVal('branch_id_2', data.payroll.bank2?.branch);
+                    setVal('acc_no_2', data.payroll.bank2?.acc);
+                    setVal('pct_2', data.payroll.bank2?.pct);
+                    setVal('chq_pct_2', data.payroll.bank2?.chq);
+                }
+
+                if(data.address) {
+                    setVal('Local Address Door No', data.address.local?.door);
+                    setVal('Local Address Location', data.address.local?.loc);
+                    setVal('Local Address Street', data.address.local?.street);
+                    setVal('Local Address City', data.address.local?.city);
+                    setVal('Local Address State', data.address.local?.state);
+                    setVal('Local Address Country', data.address.local?.country);
+                    setVal('Local Address Pincode', data.address.local?.pin);
+                    setVal('Foreign Address Door No', data.address.foreign?.door);
+                    setVal('Foreign Address Location', data.address.foreign?.loc);
+                    setVal('Foreign Address Street', data.address.foreign?.street);
+                    setVal('Foreign Address City', data.address.foreign?.city);
+                    setVal('Foreign Address State', data.address.foreign?.state);
+                    setVal('Foreign Address Country', data.address.foreign?.country);
+                    setVal('Foreign Address Pincode', data.address.foreign?.pin);
+                    setVal('Emergency Contact Person', data.address.emergency?.name);
+                    setVal('Emergency Contact Relationship', data.address.emergency?.rel);
+                    setVal('Emergency Contact Number', data.address.emergency?.no);
+                    setVal('Emergency Contact MYKAD/IC OR Passport No', data.address.emergency?.id);
+                }
+
+                if(data.family) {
+                    setVal('Spouse Name', data.family.spouse?.name);
+                    setVal('Spouse MyKad/Passport', data.family.spouse?.id);
+                    setVal('Spouse Phone', data.family.spouse?.phone);
+                    setVal('Spouse Occupation', data.family.spouse?.job);
+                    setVal('Spouse DOB', data.family.spouse?.dob);
+                    const childBody = document.getElementById('childrenBody');
+                    childBody.innerHTML = '';
+                    if(data.family.children && Array.isArray(data.family.children)) {
+                        data.family.children.forEach(c => {
+                            childBody.appendChild(createChildRow(c.name, c.dob, c.gender, c.cert, c.isMalaysian, c.taxCat, c.taxPct));
+                        });
+                    }
+                }
+
+                toggleFormState(data.status || 'editable');
+                document.getElementById('loadingOverlay').style.display = 'none';
+                lucide.createIcons();
+
+            } else {
+                alert("User not found!");
+                window.location.href = "manage_staff.html";
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Error loading profile: " + error.message);
+        }
+    }
+
+    document.getElementById('btnUpdateStatus').addEventListener('click', async () => {
+        const newStatus = document.getElementById('statusSelect').value;
+        const btn = document.getElementById('btnUpdateStatus');
+        btn.disabled = true;
+        btn.innerText = "Updating...";
+
+        try {
+            let updateData = { status: newStatus };
+
+            if (newStatus === 'editable') {
+                const expiryDate = new Date(Date.now() + 5 * 60 * 1000); 
+                updateData.unlockExpiresAt = expiryDate;
+                alert("Status updated to EDITABLE. \n\nProfile will automatically lock (revert to ACTIVE) in 5 minutes.");
+            } else {
+                updateData.unlockExpiresAt = null; 
+                alert(`Status updated to: ${newStatus.toUpperCase()}`);
+            }
+
+            await updateDoc(doc(db, "users", uid), updateData);
+            toggleFormState(newStatus);
+        } catch (e) {
+            alert("Error updating status: " + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="check" class="size-4 me-1"></i> Confirm`;
+            lucide.createIcons();
+        }
+    });
+
+    // --- SAVE LOGIC with DUPLICATE CHECK & PHONE FORMATTER ---
+    document.getElementById('btnSaveChanges').addEventListener('click', async () => {
+        const overlay = document.getElementById('loadingOverlay');
+        const loadingText = document.getElementById('loadingText');
+        
+        // 1. Get raw inputs & Format
+        const newEmail = getVal('Email Address').trim();
+        const rawNewPhone = getVal('Mobile Number');
+        const newPhone = formatMalaysianPhone(rawNewPhone);
+        
+        // --- 🔥 DUPLICATE CHECK LOGIC ---
+        // We must check if any *other* user already uses these unique identifiers
+        const foreignId = getVal('Foreign ID No');
+        const passport = getVal('Passport No');
+        const icNo = getVal('MYKAD/IC (Malaysian or PR)');
+
+        const checks = [
+            { val: foreignId, field: 'foreign.id', label: 'Foreign ID' },
+            { val: passport, field: 'foreign.passport', label: 'Passport No' },
+            { val: icNo, field: 'personal.icNo', label: 'IC Number' },
+            { val: newEmail, field: 'personal.email', label: 'Email' },
+            { val: newPhone, field: 'personal.mobile', label: 'Mobile Number' }
+        ];
+
+        overlay.style.display = 'flex';
+        loadingText.innerText = 'Checking Duplicates...';
+
+        try {
+            for (const check of checks) {
+                if (!check.val) continue; // Skip empty fields
+                
+                // Query users with this value
+                const q = query(collection(db, "users"), where(check.field, "==", check.val));
+                const snap = await getDocs(q);
+                
+                // If found, check if it belongs to SOMEONE ELSE
+                const duplicateDoc = snap.docs.find(d => d.id !== uid);
+                
+                if (duplicateDoc) {
+                    overlay.style.display = 'none';
+                    // Highlight the field (optional)
+                    const duplicatesName = duplicateDoc.data().personal?.name || "another user";
+                    alert(`Save Failed: Duplicate Data Found!\n\nThe ${check.label} '${check.val}' is already assigned to ${duplicatesName}.`);
+                    return; // 🛑 STOP EXECUTION
+                }
+            }
+        } catch (e) {
+            console.error("Validation Error", e);
+            alert("Validation failed: " + e.message);
+            overlay.style.display = 'none';
+            return;
+        }
+
+        // --- CONTINUE SAVING IF NO DUPLICATES ---
+        loadingText.innerText = 'Calculating & Saving...';
+
+        const oldEmail = currentUserData?.personal?.email || '';
+        const oldPhone = formatMalaysianPhone(currentUserData?.personal?.mobile || '');
+        const empName = currentUserData?.personal?.name || 'Staff';
+        const isActivated = !!currentUserData?.authUid; 
+
+        // Change Detection (Secure)
+        let requiresReset = false;
+        if (isActivated && (newEmail !== oldEmail || newPhone !== oldPhone)) {
+            const confirmReset = confirm(
+                "⚠️ CRITICAL SECURITY WARNING \n\n" +
+                "You have changed the Email or Mobile Number.\n" +
+                "This will INVALIDATE the staff's current login access immediately.\n\n" +
+                "The staff will be logged out and must 'Activate Account' again with the new details.\n\n" +
+                "Do you want to proceed?"
+            );
+
+            if (!confirmReset) {
+                setVal('Email Address', oldEmail);
+                setVal('Mobile Number', oldPhone); 
+                overlay.style.display = 'none';
+                return; 
+            }
+            requiresReset = true;
+        }
+
+        try {
+            const annualEntitlement = await calculateAnnualEntitlement(getVal('Join Date'));
+            
+            const currentBal = currentUserData?.leave_balance || {};
+            const leaveBalanceData = {
+                annual: annualEntitlement,
+                medical: currentBal.medical !== undefined ? currentBal.medical : 14,
+                emergency: currentBal.emergency !== undefined ? currentBal.emergency : 5
+            };
+
+            const formData = {
+                meta: { updatedAt: new Date() }, 
+                leave_balance: leaveBalanceData,
+                personal: {
+                    empCode: getVal('Employee Code'),
+                    name: getVal('Employee Name'),
+                    shortName: getVal('Short Name'),
+                    bioId: getVal('Finger Print/Face ID'),
+                    icNo: icNo,
+                    oldIc: getVal('Old Ic No'),
+                    dob: getVal('Birth Date'),
+                    gender: getVal('Gender'),
+                    marital: getVal('Marital Status'),
+                    nationality: getVal('Nationality'),
+                    race: getVal('Race'),
+                    religion: getVal('Religion'),
+                    empType: getVal('Employment Type'),
+                    blood: getVal('Blood Type'),
+                    email: newEmail, 
+                    mobile: newPhone
+                },
+                foreign: {
+                    id: foreignId,
+                    passport: passport,
+                    passportExp: getVal('Passport Expiry Date'),
+                    passExp: getVal('Pass Expiry Date'),
+                    arrival: getVal('Arrival Date'),
+                    fomema: getVal('FOMEMA Expiry Date'),
+                    issue: getVal('Issue Date')
+                },
+                employment: {
+                    joinDate: getVal('Join Date'),
+                    probation: getVal('Probation (Months)'),
+                    confirmDate: getVal('Confirmation Date'),
+                    termDate: getVal('Termination Date'),
+                    contractEnd: getVal('End of Contract Date'),
+                    dept: getVal('Department Code'),
+                    section: getVal('Section Code'),
+                    designation: getVal('Designation Code'),
+                    desigGroup: getVal('Desig Group Code'),
+                    category: getVal('Category Code'),
+                    status: getVal('Employee Status'),
+                    holidayGrp: getVal('Holiday Group Code'),
+                    leaveCat: getVal('Leave Category Code'),
+                    shift: getVal('Working Hours/Shift'),
+                    excludeDays: getVal('Exclude Days'),
+                    hrsDay: getVal('Hours Worked /Day'),
+                    daysWeek: getVal('Days Worked /Week'),
+                    hrsWeek: getVal('Hours Worked Per Week'),
+                    isPartTime: getVal('Part Time'),
+                    isFlexi: getVal('Flexi Hours')
+                },
+                statutory: {
+                    epf: {
+                        cat: getVal('EPF Category'),
+                        no: getVal('EPF Number'),
+                        name: getVal('EPF Emp Name'),
+                        employerNo: getVal('Employer EPF No'),
+                        contrib: getVal('EPF Contribution')
+                    },
+                    socso: {
+                        cat: getVal('SOCSO Category'),
+                        no: getVal('SOCSO Security No'),
+                        employerNo: getVal('Employer SOCSO No')
+                    },
+                    tax: {
+                        no: getVal('INCOME TAX NO'),
+                        resStatus: getVal('TAX Resident Status'),
+                        resType: getVal('TAX Resident Type'),
+                        disable: getVal('Tax Disable Person'),
+                        spouseStatus: getVal('Tax Spouse Status'),
+                        spouseDisable: getVal('Tax Spouse Disabled')
+                    },
+                    eis: getVal('EIS Contribution'),
+                    ptptn: getVal('PTPTN Acc No'),
+                    zakat: getVal('Zakat Acc No'),
+                    hrdf: getVal('Employer HRDF No')
+                },
+                payroll: {
+                    basic: getVal('Basic Salary'),
+                    payGroup: getVal('Pay Day Group'),
+                    dailyRateCode: getVal('Daily Rate Code'),
+                    paidType: getVal('Paid Type'),
+                    ot: {
+                        type: getVal('OT Type'),
+                        rate: getVal('Flat/Hourly Rate')
+                    },
+                    split: {
+                        multiPayPct: getVal('Multiple Pay %'),
+                        multiPayFixed: getVal('Multiple Pay Fixed Amt'),
+                        cashPct: getVal('Cash Percentage')
+                    },
+                    bank1: {
+                        name: getVal('bank_name_1'),
+                        branch: getVal('branch_id_1'),
+                        acc: getVal('acc_no_1'),
+                        pct: getVal('pct_1'),
+                        chq: getVal('chq_pct_1')
+                    },
+                    bank2: {
+                        name: getVal('bank_name_2'),
+                        branch: getVal('branch_id_2'),
+                        acc: getVal('acc_no_2'),
+                        pct: getVal('pct_2'),
+                        chq: getVal('chq_pct_2')
+                    }
+                },
+                address: {
+                    local: {
+                        door: getVal('Local Address Door No'),
+                        loc: getVal('Local Address Location'),
+                        street: getVal('Local Address Street'),
+                        city: getVal('Local Address City'),
+                        state: getVal('Local Address State'),
+                        country: getVal('Local Address Country'),
+                        pin: getVal('Local Address Pincode')
+                    },
+                    foreign: {
+                        door: getVal('Foreign Address Door No'),
+                        loc: getVal('Foreign Address Location'),
+                        street: getVal('Foreign Address Street'),
+                        city: getVal('Foreign Address City'),
+                        state: getVal('Foreign Address State'),
+                        country: getVal('Foreign Address Country'),
+                        pin: getVal('Foreign Address Pincode')
+                    },
+                    emergency: {
+                        name: getVal('Emergency Contact Person'),
+                        rel: getVal('Emergency Contact Relationship'),
+                        no: getVal('Emergency Contact Number'),
+                        id: getVal('Emergency Contact MYKAD/IC OR Passport No')
+                    }
+                },
+                family: {
+                    spouse: {
+                        name: getVal('Spouse Name'),
+                        id: getVal('Spouse MyKad/Passport'),
+                        phone: getVal('Spouse Phone'),
+                        job: getVal('Spouse Occupation'),
+                        dob: getVal('Spouse DOB')
+                    },
+                    children: scrapeChildrenData()
+                }
+            };
+
+            if (requiresReset) {
+                formData['authUid'] = deleteField(); 
+                formData['status'] = 'inactive';     
+                formData['meta.isActivated'] = false; 
+
+                if (oldEmail) {
+                    emailjs.send("service_p0fxt7y", "template_good5a6", {
+                        user_name: empName,
+                        to_email: oldEmail, 
+                    }).then(
+                        function(response) { console.log("Security alert sent", response); },
+                        function(error) { console.error("Failed to send alert", error); }
+                    );
+                }
+            }
+
+            await updateDoc(doc(db, "users", uid), formData);
+            
+            if(requiresReset) {
+                delete currentUserData.authUid;
+                currentUserData.status = 'inactive';
+            }
+            currentUserData = { ...currentUserData, ...formData };
+            
+            alert("Data saved successfully!" + (requiresReset ? "\n\nUser account has been reset. A security notification has been sent to their old email." : ""));
+            
+            if(requiresReset) location.reload(); 
+
+        } catch(e) {
+            console.error(e);
+            alert("Error saving data: " + e.message);
+        } finally {
+            overlay.style.display = 'none';
+        }
+    });
+
+    // 🟢 Standard Malaysian Phone Formatter
+    window.formatMalaysianPhone = function(input) {
+        if (!input) return "";
+        let cleaned = input.toString().replace(/\D/g, '');
+        if (cleaned.startsWith('60')) return "+" + cleaned;
+        else if (cleaned.startsWith('0')) return "+60" + cleaned.substring(1);
+        else return "+60" + cleaned;
+    };
+
+    lucide.createIcons();
+</script>
+</body>
+</html>

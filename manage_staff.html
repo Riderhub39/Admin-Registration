@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Staff - FieldTrack Pro</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="style.css" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        #loadingOverlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(255, 255, 255, 0.95); z-index: 9999; 
+            display: flex; flex-direction: column; justify-content: center; align-items: center; 
+        }
+
+        body { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
+        .status-badge { font-size: 0.75rem; padding: 0.25em 0.6em; border-radius: 4px; font-weight: 600; text-transform: uppercase; }
+        .bg-complete { background-color: #d1fae5; color: #065f46; } 
+        .bg-editable { background-color: #fef3c7; color: #92400e; } 
+        .bg-active { background-color: #e0f2fe; color: #0369a1; }   
+        
+        .table-hover tbody tr { transition: background-color 0.2s; }
+        .action-btn-group { display: flex; gap: 8px; justify-content: flex-end; }
+        
+        .btn-request { position: relative; }
+        .notif-dot { 
+            position: absolute; top: -3px; right: -3px; 
+            width: 10px; height: 10px; 
+            background-color: #dc2626; border: 2px solid white; 
+            border-radius: 50%; display: none; 
+        }
+        .notif-dot.active { display: block; }
+    </style>
+</head>
+<body>
+
+<div id="header-placeholder"></div>
+
+<div id="loadingOverlay">
+    <div class="spinner-border text-primary mb-3" role="status"></div>
+    <h5 class="fw-bold text-dark" id="loadingText">Verifying Access...</h5>
+</div>
+
+<div id="mainContainer" class="container py-4 d-none">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="fw-bold mb-1">Staff Directory</h4>
+            <p class="text-muted small mb-0">Manage permissions and view staff profiles.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-dark" data-bs-toggle="modal" data-bs-target="#leaveConfigModal">
+                <i data-lucide="settings" class="size-4 me-2"></i>Leave Rules
+            </button>
+            <button class="btn btn-warning text-dark fw-bold" onclick="recalculateAllBalances()">
+                <i data-lucide="refresh-cw" class="size-4 me-2"></i>Recalculate Balances
+            </button>
+            <a href="staff_register.html" class="btn btn-primary"><i data-lucide="plus" class="size-4 me-2"></i>Add New</a>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4">Emp Code</th>
+                            <th>Full Name</th>
+                            <th>Department</th>
+                            <th>Status</th>
+                            <th class="text-end pe-4">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="staffTableBody">
+                        <tr><td colspan="5" class="text-center py-4 text-muted">Loading staff list...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="reviewModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Review Update Request</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info d-flex align-items-center gap-2">
+                    <i data-lucide="info" class="size-4"></i>
+                    <small>Approving this will unlock the profile for <strong>5 minutes</strong>.</small>
+                </div>
+                <div class="mb-3">
+                    <label class="small text-muted fw-bold">REQUESTER</label>
+                    <div id="modalRequesterName" class="fw-bold text-dark fs-5">User Name</div>
+                    <small id="modalRequesterId" class="text-muted">ID: -</small>
+                </div>
+                <div class="mb-3">
+                    <label class="small text-muted fw-bold">REQUEST REASON</label>
+                    <div id="modalRequestContent" class="p-3 bg-light rounded border">
+                        </div>
+                </div>
+                <input type="hidden" id="hiddenRequestId">
+                <input type="hidden" id="hiddenUserId">
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-outline-danger" onclick="processDecision('reject')">Reject</button>
+                <button type="button" class="btn btn-success fw-bold text-white" onclick="processDecision('approve')">Approve Request</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="leaveConfigModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-light">
+                <h6 class="modal-title fw-bold">Annual Leave Entitlement Rules</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small">Define how many days of Annual Leave staff get based on their years of service.</p>
+                <form id="leaveRuleForm">
+                    <div class="alert alert-warning py-2 mb-3">
+                        <i data-lucide="alert-circle" class="size-4 me-1"></i>
+                        <small>Staff with service <strong>less than 1 year</strong> will receive <strong>0 days</strong>.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Tier 1: Junior</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">Min Years</span>
+                            <input type="number" id="t1_min" class="form-control" value="1">
+                            <span class="input-group-text">Days</span>
+                            <input type="number" id="t1_days" class="form-control" value="8">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Tier 2: Mid</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">Min Years</span>
+                            <input type="number" id="t2_min" class="form-control" value="2">
+                            <span class="input-group-text">Days</span>
+                            <input type="number" id="t2_days" class="form-control" value="12">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Tier 3: Senior</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">Min Years</span>
+                            <input type="number" id="t3_min" class="form-control" value="5">
+                            <span class="input-group-text">Days</span>
+                            <input type="number" id="t3_days" class="form-control" value="16">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary w-100" onclick="saveLeaveRules()">Save Configuration</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, query, where, onSnapshot, doc, updateDoc, serverTimestamp, getDoc, setDoc, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+    import { firebaseConfig } from "./firebase-config.js";
+    import { initUnifiedHeader } from "./header-app.js";
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    const settingsRef = doc(db, "settings", "leave_rules");
+    let reviewModal; 
+
+    // Data Stores
+    let staffList = [];
+    let pendingRequests = {}; 
+
+    // --- Auth Check & Admin Validation ---
+    onAuthStateChanged(auth, async (user) => {
+        if (!user) {
+            window.location.href = "index.html";
+            return;
+        }
+        try {
+            const adminDoc = await getDoc(doc(db, "users", user.uid));
+            if (adminDoc.exists() && adminDoc.data().role === 'admin') {
+                initUnifiedHeader(auth, db);
+                document.getElementById('loadingText').innerText = "Loading Staff List...";
+                reviewModal = new bootstrap.Modal(document.getElementById('reviewModal'));
+                initData();
+                loadLeaveRules();
+                document.getElementById('loadingOverlay').classList.add('d-none');
+                document.getElementById('mainContainer').classList.remove('d-none');
+            } else {
+                alert("Unauthorized Access. Admins only.");
+                await signOut(auth);
+                window.location.href = "index.html";
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Auth Error: " + e.message);
+            window.location.href = "index.html";
+        }
+    });
+
+    async function initData() {
+        const q = query(collection(db, "users"), where("role", "==", "staff"));
+        onSnapshot(q, (snapshot) => {
+            staffList = [];
+            snapshot.forEach(doc => staffList.push({ id: doc.id, ...doc.data() }));
+            renderTable(); 
+        });
+
+        const reqQuery = query(collection(db, "edit_requests"), where("status", "==", "pending"));
+        onSnapshot(reqQuery, (snap) => {
+            pendingRequests = {}; 
+            snap.forEach(doc => {
+                const data = doc.data();
+                pendingRequests[data.userId] = { reqId: doc.id, ...data };
+            });
+            renderTable(); 
+        });
+    }
+
+    function renderTable() {
+    const tbody = document.getElementById('staffTableBody');
+    const now = new Date();
+    
+    // 1. 立即清空，不要在 async 里面清空
+    tbody.innerHTML = ''; 
+
+    if (staffList.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">No staff found.</td></tr>';
+        return;
+    }
+
+    // 2. 使用同步循环构建 HTML 字符串，避免渲染过程中的抖动
+    let htmlBuffer = "";
+
+    staffList.forEach(user => {
+        // 处理自动锁定（只触发更新，不阻塞渲染）
+        if (user.status === 'editable' && user.unlockExpiresAt) {
+            const expiry = user.unlockExpiresAt.toDate(); 
+            if (now > expiry) {
+                updateDoc(doc(db, "users", user.id), { status: 'active', unlockExpiresAt: null });
+                return; // 跳过此行，等待下一次快照
+            }
+        }
+
+        const personal = user.personal || {};
+        const employment = user.employment || {};
+        const status = user.status || 'active';
+        
+        let statusClass = 'bg-active'; 
+        if(status === 'complete') statusClass = 'bg-complete';
+        if(status === 'editable') statusClass = 'bg-editable';
+        if(status === 'disabled') statusClass = 'bg-secondary text-white';
+
+        const request = pendingRequests[user.id];
+        const hasRequest = !!request;
+
+        // 将 HTML 加入缓存字符串
+        htmlBuffer += `
+            <tr>
+                <td class="ps-4 fw-bold text-primary">${user.id}</td>
+                <td>
+                    <div class="fw-bold text-dark">${personal.name || 'Unknown'}</div>
+                    <small class="text-muted">${personal.email || '-'}</small>
+                </td>
+                <td>${employment.dept || '-'}</td>
+                <td><span class="status-badge ${statusClass}">${status}</span></td>
+                <td class="text-end pe-4">
+                    <div class="action-btn-group">
+                        <button class="btn btn-sm ${hasRequest ? 'btn-warning text-dark fw-bold' : 'btn-light text-muted border'}" 
+                                onclick="event.stopPropagation(); ${hasRequest ? `openReview('${user.id}')` : ''}" 
+                                ${!hasRequest ? 'disabled' : ''}>
+                            <span class="notif-dot ${hasRequest ? 'active' : ''}"></span>
+                            <i data-lucide="bell" class="size-3 me-1"></i> 
+                            ${hasRequest ? 'Review' : 'No Req'}
+                        </button>
+                        <a href="staff_details.html?uid=${user.id}" class="btn btn-sm btn-light border text-dark">
+                            Manage <i data-lucide="chevron-right" class="size-3 ms-1"></i>
+                        </a>
+                    </div>
+                </td>
+            </tr>`;
+    });
+
+    // 3. 一次性写入 DOM
+    tbody.innerHTML = htmlBuffer;
+    lucide.createIcons();
+}
+    window.openReview = function(userId) {
+        const request = pendingRequests[userId];
+        if(!request) return;
+        document.getElementById('modalRequesterName').innerText = request.empName || "Unknown Staff";
+        document.getElementById('modalRequesterId').innerText = `ID: ${request.userId}`;
+        document.getElementById('modalRequestContent').innerText = request.request || "No details provided.";
+        document.getElementById('hiddenRequestId').value = request.reqId;
+        document.getElementById('hiddenUserId').value = request.userId;
+        reviewModal.show();
+    };
+
+    window.processDecision = async function(decision) {
+        const reqId = document.getElementById('hiddenRequestId').value;
+        const userId = document.getElementById('hiddenUserId').value;
+        const btn = document.querySelector('.modal-footer .btn-success'); 
+        btn.disabled = true; btn.innerText = "Processing...";
+        try {
+            if(decision === 'approve') {
+                await updateDoc(doc(db, "edit_requests", reqId), { status: 'approved', reviewedAt: serverTimestamp() });
+                const expiryDate = new Date(Date.now() + 5 * 60 * 1000); 
+                await updateDoc(doc(db, "users", userId), { status: 'editable', unlockExpiresAt: expiryDate });
+            } else {
+                await updateDoc(doc(db, "edit_requests", reqId), { status: 'rejected', reviewedAt: serverTimestamp() });
+            }
+            reviewModal.hide();
+        } catch (error) { console.error(error); alert("Error: " + error.message); } 
+        finally { btn.disabled = false; btn.innerText = "Approve Request"; }
+    };
+
+    async function loadLeaveRules() {
+        try {
+            const snap = await getDoc(settingsRef);
+            if (snap.exists()) {
+                const data = snap.data();
+                document.getElementById('t1_min').value = data.t1?.min ?? 1; 
+                document.getElementById('t1_days').value = data.t1?.days ?? 8;
+                document.getElementById('t2_min').value = data.t2?.min ?? 2;
+                document.getElementById('t2_days').value = data.t2?.days ?? 12;
+                document.getElementById('t3_min').value = data.t3?.min ?? 5;
+                document.getElementById('t3_days').value = data.t3?.days ?? 16;
+            }
+        } catch (e) { console.error("Error loading rules", e); }
+    }
+
+    window.saveLeaveRules = async function() {
+        let t1Min = parseInt(document.getElementById('t1_min').value);
+        if(t1Min < 1) t1Min = 1; 
+        const rules = {
+            t1: { min: t1Min, days: parseInt(document.getElementById('t1_days').value) },
+            t2: { min: parseInt(document.getElementById('t2_min').value), days: parseInt(document.getElementById('t2_days').value) },
+            t3: { min: parseInt(document.getElementById('t3_min').value), days: parseInt(document.getElementById('t3_days').value) }
+        };
+        try {
+            await setDoc(settingsRef, rules);
+            alert("Rules saved! Please now click 'Recalculate Balances' to fix any errors.");
+            bootstrap.Modal.getInstance(document.getElementById('leaveConfigModal')).hide();
+        } catch (e) { alert("Error saving: " + e.message); }
+    };
+
+    window.recalculateAllBalances = async function() {
+        const currentYear = new Date().getFullYear();
+        const startOfYear = `${currentYear}-01-01`;
+        if(!confirm(`Recalculate Annual Leave for ${currentYear}?\n\nLogic:\n1. Calculate Entitlement.\n2. Subtract leaves taken AFTER ${startOfYear}.\n3. Reset Balance.`)) return;
+
+        const statusDiv = document.createElement('div');
+        statusDiv.style.position = 'fixed'; statusDiv.style.top = '10px'; statusDiv.style.left = '50%'; statusDiv.style.transform = 'translateX(-50%)'; statusDiv.style.background = 'black'; statusDiv.style.color = 'white'; statusDiv.style.padding = '10px 20px'; statusDiv.style.borderRadius = '5px'; statusDiv.style.zIndex = '9999';
+        document.body.appendChild(statusDiv);
+        statusDiv.innerText = `Analyzing Leave History for ${currentYear}...`;
+
+        try {
+            const ruleSnap = await getDoc(settingsRef);
+            const rules = ruleSnap.exists() ? ruleSnap.data() : { t1: {min:1, days:8}, t2: {min:2, days:12}, t3: {min:5, days:16} };
+            const leavesQ = query(collection(db, "leaves"), where("status", "==", "Approved"), where("type", "==", "Annual Leave"), where("startDate", ">=", startOfYear));
+            const leaveSnaps = await getDocs(leavesQ);
+            const usedMap = {};
+            leaveSnaps.forEach(doc => {
+                const data = doc.data();
+                if (data.uid && data.days) {
+                    const currentUsed = usedMap[data.uid] || 0;
+                    usedMap[data.uid] = currentUsed + data.days;
+                }
+            });
+
+            statusDiv.innerText = "Updating User Balances...";
+            const q = query(collection(db, "users"), where("role", "==", "staff"));
+            const snapshot = await getDocs(q);
+            const batch = writeBatch(db);
+            let count = 0;
+
+            snapshot.forEach((docSnap) => {
+                const data = docSnap.data();
+                const joinDateStr = data.employment?.joinDate;
+                if (joinDateStr) {
+                    const joinDate = new Date(joinDateStr);
+                    const diffTime = Math.abs(new Date() - joinDate);
+                    const yearsService = diffTime / (1000 * 60 * 60 * 24 * 365.25);
+                    let entitlement = 0;
+                    if (yearsService >= rules.t3.min) entitlement = rules.t3.days;
+                    else if (yearsService >= rules.t2.min) entitlement = rules.t2.days;
+                    else if (yearsService >= rules.t1.min) entitlement = rules.t1.days;
+                    const usedDays = usedMap[docSnap.id] || 0;
+                    let finalBalance = entitlement - usedDays;
+                    const userRef = doc(db, "users", docSnap.id);
+                    batch.update(userRef, { "leave_balance.annual": finalBalance, "meta.balanceLastUpdated": serverTimestamp(), "meta.balanceYear": currentYear });
+                    count++;
+                }
+            });
+            await batch.commit();
+            statusDiv.style.background = 'green';
+            statusDiv.innerText = `Success! Updated ${count} records.`;
+            setTimeout(() => statusDiv.remove(), 4000);
+        } catch (e) {
+            console.error(e);
+            statusDiv.style.background = 'red';
+            statusDiv.innerText = "Error: " + e.message;
+            setTimeout(() => statusDiv.remove(), 5000);
+        }
+    };
+</script>
+</body>
+</html>
