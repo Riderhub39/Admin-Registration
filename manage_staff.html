@@ -10,6 +10,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <style>
+        /* Loading Overlay Styling */
         #loadingOverlay { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(255, 255, 255, 0.95); z-index: 9999; 
@@ -17,6 +18,8 @@
         }
 
         body { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
+        
+        /* Status Badge Styles */
         .status-badge { font-size: 0.75rem; padding: 0.25em 0.6em; border-radius: 4px; font-weight: 600; text-transform: uppercase; }
         .bg-complete { background-color: #d1fae5; color: #065f46; } 
         .bg-editable { background-color: #fef3c7; color: #92400e; } 
@@ -25,6 +28,7 @@
         .table-hover tbody tr { transition: background-color 0.2s; }
         .action-btn-group { display: flex; gap: 8px; justify-content: flex-end; }
         
+        /* Notification Dot on Buttons */
         .btn-request { position: relative; }
         .notif-dot { 
             position: absolute; top: -3px; right: -3px; 
@@ -59,6 +63,15 @@
                 <i data-lucide="refresh-cw" class="size-4 me-2"></i>Recalculate Balances
             </button>
             <a href="staff_register.html" class="btn btn-primary"><i data-lucide="plus" class="size-4 me-2"></i>Add New</a>
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <div class="col-md-6 col-lg-4">
+            <div class="input-group">
+                <span class="input-group-text bg-white text-muted border-end-0"><i data-lucide="search" class="size-4"></i></span>
+                <input type="text" id="searchInput" class="form-control border-start-0" placeholder="Search by name, ID, or email...">
+            </div>
         </div>
     </div>
 
@@ -103,8 +116,7 @@
                 </div>
                 <div class="mb-3">
                     <label class="small text-muted fw-bold">REQUEST REASON</label>
-                    <div id="modalRequestContent" class="p-3 bg-light rounded border">
-                        </div>
+                    <div id="modalRequestContent" class="p-3 bg-light rounded border"></div>
                 </div>
                 <input type="hidden" id="hiddenRequestId">
                 <input type="hidden" id="hiddenUserId">
@@ -177,17 +189,21 @@
     import { firebaseConfig } from "./firebase-config.js";
     import { initUnifiedHeader } from "./header-app.js";
 
+    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const auth = getAuth(app);
     const settingsRef = doc(db, "settings", "leave_rules");
+    
     let reviewModal; 
+    let staffList = [];       // Store staff data locally
+    let pendingRequests = {}; // Store update requests locally
+    let searchTerm = "";      // Store current search query
 
-    // Data Stores
-    let staffList = [];
-    let pendingRequests = {}; 
-
-    // --- Auth Check & Admin Validation ---
+    /**
+     * Authentication Observer
+     * Ensures only Admins can access this page
+     */
     onAuthStateChanged(auth, async (user) => {
         if (!user) {
             window.location.href = "index.html";
@@ -199,8 +215,12 @@
                 initUnifiedHeader(auth, db);
                 document.getElementById('loadingText').innerText = "Loading Staff List...";
                 reviewModal = new bootstrap.Modal(document.getElementById('reviewModal'));
+                
+                // Initialize Listeners
                 initData();
                 loadLeaveRules();
+                
+                // Show Content
                 document.getElementById('loadingOverlay').classList.add('d-none');
                 document.getElementById('mainContainer').classList.remove('d-none');
             } else {
@@ -209,13 +229,17 @@
                 window.location.href = "index.html";
             }
         } catch (e) {
-            console.error(e);
             alert("Auth Error: " + e.message);
             window.location.href = "index.html";
         }
     });
 
+    /**
+     * Data Initialization
+     * Sets up real-time listeners for Staff Users and Pending Edit Requests
+     */
     async function initData() {
+        // Listener 1: Staff Users
         const q = query(collection(db, "users"), where("role", "==", "staff"));
         onSnapshot(q, (snapshot) => {
             staffList = [];
@@ -223,6 +247,7 @@
             renderTable(); 
         });
 
+        // Listener 2: Pending Edit Requests (for badges)
         const reqQuery = query(collection(db, "edit_requests"), where("status", "==", "pending"));
         onSnapshot(reqQuery, (snap) => {
             pendingRequests = {}; 
@@ -234,74 +259,105 @@
         });
     }
 
-    function renderTable() {
-    const tbody = document.getElementById('staffTableBody');
-    const now = new Date();
-    
-    // 1. 立即清空，不要在 async 里面清空
-    tbody.innerHTML = ''; 
-
-    if (staffList.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">No staff found.</td></tr>';
-        return;
-    }
-
-    // 2. 使用同步循环构建 HTML 字符串，避免渲染过程中的抖动
-    let htmlBuffer = "";
-
-    staffList.forEach(user => {
-        // 处理自动锁定（只触发更新，不阻塞渲染）
-        if (user.status === 'editable' && user.unlockExpiresAt) {
-            const expiry = user.unlockExpiresAt.toDate(); 
-            if (now > expiry) {
-                updateDoc(doc(db, "users", user.id), { status: 'active', unlockExpiresAt: null });
-                return; // 跳过此行，等待下一次快照
-            }
-        }
-
-        const personal = user.personal || {};
-        const employment = user.employment || {};
-        const status = user.status || 'active';
-        
-        let statusClass = 'bg-active'; 
-        if(status === 'complete') statusClass = 'bg-complete';
-        if(status === 'editable') statusClass = 'bg-editable';
-        if(status === 'disabled') statusClass = 'bg-secondary text-white';
-
-        const request = pendingRequests[user.id];
-        const hasRequest = !!request;
-
-        // 将 HTML 加入缓存字符串
-        htmlBuffer += `
-            <tr>
-                <td class="ps-4 fw-bold text-primary">${user.id}</td>
-                <td>
-                    <div class="fw-bold text-dark">${personal.name || 'Unknown'}</div>
-                    <small class="text-muted">${personal.email || '-'}</small>
-                </td>
-                <td>${employment.dept || '-'}</td>
-                <td><span class="status-badge ${statusClass}">${status}</span></td>
-                <td class="text-end pe-4">
-                    <div class="action-btn-group">
-                        <button class="btn btn-sm ${hasRequest ? 'btn-warning text-dark fw-bold' : 'btn-light text-muted border'}" 
-                                onclick="event.stopPropagation(); ${hasRequest ? `openReview('${user.id}')` : ''}" 
-                                ${!hasRequest ? 'disabled' : ''}>
-                            <span class="notif-dot ${hasRequest ? 'active' : ''}"></span>
-                            <i data-lucide="bell" class="size-3 me-1"></i> 
-                            ${hasRequest ? 'Review' : 'No Req'}
-                        </button>
-                        <a href="staff_details.html?uid=${user.id}" class="btn btn-sm btn-light border text-dark">
-                            Manage <i data-lucide="chevron-right" class="size-3 ms-1"></i>
-                        </a>
-                    </div>
-                </td>
-            </tr>`;
+    /**
+     * Search Input Event Listener
+     * Updates local state and re-renders table
+     */
+    document.getElementById('searchInput').addEventListener('keyup', (e) => {
+        searchTerm = e.target.value.toLowerCase().trim();
+        renderTable();
     });
 
-    // 3. 一次性写入 DOM
-    tbody.innerHTML = htmlBuffer;
-    lucide.createIcons();
-}
+    /**
+     * Render Staff Table
+     * Merges User Data with Request Data and applies Search Filter
+     */
+    function renderTable() {
+        const tbody = document.getElementById('staffTableBody');
+        const now = new Date();
+        
+        tbody.innerHTML = ''; 
+
+        if (staffList.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">No staff found.</td></tr>';
+            return;
+        }
+
+        let htmlBuffer = "";
+        let visibleCount = 0;
+
+        staffList.forEach(user => {
+            // Check for Auto-Lock Expiration (Logic only, does not affect visual filter)
+            if (user.status === 'editable' && user.unlockExpiresAt) {
+                const expiry = user.unlockExpiresAt.toDate(); 
+                if (now > expiry) {
+                    updateDoc(doc(db, "users", user.id), { status: 'active', unlockExpiresAt: null });
+                    return; // Skip rendering this frame to allow status update to propagate
+                }
+            }
+
+            // --- FILTER LOGIC ---
+            const name = (user.personal?.name || "").toLowerCase();
+            const email = (user.personal?.email || "").toLowerCase();
+            const id = user.id.toLowerCase();
+            const dept = (user.employment?.dept || "").toLowerCase();
+
+            // If search term exists and doesn't match any field, skip row
+            if (searchTerm && !name.includes(searchTerm) && !email.includes(searchTerm) && !id.includes(searchTerm) && !dept.includes(searchTerm)) {
+                return;
+            }
+
+            visibleCount++;
+
+            const personal = user.personal || {};
+            const employment = user.employment || {};
+            const status = user.status || 'active';
+            
+            // Determine Badge Color
+            let statusClass = 'bg-active'; 
+            if(status === 'complete') statusClass = 'bg-complete';
+            if(status === 'editable') statusClass = 'bg-editable';
+            if(status === 'disabled') statusClass = 'bg-secondary text-white';
+
+            const request = pendingRequests[user.id];
+            const hasRequest = !!request;
+
+            // Generate Row HTML
+            htmlBuffer += `
+                <tr>
+                    <td class="ps-4 fw-bold text-primary">${user.id}</td>
+                    <td>
+                        <div class="fw-bold text-dark">${personal.name || 'Unknown'}</div>
+                        <small class="text-muted">${personal.email || '-'}</small>
+                    </td>
+                    <td>${employment.dept || '-'}</td>
+                    <td><span class="status-badge ${statusClass}">${status}</span></td>
+                    <td class="text-end pe-4">
+                        <div class="action-btn-group">
+                            <button class="btn btn-sm ${hasRequest ? 'btn-warning text-dark fw-bold' : 'btn-light text-muted border'}" 
+                                    onclick="event.stopPropagation(); ${hasRequest ? `openReview('${user.id}')` : ''}" 
+                                    ${!hasRequest ? 'disabled' : ''}>
+                                <span class="notif-dot ${hasRequest ? 'active' : ''}"></span>
+                                <i data-lucide="bell" class="size-3 me-1"></i> 
+                                ${hasRequest ? 'Review' : 'No Req'}
+                            </button>
+                            <a href="staff_details.html?uid=${user.id}" class="btn btn-sm btn-light border text-dark">
+                                Manage <i data-lucide="chevron-right" class="size-3 ms-1"></i>
+                            </a>
+                        </div>
+                    </td>
+                </tr>`;
+        });
+
+        if (visibleCount === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">No results found matching your search.</td></tr>';
+        } else {
+            tbody.innerHTML = htmlBuffer;
+            lucide.createIcons();
+        }
+    }
+
+    // Expose Modal Functions to Window
     window.openReview = function(userId) {
         const request = pendingRequests[userId];
         if(!request) return;
@@ -313,24 +369,41 @@
         reviewModal.show();
     };
 
+    /**
+     * Handle Approve/Reject Logic
+     * Approve: Unlocks profile for 5 minutes.
+     * Reject: Marks request as rejected.
+     */
     window.processDecision = async function(decision) {
         const reqId = document.getElementById('hiddenRequestId').value;
         const userId = document.getElementById('hiddenUserId').value;
         const btn = document.querySelector('.modal-footer .btn-success'); 
-        btn.disabled = true; btn.innerText = "Processing...";
+        
+        btn.disabled = true; 
+        btn.innerText = "Processing...";
+        
         try {
             if(decision === 'approve') {
                 await updateDoc(doc(db, "edit_requests", reqId), { status: 'approved', reviewedAt: serverTimestamp() });
+                // Unlock profile for 5 minutes
                 const expiryDate = new Date(Date.now() + 5 * 60 * 1000); 
                 await updateDoc(doc(db, "users", userId), { status: 'editable', unlockExpiresAt: expiryDate });
             } else {
                 await updateDoc(doc(db, "edit_requests", reqId), { status: 'rejected', reviewedAt: serverTimestamp() });
             }
             reviewModal.hide();
-        } catch (error) { console.error(error); alert("Error: " + error.message); } 
-        finally { btn.disabled = false; btn.innerText = "Approve Request"; }
+        } catch (error) { 
+            alert("Error: " + error.message); 
+        } finally { 
+            btn.disabled = false; 
+            btn.innerText = "Approve Request"; 
+        }
     };
 
+    /**
+     * Leave Rules Management
+     * Loads and Saves entitlement configuration from Firestore
+     */
     async function loadLeaveRules() {
         try {
             const snap = await getDoc(settingsRef);
@@ -343,7 +416,9 @@
                 document.getElementById('t3_min').value = data.t3?.min ?? 5;
                 document.getElementById('t3_days').value = data.t3?.days ?? 16;
             }
-        } catch (e) { console.error("Error loading rules", e); }
+        } catch (e) { 
+            // Silent fail or UI toast could go here
+        }
     }
 
     window.saveLeaveRules = async function() {
@@ -361,19 +436,29 @@
         } catch (e) { alert("Error saving: " + e.message); }
     };
 
+    /**
+     * Batch Recalculation Logic
+     * 1. Fetches all leaves for the current year.
+     * 2. Calculates entitlement based on service years.
+     * 3. Performs a Batch Write to update all user documents at once.
+     */
     window.recalculateAllBalances = async function() {
         const currentYear = new Date().getFullYear();
         const startOfYear = `${currentYear}-01-01`;
         if(!confirm(`Recalculate Annual Leave for ${currentYear}?\n\nLogic:\n1. Calculate Entitlement.\n2. Subtract leaves taken AFTER ${startOfYear}.\n3. Reset Balance.`)) return;
 
+        // Create temporary status toast
         const statusDiv = document.createElement('div');
         statusDiv.style.position = 'fixed'; statusDiv.style.top = '10px'; statusDiv.style.left = '50%'; statusDiv.style.transform = 'translateX(-50%)'; statusDiv.style.background = 'black'; statusDiv.style.color = 'white'; statusDiv.style.padding = '10px 20px'; statusDiv.style.borderRadius = '5px'; statusDiv.style.zIndex = '9999';
         document.body.appendChild(statusDiv);
         statusDiv.innerText = `Analyzing Leave History for ${currentYear}...`;
 
         try {
+            // 1. Get Rules
             const ruleSnap = await getDoc(settingsRef);
             const rules = ruleSnap.exists() ? ruleSnap.data() : { t1: {min:1, days:8}, t2: {min:2, days:12}, t3: {min:5, days:16} };
+            
+            // 2. Get Used Leaves
             const leavesQ = query(collection(db, "leaves"), where("status", "==", "Approved"), where("type", "==", "Annual Leave"), where("startDate", ">=", startOfYear));
             const leaveSnaps = await getDocs(leavesQ);
             const usedMap = {};
@@ -385,6 +470,7 @@
                 }
             });
 
+            // 3. Update Users
             statusDiv.innerText = "Updating User Balances...";
             const q = query(collection(db, "users"), where("role", "==", "staff"));
             const snapshot = await getDocs(q);
@@ -395,26 +481,31 @@
                 const data = docSnap.data();
                 const joinDateStr = data.employment?.joinDate;
                 if (joinDateStr) {
+                    // Calculate Entitlement
                     const joinDate = new Date(joinDateStr);
                     const diffTime = Math.abs(new Date() - joinDate);
                     const yearsService = diffTime / (1000 * 60 * 60 * 24 * 365.25);
+                    
                     let entitlement = 0;
                     if (yearsService >= rules.t3.min) entitlement = rules.t3.days;
                     else if (yearsService >= rules.t2.min) entitlement = rules.t2.days;
                     else if (yearsService >= rules.t1.min) entitlement = rules.t1.days;
+                    
                     const usedDays = usedMap[docSnap.id] || 0;
                     let finalBalance = entitlement - usedDays;
+                    
                     const userRef = doc(db, "users", docSnap.id);
                     batch.update(userRef, { "leave_balance.annual": finalBalance, "meta.balanceLastUpdated": serverTimestamp(), "meta.balanceYear": currentYear });
                     count++;
                 }
             });
+
             await batch.commit();
             statusDiv.style.background = 'green';
             statusDiv.innerText = `Success! Updated ${count} records.`;
             setTimeout(() => statusDiv.remove(), 4000);
+
         } catch (e) {
-            console.error(e);
             statusDiv.style.background = 'red';
             statusDiv.innerText = "Error: " + e.message;
             setTimeout(() => statusDiv.remove(), 5000);

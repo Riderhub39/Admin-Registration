@@ -9,7 +9,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
-        /* 页面特定样式 */
+        /* Page Specific Styles */
         #loadingOverlay { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(255, 255, 255, 0.95); z-index: 9999; 
@@ -336,7 +336,6 @@
     import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-    // 引入配置文件和 Header 逻辑
     import { firebaseConfig } from "./firebase-config.js";
     import { initUnifiedHeader } from "./header-app.js";
 
@@ -348,38 +347,38 @@
     const loadingText = document.getElementById('loadingText');
     const mainContainer = document.getElementById('mainContainer');
 
-    // --- 安全验证逻辑 (修改部分) ---
     onAuthStateChanged(auth, async (user) => {
         if (!user) {
             window.location.href = "index.html";
             return;
         }
 
-        // 验证 Admin 权限
         try {
             const userDoc = await getDoc(doc(db, "users", user.uid));
             if (userDoc.exists()) {
                 const userData = userDoc.data();
                 
                 if (userData.role === 'admin') {
-                    // 验证通过
-                    initUnifiedHeader(auth, db); // 初始化 Header
-                    overlay.style.display = 'none'; // 隐藏 Loading
-                    mainContainer.classList.remove('d-none'); // 显示主内容
+                    initUnifiedHeader(auth, db); 
+                    overlay.style.display = 'none'; 
+                    mainContainer.classList.remove('d-none'); 
+
+                    // 🟢 NEW: Set default Join Date to today
+                    const joinDateInput = document.getElementById('Join Date');
+                    if (joinDateInput && !joinDateInput.value) {
+                        joinDateInput.value = new Date().toISOString().split('T')[0];
+                    }
                 } else {
-                    // 权限不足
                     alert("Unauthorized Access: Admins only.");
                     await signOut(auth);
                     window.location.href = "index.html";
                 }
             } else {
-                // 找不到用户档案
                 alert("Account error: Profile not found.");
                 await signOut(auth);
                 window.location.href = "index.html";
             }
         } catch (error) {
-            console.error("Auth Error:", error);
             alert("System Error during authentication.");
             window.location.href = "index.html";
         }
@@ -388,8 +387,6 @@
     lucide.createIcons();
     let excelData = [];
     const empModal = new bootstrap.Modal(document.getElementById('employeeModal'));
-
-    // --- 以下保持原有的 Excel 和表单逻辑 ---
 
     document.getElementById('excelUpload').addEventListener('change', function(e) {
         const file = e.target.files[0];
@@ -475,14 +472,13 @@
         empModal.hide();
     };
 
-    // --- Calculate Entitlement ---
     async function calculateAnnualEntitlement(joinDateStr) {
         if (!joinDateStr) return 0;
         let rules = { t1: {min:1, days:8}, t2: {min:2, days:12}, t3: {min:5, days:16} }; 
         try {
             const snap = await getDoc(doc(db, "settings", "leave_rules"));
             if(snap.exists()) rules = snap.data();
-        } catch(e) { console.error("Could not load leave rules, using default.", e); }
+        } catch(e) { }
 
         const joinDate = new Date(joinDateStr);
         const today = new Date();
@@ -511,12 +507,10 @@
         const empCode = document.getElementById('Employee Code').value;
         if (!empCode) { alert("Error: Employee Code is required!"); return; }
 
-        // 显示 Loading
         overlay.style.display = 'flex';
         loadingText.innerText = `Checking for duplicates...`;
 
         try {
-            // 1. Doc ID Check
             const docRef = doc(db, "users", empCode);
             const docSnap = await getDoc(docRef);
             if (docSnap.exists()) {
@@ -525,15 +519,13 @@
                 return;
             }
 
-            // ⚠️ Get and Format Phone Number
             const rawPhone = getVal('Mobile Number');
             const formattedPhone = formatMalaysianPhone(rawPhone);
 
-            // 2. Setup parallel field checks
             const fieldsToCheck = [
                 { id: 'MYKAD/IC (Malaysian or PR)', dbField: 'personal.icNo', label: 'IC Number' },
                 { id: 'Email Address', dbField: 'personal.email', label: 'Email' },
-                { id: 'Mobile Number', dbField: 'personal.mobile', label: 'Mobile Number', valueOverride: formattedPhone }, // 🟢 Use formatted phone
+                { id: 'Mobile Number', dbField: 'personal.mobile', label: 'Mobile Number', valueOverride: formattedPhone }, 
                 { id: 'Passport No', dbField: 'foreign.passport', label: 'Passport Number' },
                 { id: 'Foreign ID No', dbField: 'foreign.id', label: 'Foreign ID' },
                 { id: 'EPF Number', dbField: 'statutory.epf.no', label: 'EPF Number' },
@@ -546,7 +538,7 @@
             });
 
             const checkDuplicate = async (config) => {
-                const value = config.valueOverride || getVal(config.id); // 🟢 Use override if available
+                const value = config.valueOverride || getVal(config.id); 
                 if (!value) return null;
                 const q = query(collection(db, "users"), where(config.dbField, "==", value));
                 const snapshot = await getDocs(q);
@@ -594,7 +586,6 @@
             }
 
         } catch (error) {
-            console.error("Check failed:", error);
             alert("Connection error: " + error.message);
             overlay.style.display = 'none';
             return;
@@ -631,7 +622,7 @@
                 empType: getVal('Employment Type'),
                 blood: getVal('Blood Type'),
                 email: getVal('Email Address'),
-                mobile: formatMalaysianPhone(getVal('Mobile Number')) // 🟢 Clean Phone Before Saving
+                mobile: formatMalaysianPhone(getVal('Mobile Number')) 
             },
             foreign: {
                 id: getVal('Foreign ID No'),
@@ -761,7 +752,6 @@
             await setDoc(doc(db, "users", empCode), formData);
             alert(`Success! User ${empCode} created.\nRole: Staff\nStatus: Completed`);
         } catch (error) {
-            console.error("Firebase Error:", error);
             if(error.code === 'permission-denied') {
                 alert("Permission Denied! Check Firestore Rules for 'users' collection.");
             } else {
@@ -824,7 +814,6 @@
         try { return new Date(val).toISOString().split('T')[0]; } catch(e){ return val; }
     };
 
-    // 🟢 Standard Malaysian Phone Formatter (+60...)
     window.formatMalaysianPhone = function(input) {
         if (!input) return "";
         let cleaned = input.toString().replace(/\D/g, '');

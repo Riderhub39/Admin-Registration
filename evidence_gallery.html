@@ -11,6 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
+        /* Section styling for grouping photos by staff */
         .staff-section {
             background: white;
             border: 1px solid #e2e8f0;
@@ -101,7 +102,7 @@
             
             <select id="staffFilter" class="form-select ms-2" style="width: 200px;" onchange="loadEvidence()">
                 <option value="all">All Staff</option>
-                </select>
+            </select>
         </div>
     </div>
 
@@ -143,6 +144,7 @@
     import { firebaseConfig } from "./firebase-config.js";
     import { initUnifiedHeader } from "./header-app.js";
 
+    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
@@ -151,38 +153,49 @@
 
     const imageModal = new bootstrap.Modal(document.getElementById('imageModal'));
 
-    // 🟢 Init Date to Today
+    // Initialize date filter to today
     const dateInput = document.getElementById('dateFilter');
     dateInput.value = new Date().toISOString().split('T')[0];
 
-    // 🟢 Change Date Helper
+    /**
+     * Helper to increment/decrement date
+     */
     window.changeDate = (days) => {
         const current = new Date(dateInput.value);
         current.setDate(current.getDate() + days);
         dateInput.value = current.toISOString().split('T')[0];
-        loadEvidence(); // Auto-load
+        loadEvidence(); // Reload data
     };
 
-    // 🟢 Expose loadEvidence globally
+    // Expose load function to global scope for HTML event handlers
     window.loadEvidence = loadEvidenceImpl; 
 
+    /**
+     * Auth Observer
+     * Checks if user is logged in and is an Admin before loading data.
+     */
     onAuthStateChanged(auth, async (user) => {
         if (user) {
-            // Check Admin Role
-            const adminDoc = await getDoc(doc(db, "users", user.uid));
-            if (adminDoc.exists() && adminDoc.data().role === 'admin') {
-                await loadStaffList();
-                loadEvidence(); // Initial Load
-            } else {
-                alert("Unauthorized Access");
-                window.location.href = "index.html";
+            try {
+                const adminDoc = await getDoc(doc(db, "users", user.uid));
+                if (adminDoc.exists() && adminDoc.data().role === 'admin') {
+                    await loadStaffList();
+                    loadEvidence(); // Initial Load
+                } else {
+                    alert("Unauthorized Access");
+                    window.location.href = "index.html";
+                }
+            } catch (e) {
+                console.error("Auth check failed:", e);
             }
         } else {
             window.location.href = "index.html";
         }
     });
 
-    // 1. Populate Staff Filter
+    /**
+     * Fetches staff list to populate the filter dropdown
+     */
     async function loadStaffList() {
         const select = document.getElementById('staffFilter');
         try {
@@ -201,21 +214,24 @@
         }
     }
 
-    // 2. Load Photos Logic Implementation
+    /**
+     * Main logic to fetch and render evidence photos
+     */
     async function loadEvidenceImpl() {
         const container = document.getElementById('galleryContainer');
         const dateVal = document.getElementById('dateFilter').value;
         const staffVal = document.getElementById('staffFilter').value;
 
+        // Show loading state
         container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>';
 
         try {
-            // Build Time Range
+            // Define time range for the selected date (Start of day to End of day)
             const startDate = new Date(dateVal);
             const endDate = new Date(dateVal);
             endDate.setHours(23, 59, 59, 999);
 
-            // Query: evidence_logs
+            // Query Firestore for evidence logs
             let q = query(
                 collection(db, "evidence_logs"),
                 where("capturedAt", ">=", startDate),
@@ -223,7 +239,6 @@
                 orderBy("capturedAt", "desc")
             );
 
-            // Fetch
             const snap = await getDocs(q);
             
             if (snap.empty) {
@@ -232,11 +247,12 @@
                 return;
             }
 
-            // Group by Staff
+            // Group results by Staff Name
             const grouped = {};
             snap.forEach(doc => {
                 const d = doc.data();
-                // Filter by Staff ID (Manual filter)
+                
+                // Client-side filtering for specific staff selection
                 if (staffVal !== 'all' && d.uid !== staffVal) return;
 
                 const sName = d.staffName || "Unknown Staff";
@@ -244,13 +260,13 @@
                 grouped[sName].push({ id: doc.id, ...d });
             });
 
-            // Check if empty after filtering
+            // Handle empty state after client-side filtering
             if (Object.keys(grouped).length === 0) {
                 container.innerHTML = `<div class="text-center py-5 text-muted"><p>No photos found for selected staff.</p></div>`;
                 return;
             }
 
-            // Render
+            // Render gallery
             container.innerHTML = '';
             Object.keys(grouped).forEach(staffName => {
                 const photos = grouped[staffName];
@@ -260,6 +276,7 @@
                 let photosHtml = '';
                 photos.forEach(p => {
                     const timeStr = p.localTime ? p.localTime.split(' ')[1] : "Unknown"; 
+                    // Escape data for secure injection
                     const safeData = JSON.stringify(p).replace(/"/g, '&quot;');
                     
                     photosHtml += `
@@ -297,7 +314,9 @@
         }
     }
 
-    // 3. Modal Logic
+    /**
+     * Opens the full-size image modal
+     */
     window.openPhoto = (data) => {
         document.getElementById('modalFullImage').src = data.photoUrl;
         document.getElementById('modalStaffName').innerText = data.staffName;

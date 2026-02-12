@@ -11,6 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
+        /* Dashboard specific styles */
         .quick-action-btn {
             background: white; border: 1px solid #e2e8f0; border-radius: 12px;
             padding: 15px; text-align: center; transition: all 0.2s;
@@ -57,13 +58,8 @@
                 <div class="bg-primary bg-opacity-10 p-2 rounded-circle mb-2 text-primary"><i data-lucide="user" class="size-5"></i></div>
                 <div class="fw-bold small">Onboard Staff</div>
             </a>
-        </div>
-        <div class="col-6 col-md-2">
-            <a href="attendance.html" class="quick-action-btn">
-                <div class="bg-success bg-opacity-10 p-2 rounded-circle mb-2 text-success"><i data-lucide="file-spreadsheet" class="size-5"></i></div>
-                <div class="fw-bold small">Export Report</div>
-            </a>
-        </div>
+        </div>  
+        
         <div class="col-6 col-md-2">
             <a href="payroll.html" class="quick-action-btn">
                 <div class="bg-danger bg-opacity-10 p-2 rounded-circle mb-2 text-danger"><i data-lucide="dollar-sign" class="size-5"></i></div>
@@ -87,7 +83,7 @@
                 <div class="bg-dark bg-opacity-10 p-2 rounded-circle mb-2 text-dark">
                     <i data-lucide="images" class="size-5"></i>
                 </div>
-                <div class="fw-bold small">Photos</div>
+                <div class="fw-bold small">Cases Photos</div>
             </a>
         </div>
         <div class="col-6 col-md-2">
@@ -222,18 +218,32 @@
     import { firebaseConfig } from "./firebase-config.js";
     import { initUnifiedHeader } from "./header-app.js";
 
+    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
 
+    // Initialize Global Header
     initUnifiedHeader(auth, db);
 
     let attChartInstance = null;
     const announceModal = new bootstrap.Modal(document.getElementById('announceModal'));
     const officeModal = new bootstrap.Modal(document.getElementById('officeSettingsModal'));
 
-    onAuthStateChanged(auth, (user) => { if (user) initDashboard(); });
+    /**
+     * Auth Observer
+     * Initializes dashboard data only when user is authenticated
+     */
+    onAuthStateChanged(auth, (user) => { 
+        if (user) {
+            initDashboard(); 
+        }
+    });
 
+    /**
+     * Dashboard Initialization
+     * Loads date, statistics, tasks, and tracking data
+     */
     function initDashboard() {
         document.getElementById('attDate').innerText = new Date().toLocaleDateString('en-GB', { day:'numeric', month:'short' });
         loadAttendanceStats();
@@ -241,6 +251,9 @@
         loadTrackingStats();
     }
 
+    /**
+     * Helper: Get current date as YYYY-MM-DD string
+     */
     function getLocalDateStr() {
         const now = new Date();
         const year = now.getFullYear();
@@ -249,12 +262,13 @@
         return `${year}-${month}-${day}`;
     }
 
-    // ==========================================
-    // 🟢 FIXED: Attendance Stats with ID Mapping
-    // ==========================================
+    /**
+     * Logic: Attendance Statistics
+     * Fetches Users, today's Schedules, and today's Attendance.
+     * Calculates Present, Late, and Absent counts by mapping User Docs to Auth UIDs.
+     */
     async function loadAttendanceStats() {
         const todayStr = getLocalDateStr();
-        console.log("📊 Loading Stats for:", todayStr);
 
         try {
             const [usersSnap, attSnap, schedSnap] = await Promise.all([
@@ -263,11 +277,9 @@
                 getDocs(query(collection(db, "schedules"), where("date", "==", todayStr)))
             ]);
 
-            // 🟢 1. Build Staff Map: Document ID -> Auth UID
-            // Because Schedules use Doc ID, but Attendance uses Auth UID.
-            // We'll standardize everything to use Document ID for counting.
+            // 1. Build Staff Mapping (Document ID <-> Auth UID)
             const staffDocIds = new Set();
-            const authUidToDocId = {}; // Map AuthUID -> DocID
+            const authUidToDocId = {}; 
 
             usersSnap.forEach(doc => {
                 const data = doc.data();
@@ -279,18 +291,13 @@
                 }
             });
 
-            console.log(`📊 Staff: ${staffDocIds.size}, AuthMap Size: ${Object.keys(authUidToDocId).length}`);
-
-            // 🟢 2. Map Attendance to Doc IDs
-            const attendanceMap = {}; // DocID -> Records
+            // 2. Map Attendance Records to correct User IDs
+            const attendanceMap = {}; 
             attSnap.forEach(doc => {
                 const d = doc.data();
                 if (d.verificationStatus !== 'Rejected') {
-                    // Try to resolve Doc ID from Auth UID
                     let docId = authUidToDocId[d.uid]; 
-                    
-                    // Fallback: If not found in map, maybe d.uid IS the docId (rare but possible)
-                    if (!docId && staffDocIds.has(d.uid)) docId = d.uid;
+                    if (!docId && staffDocIds.has(d.uid)) docId = d.uid; // Fallback
 
                     if (docId && staffDocIds.has(docId)) {
                         if (!attendanceMap[docId]) attendanceMap[docId] = [];
@@ -299,7 +306,7 @@
                 }
             });
 
-            // 🟢 3. Map Schedules (Uses Doc ID directly)
+            // 3. Map Schedules
             const scheduleMap = {}; 
             schedSnap.forEach(doc => {
                 const d = doc.data();
@@ -311,7 +318,7 @@
                 }
             });
 
-            // 🟢 4. Calculate Final Counts
+            // 4. Compute Counts
             let presentCount = 0;
             let lateCount = 0;
             let absentCount = 0;
@@ -322,7 +329,7 @@
 
                 if (records.length > 0) {
                     presentCount++;
-                    // Check Late
+                    // Determine Lateness based on first Clock In vs Schedule Start
                     const clockIn = records
                         .filter(r => r.session === 'Clock In')
                         .sort((a, b) => (a.timestamp?.toDate() || 0) - (b.timestamp?.toDate() || 0))[0];
@@ -330,8 +337,8 @@
                     if (clockIn) {
                         const time = clockIn.timeIn ? clockIn.timeIn.toDate() : clockIn.timestamp.toDate();
                         let threshold = schedStart 
-                            ? new Date(schedStart.getTime() + 15 * 60000) 
-                            : new Date(todayStr + "T09:15:00");
+                            ? new Date(schedStart.getTime() + 15 * 60000) // 15 min buffer
+                            : new Date(todayStr + "T09:15:00"); // Default default
                         if (time > threshold) lateCount++;
                     }
                 } else {
@@ -339,9 +346,7 @@
                 }
             });
 
-            console.log(`📊 Result -> Present: ${presentCount}, Late: ${lateCount}, Absent: ${absentCount}`);
-
-            // Update UI
+            // Update DOM
             document.getElementById('countPresent').innerText = presentCount;
             document.getElementById('countLate').innerText = lateCount;
             document.getElementById('countAbsent').innerText = absentCount;
@@ -355,6 +360,9 @@
         } catch (e) { console.error("Error loading stats:", e); }
     }
 
+    /**
+     * Logic: Render Chart.js Doughnut Chart
+     */
     function updateChart(present, absent, late) {
         const ctx = document.getElementById('attChart').getContext('2d');
         if (attChartInstance) attChartInstance.destroy();
@@ -369,10 +377,13 @@
         });
     }
 
+    // Navigation Helper
     window.goToAttendance = (filter) => { window.location.href = `attendance.html?filter=${filter}`; };
 
-    // ... Other functions (loadTrackingStats, Office Settings) remain same ...
-    
+    /**
+     * Logic: Live GPS Tracking Stats
+     * Counts active users (updated within last 15 mins) vs offline
+     */
     function loadTrackingStats() {
         const todayStr = getLocalDateStr();
         onSnapshot(query(collection(db, "tracking_logs"), where("date", "==", todayStr)), (snap) => {
@@ -380,6 +391,7 @@
             const now = new Date();
             snap.forEach(doc => {
                 const last = doc.data().lastUpdate ? doc.data().lastUpdate.toDate() : new Date(0);
+                // 15 minute threshold for "Active"
                 if ((now - last) / 60000 <= 15) online++; else offline++;
             });
             document.getElementById('trackOnline').innerText = online;
@@ -387,14 +399,39 @@
         });
     }
 
+    /**
+     * Logic: Action Required Counters
+     * Listens for pending leaves, attendance corrections, and edit requests.
+     */
     function loadAllTasks() {
-        onSnapshot(query(collection(db, "leaves"), where("status", "==", "Pending")), (snap) => document.getElementById('count-leave').innerText = snap.size);
-        onSnapshot(query(collection(db, "attendance_corrections"), where("status", "==", "Pending")), (snap) => document.getElementById('count-att').innerText = snap.size);
-        onSnapshot(query(collection(db, "edit_requests"), where("status", "==", "pending")), (snap) => document.getElementById('count-edit').innerText = snap.size);
+        // Pending Leaves
+        onSnapshot(query(collection(db, "leaves"), where("status", "==", "Pending")), (snap) => {
+            const count = snap.size;
+            document.getElementById('count-leave').innerText = count;
+            document.getElementById('badge-leave').style.display = count > 0 ? 'inline-block' : 'none';
+        });
+        
+        // Pending Attendance Corrections
+        onSnapshot(query(collection(db, "attendance_corrections"), where("status", "==", "Pending")), (snap) => {
+            const count = snap.size;
+            document.getElementById('count-att').innerText = count;
+            document.getElementById('badge-att').style.display = count > 0 ? 'inline-block' : 'none';
+        });
+
+        // Pending Profile Edits
+        onSnapshot(query(collection(db, "edit_requests"), where("status", "==", "pending")), (snap) => {
+            const count = snap.size;
+            document.getElementById('count-edit').innerText = count;
+            document.getElementById('badge-edit').style.display = count > 0 ? 'inline-block' : 'none';
+        });
     }
 
-    // Office Settings Logic
+    /**
+     * Logic: Office Settings Modal
+     * Handles fetching and updating Geofence coords and WiFi whitelist
+     */
     let currentWifiList = [];
+    
     window.openOfficeSettingsModal = async () => {
         officeModal.show();
         try {
@@ -404,6 +441,8 @@
                 document.getElementById('officeLat').value = data.latitude || '';
                 document.getElementById('officeLng').value = data.longitude || '';
                 document.getElementById('officeRadius').value = data.radius || 500;
+                
+                // Handle legacy string array or new object array for WiFi
                 if (Array.isArray(data.allowedWifis)) {
                     currentWifiList = data.allowedWifis.map(item => typeof item === 'string' ? { ssid: item, bssid: '' } : item);
                 } else if (data.wifiSSID) {
@@ -418,7 +457,14 @@
         const list = document.getElementById('wifiListContainer');
         list.innerHTML = "";
         currentWifiList.forEach((wifi, index) => {
-            list.innerHTML += `<div class="wifi-item"><div><div class="fw-bold"><i data-lucide="wifi" class="text-success me-1" style="width:14px; display:inline-block; vertical-align:middle;"></i> ${wifi.ssid}</div><div class="small text-muted" style="font-family:monospace; font-size: 0.85em;">${wifi.bssid ? `BSSID: ${wifi.bssid}` : '<span class="text-warning">⚠️ Any BSSID</span>'}</div></div><button class="btn btn-sm text-danger border-0" onclick="removeWifi(${index})"><i data-lucide="trash-2" style="width:16px"></i></button></div>`;
+            list.innerHTML += `
+                <div class="wifi-item">
+                    <div>
+                        <div class="fw-bold"><i data-lucide="wifi" class="text-success me-1" style="width:14px; display:inline-block; vertical-align:middle;"></i> ${wifi.ssid}</div>
+                        <div class="small text-muted" style="font-family:monospace; font-size: 0.85em;">${wifi.bssid ? `BSSID: ${wifi.bssid}` : '<span class="text-warning">⚠️ Any BSSID</span>'}</div>
+                    </div>
+                    <button class="btn btn-sm text-danger border-0" onclick="removeWifi(${index})"><i data-lucide="trash-2" style="width:16px"></i></button>
+                </div>`;
         });
         lucide.createIcons();
     }
@@ -428,35 +474,55 @@
         const bssid = document.getElementById('newWifiBSSID').value.trim().toLowerCase();
         if (!ssid) return alert("WiFi Name (SSID) is required.");
         currentWifiList.push({ ssid, bssid });
+        // Clear inputs
         document.getElementById('newWifiSSID').value = "";
         document.getElementById('newWifiBSSID').value = "";
         renderWifiList();
     };
 
-    window.removeWifi = (index) => { currentWifiList.splice(index, 1); renderWifiList(); };
+    window.removeWifi = (index) => { 
+        currentWifiList.splice(index, 1); 
+        renderWifiList(); 
+    };
 
     window.saveOfficeSettings = async () => {
         const lat = parseFloat(document.getElementById('officeLat').value);
         const lng = parseFloat(document.getElementById('officeLng').value);
         const rad = parseFloat(document.getElementById('officeRadius').value);
         try {
-            await setDoc(doc(db, "settings", "office_location"), { latitude: lat, longitude: lng, radius: rad, allowedWifis: currentWifiList, updatedAt: serverTimestamp() }, { merge: true });
-            alert("✅ Settings Saved!"); officeModal.hide();
+            await setDoc(doc(db, "settings", "office_location"), { 
+                latitude: lat, 
+                longitude: lng, 
+                radius: rad, 
+                allowedWifis: currentWifiList, 
+                updatedAt: serverTimestamp() 
+            }, { merge: true });
+            alert("✅ Settings Saved!"); 
+            officeModal.hide();
         } catch (e) { alert("Error saving: " + e.message); }
     };
 
+    /**
+     * Logic: Announcements
+     */
     window.openAnnouncementModal = () => announceModal.show();
+    
     window.submitAnnouncement = async () => {
         const text = document.getElementById('announceText').value;
         if (!text) return;
         try {
-            await addDoc(collection(db, "announcements"), { message: text, createdAt: serverTimestamp(), author: auth.currentUser.email });
+            await addDoc(collection(db, "announcements"), { 
+                message: text, 
+                createdAt: serverTimestamp(), 
+                author: auth.currentUser.email 
+            });
             alert("Announcement Posted!");
             document.getElementById('announceText').value = "";
             announceModal.hide();
         } catch (e) { alert("Error posting."); }
     };
 
+    // Initialize Icons
     lucide.createIcons();
 </script>
 </body>

@@ -10,6 +10,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <style>
+        /* Loading Overlay Styling */
         #loadingOverlay { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(255, 255, 255, 0.95); z-index: 9999; 
@@ -25,10 +26,12 @@
         .table-hover tbody tr { transition: background-color 0.2s; }
         .avatar-initial { width: 32px; height: 32px; background: #e0e7ff; color: #3730a3; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; }
         
+        /* Leave Type Badges */
         .badge-leave-annual { background-color: #dbeafe; color: #1e40af; }
         .badge-leave-medical { background-color: #fce7f3; color: #9d174d; }
         .badge-leave-unpaid { background-color: #ffedd5; color: #9a3412; } 
         
+        /* Status Badges */
         .status-pending { background-color: #fef9c3; color: #854d0e; }
         .status-approved { background-color: #dcfce7; color: #166534; }
         .status-rejected { background-color: #fee2e2; color: #991b1b; }
@@ -142,9 +145,8 @@
                                 <tr>
                                     <th class="ps-4">Employee</th>
                                     <th>Type</th>
-                                    <th>Dates</th>
-                                    <th>Days</th>
-                                    <th>Status</th>
+                                    <th>Dates (Days)</th>
+                                    <th>Reason & Proof</th> <th>Status</th>
                                     <th class="text-end pe-4">Review Date</th>
                                 </tr>
                             </thead>
@@ -204,6 +206,7 @@
     import { firebaseConfig } from "./firebase-config.js";
     import { initUnifiedHeader } from "./header-app.js";
 
+    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const auth = getAuth(app);
@@ -211,6 +214,7 @@
     let fullHistoryList = [];
     let attachmentModal, rejectModal;
 
+    // Initialize Modals
     try {
         attachmentModal = new bootstrap.Modal(document.getElementById('attachmentModal'));
         rejectModal = new bootstrap.Modal(document.getElementById('rejectModal'));
@@ -218,6 +222,7 @@
 
     document.getElementById('todayDate').innerText = new Date().toLocaleDateString();
 
+    // --- Authentication & Access Control ---
     onAuthStateChanged(auth, async (user) => {
         if (!user) {
             window.location.href = "index.html";
@@ -244,27 +249,32 @@
         }
     });
 
+    // --- Data Listeners ---
     function initListeners() {
+        // Listener 1: Pending Requests
         const qPending = query(collection(db, "leaves"), where("status", "==", "Pending"));
         onSnapshot(qPending, (snapshot) => {
             const list = [];
             snapshot.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+            // Sort by applied date (oldest first)
             list.sort((a,b) => (a.appliedAt?.seconds || 0) - (b.appliedAt?.seconds || 0));
             renderPending(list);
             updateBadge(list.length);
         });
 
+        // Listener 2: History (Approved/Rejected)
         const qHistory = query(collection(db, "leaves"), where("status", "in", ["Approved", "Rejected"]));
         onSnapshot(qHistory, (snapshot) => {
             const list = [];
             snapshot.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+            // Sort by reviewed date (newest first)
             list.sort((a,b) => (b.reviewedAt?.seconds || 0) - (a.reviewedAt?.seconds || 0));
             fullHistoryList = list;
             filterHistory();
         });
     }
 
-    // --- Time Filter Logic ---
+    // --- Filter Logic ---
     window.toggleCustomDate = function() {
         const period = document.getElementById('filterPeriod').value;
         const customInput = document.getElementById('customDateContainer');
@@ -303,6 +313,7 @@
             if (itemDate) {
                 const itemYear = itemDate.getFullYear();
                 const itemMonth = itemDate.getMonth();
+                
                 if (periodFilter === 'this_year') matchDate = (itemYear === currentYear);
                 else if (periodFilter === 'this_month') matchDate = (itemYear === currentYear && itemMonth === currentMonth);
                 else if (periodFilter === 'last_month') {
@@ -330,44 +341,92 @@
     function renderPending(list) {
         const tbody = document.getElementById('pendingTable');
         tbody.innerHTML = '';
+        
         if(list.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" class="text-center py-5 text-muted"><i data-lucide="check-circle" class="size-8 mb-2 text-success"></i><br>All caught up! No pending requests.</td></tr>';
             lucide.createIcons();
             return;
         }
+        
         list.forEach(item => {
             const badgeClass = getBadgeClass(item.type);
             const displayName = item.empName || item.email || 'Unknown User';
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td class="ps-4"><div class="d-flex align-items-center gap-2"><div class="avatar-initial">${displayName.charAt(0).toUpperCase()}</div><div><div class="fw-bold text-dark">${displayName}</div><small class="text-muted">ID: ${item.uid || '-'}</small></div></div></td>
+                <td class="ps-4">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="avatar-initial">${displayName.charAt(0).toUpperCase()}</div>
+                        <div>
+                            <div class="fw-bold text-dark">${displayName}</div>
+                            <small class="text-muted">ID: ${item.uid || '-'}</small>
+                        </div>
+                    </div>
+                </td>
                 <td><span class="badge ${badgeClass} border">${item.type}</span></td>
-                <td><div class="fw-bold text-dark">${formatDate(item.startDate)} <span class="text-muted fw-normal">to</span></div><div class="fw-bold text-dark">${formatDate(item.endDate)}</div><small class="text-primary fw-bold">${item.days} Day(s)</small></td>
-                <td style="max-width: 250px;"><div class="text-truncate mb-1" title="${item.reason}">${item.reason || '-'}</div>${item.attachmentUrl ? `<button class="btn btn-sm btn-light border text-primary" onclick="viewAttachment('${item.attachmentUrl}')"><i data-lucide="paperclip" class="size-3 me-1"></i> View Proof</button>` : '<small class="text-muted fst-italic">No attachment</small>'}</td>
-                <td class="text-end pe-4"><button class="btn btn-sm btn-outline-danger me-1" onclick="openRejectModal('${item.id}')">Reject</button><button class="btn btn-sm btn-success fw-bold text-white" onclick="handleApprove('${item.id}', '${item.uid}', ${item.days}, '${item.type}')">Approve</button></td>`;
+                <td>
+                    <div class="fw-bold text-dark">${formatDate(item.startDate)} <span class="text-muted fw-normal">to</span></div>
+                    <div class="fw-bold text-dark">${formatDate(item.endDate)}</div>
+                    <small class="text-primary fw-bold">${item.days} Day(s)</small>
+                </td>
+                <td style="max-width: 250px;">
+                    <div class="text-truncate mb-1" title="${item.reason}">${item.reason || '-'}</div>
+                    ${item.attachmentUrl ? `<button class="btn btn-sm btn-light border text-primary" onclick="viewAttachment('${item.attachmentUrl}')"><i data-lucide="paperclip" class="size-3 me-1"></i> View Proof</button>` : '<small class="text-muted fst-italic">No attachment</small>'}
+                </td>
+                <td class="text-end pe-4">
+                    <button class="btn btn-sm btn-outline-danger me-1" onclick="openRejectModal('${item.id}')">Reject</button>
+                    <button class="btn btn-sm btn-success fw-bold text-white" onclick="handleApprove('${item.id}', '${item.uid}', ${item.days}, '${item.type}')">Approve</button>
+                </td>`;
             tbody.appendChild(tr);
         });
         lucide.createIcons();
     }
 
+    /**
+     * Renders the History table.
+     * UPDATED: Now allows viewing attachment/proof for past leaves.
+     */
     function renderHistory(list) {
         const tbody = document.getElementById('historyTable');
         tbody.innerHTML = '';
+        
         if(list.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5 text-muted">No history found matching filters.</td></tr>';
             return;
         }
+        
         list.forEach(item => {
             let statusClass = item.status === 'Approved' ? 'status-approved' : 'status-rejected';
             const displayName = item.empName || item.email || '-';
             let reasonNote = item.status === 'Rejected' && item.rejectionReason ? `<div class="mt-1 text-danger small fw-bold"><i data-lucide="alert-circle" class="size-3 me-1"></i>Reason: ${item.rejectionReason}</div>` : '';
+            
+            // View Proof Button Logic
+            const attachmentBtn = item.attachmentUrl 
+                ? `<button class="btn btn-xs btn-light border text-primary mt-1" onclick="viewAttachment('${item.attachmentUrl}')"><i data-lucide="paperclip" class="size-3 me-1"></i> Proof</button>` 
+                : '';
+
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td class="ps-4 fw-bold">${displayName}</td><td>${item.type}</td><td>${formatDate(item.startDate)} - ${formatDate(item.endDate)}</td><td>${item.days}</td><td><span class="badge ${statusClass} border text-uppercase">${item.status}</span>${reasonNote}</td><td class="text-end pe-4 text-muted small">${formatDate(item.reviewedAt, true)}</td>`;
+            tr.innerHTML = `
+                <td class="ps-4 fw-bold">${displayName}</td>
+                <td>${item.type}</td>
+                <td>
+                    <div class="small">${formatDate(item.startDate)} - ${formatDate(item.endDate)}</div>
+                    <span class="text-muted fw-bold" style="font-size:0.75rem">(${item.days} days)</span>
+                </td>
+                <td style="max-width: 200px;">
+                    <div class="text-truncate" title="${item.reason || ''}">${item.reason || '-'}</div>
+                    ${attachmentBtn}
+                </td>
+                <td>
+                    <span class="badge ${statusClass} border text-uppercase">${item.status}</span>
+                    ${reasonNote}
+                </td>
+                <td class="text-end pe-4 text-muted small">${formatDate(item.reviewedAt, true)}</td>`;
             tbody.appendChild(tr);
         });
         lucide.createIcons();
     }
 
+    // --- Action Handlers ---
     window.openRejectModal = function(leaveId) {
         document.getElementById('hiddenRejectLeaveId').value = leaveId;
         document.getElementById('rejectReasonInput').value = "";
@@ -378,39 +437,60 @@
         const leaveId = document.getElementById('hiddenRejectLeaveId').value;
         const reason = document.getElementById('rejectReasonInput').value.trim();
         if(!reason) { alert("Please enter a reason."); return; }
+        
         const btn = document.querySelector('#rejectModal .btn-danger');
         btn.disabled = true; btn.innerText = "Processing...";
+        
         try {
             await updateDoc(doc(db, "leaves", leaveId), {
                 status: 'Rejected', rejectionReason: reason, reviewedAt: serverTimestamp(), reviewer: auth.currentUser.email
             });
             rejectModal.hide();
-        } catch (error) { console.error(error); alert("Error: " + error.message); } 
-        finally { btn.disabled = false; btn.innerText = "Confirm Reject"; }
+        } catch (error) { 
+            console.error(error); 
+            alert("Error: " + error.message); 
+        } finally { 
+            btn.disabled = false; btn.innerText = "Confirm Reject"; 
+        }
     }
 
     window.handleApprove = async function(leaveId, userId, days, type) {
         if(!confirm(`Confirm APPROVE ${type} for ${days} days?`)) return;
+        
         try {
             await runTransaction(db, async (transaction) => {
                 const leaveRef = doc(db, "leaves", leaveId);
                 const userRef = doc(db, "users", userId);
                 const userDoc = await transaction.get(userRef);
+                
                 if (!userDoc.exists()) throw new Error(`User document ${userId} not found.`);
+                
                 const userData = userDoc.data();
                 const isAnnual = (type === 'Annual Leave');
+                
                 if (isAnnual) {
                     const currentBalance = userData.leave_balance?.annual !== undefined ? userData.leave_balance.annual : 14; 
                     if (currentBalance < days) throw new Error(`Insufficient Annual Leave Balance! Current: ${currentBalance}, Required: ${days}`);
+                    
                     transaction.update(userRef, { "leave_balance.annual": currentBalance - days });
                     transaction.update(leaveRef, { status: 'Approved', reviewedAt: serverTimestamp(), reviewer: auth.currentUser.email });
                 } else {
-                    transaction.update(leaveRef, { status: 'Approved', reviewedAt: serverTimestamp(), reviewer: auth.currentUser.email, isPayrollDeductible: (type === 'Unpaid Leave'), deductibleDays: days });
+                    transaction.update(leaveRef, { 
+                        status: 'Approved', 
+                        reviewedAt: serverTimestamp(), 
+                        reviewer: auth.currentUser.email, 
+                        isPayrollDeductible: (type === 'Unpaid Leave'), 
+                        deductibleDays: days 
+                    });
                 }
             });
-        } catch (e) { console.error(e); alert("Transaction Failed: " + e.message); }
+        } catch (e) { 
+            console.error(e); 
+            alert("Transaction Failed: " + e.message); 
+        }
     }
 
+    // --- Helpers ---
     window.viewAttachment = function(url) {
         const img = document.getElementById('attachmentImg');
         const msg = document.getElementById('noAttachmentMsg');

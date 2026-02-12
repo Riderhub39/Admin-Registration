@@ -1,63 +1,72 @@
-<nav class="navbar navbar-expand-lg sticky-top bg-white border-bottom py-2 shadow-sm">
-    <div class="container-fluid px-4">
-        <a class="navbar-brand d-flex align-items-center gap-2 fw-bold text-primary" href="home.html">
-            <div class="bg-primary text-white rounded p-1 d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
-                <i data-lucide="activity" class="size-5"></i>
+<nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm border-bottom">
+    <div class="container-fluid">
+        <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="home.html">
+            <div class="bg-primary bg-opacity-10 p-1 rounded">
+                <i data-lucide="activity" class="text-primary size-5"></i>
             </div>
-            <span>FieldTrack Pro</span>
+            <span class="text-dark">FieldTrack Pro</span>
         </a>
 
-        <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar">
-            <i data-lucide="menu"></i>
+        <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
         </button>
 
-        <div class="collapse navbar-collapse" id="mainNavbar">
-            <ul class="navbar-nav me-auto mb-2 mb-lg-0 ms-lg-3 gap-1">
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0 ms-lg-4 gap-lg-3">
                 <li class="nav-item">
-                    <a class="nav-link px-3 rounded" href="home.html" data-page="home">Dashboard</a>
+                    <a class="nav-link" href="home.html">Dashboard</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link px-3 rounded" href="attendance.html" data-page="attendance">Attendance</a>
+                    <a class="nav-link" href="manage_staff.html">Staff</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link px-3 rounded" href="schedule_planner.html" data-page="schedule">Schedule</a>
+                    <a class="nav-link" href="attendance.html">Attendance</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link px-3 rounded" href="manage_staff.html" data-page="staff">Staff</a>
+                    <a class="nav-link" href="leave_approval.html">Leaves</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link px-3 rounded" href="evidence_gallery.html" data-page="gallery">Gallery</a>
+                    <a class="nav-link" href="schedule_planner.html">Schedule</a>
+                </li>
+                 <li class="nav-item">
+                    <a class="nav-link" href="payroll.html">Payroll</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link px-3 rounded" href="live_tracking.html" data-page="tracking">Live Map</a>
+                    <a class="nav-link" href="live_tracking.html">Live Map</a>
                 </li>
             </ul>
 
-            <div class="d-flex align-items-center gap-3 border-start ps-lg-3">
+            <div class="d-flex align-items-center gap-2 mt-3 mt-lg-0">
                 
                 <div class="dropdown">
-                    <div class="position-relative cursor-pointer p-2 rounded-circle hover-bg-light" data-bs-toggle="dropdown" aria-expanded="false">
+                    <button class="btn btn-light border-0 position-relative rounded-circle p-2" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <i data-lucide="bell" class="size-5 text-secondary"></i>
-                        <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle" id="headerRedDot" style="display: none;"></span>
-                    </div>
-
-                    <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 mt-2 py-0 overflow-hidden" style="width: 320px;" id="headerNotifList">
-                        <li><h6 class="dropdown-header bg-light py-2 text-uppercase fw-bold" style="font-size: 0.7rem;">Notifications</h6></li>
                         
-                        <div id="notifContentPlaceholder">
-                            <li><div class="dropdown-item text-center py-4 text-muted small">Loading...</div></li>
-                        </div>
+                        <span id="notificationBadge" class="position-absolute top-0 start-75 translate-middle p-1 bg-danger border border-light rounded-circle d-none">
+                            <span class="visually-hidden">New alerts</span>
+                        </span>
+                    </button>
+                    
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0" id="notificationList" style="width: 280px;">
+                        <li><span class="dropdown-header">Notifications</span></li>
+                        <li class="text-center p-3 text-muted small">Loading...</li>
                     </ul>
                 </div>
 
-                <div class="d-none d-md-flex flex-column text-end pe-2">
-                    <span class="fw-bold text-dark small" id="headerUserEmail">Loading...</span>
-                    <span class="text-muted" style="font-size: 0.7rem;">Administrator</span>
+                <div class="vr h-50 mx-2 text-secondary d-none d-lg-block"></div>
+
+                <div class="dropdown">
+                    <button class="btn btn-white dropdown-toggle border-0 d-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown">
+                        <div class="bg-light rounded-circle p-1 border">
+                            <i data-lucide="user" class="size-5 text-dark"></i>
+                        </div>
+                        <span class="fw-medium small d-none d-md-inline">Admin</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 mt-2">
+                        <li><button class="dropdown-item text-danger" id="logoutBtn">Sign Out</button></li>
+                    </ul>
                 </div>
 
-                <button class="btn btn-sm btn-outline-danger d-flex align-items-center gap-2" id="headerLogoutBtn">
-                    <i data-lucide="log-out" class="size-4"></i>
-                </button>
             </div>
         </div>
     </div>

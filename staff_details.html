@@ -9,7 +9,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
     <style>
-        /* 保持原有样式，微调 Overlay */
+        /* Page Specific Styles & Loading Overlay */
         #loadingOverlay { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(255, 255, 255, 0.95); z-index: 9999; 
@@ -20,7 +20,7 @@
         .nav-tabs .nav-link.active { color: var(--primary); border-bottom: 3px solid var(--primary); font-weight: 600; }
         .bg-readonly { background-color: #f1f5f9 !important; cursor: not-allowed; color: #64748b; }
         
-        /* Error Highlighting */
+        /* Error Highlighting for Validation */
         .form-control.is-invalid { border-color: #dc3545; background-color: #fff8f8; }
     </style>
 </head>
@@ -36,7 +36,6 @@
 <div class="container-fluid py-3 d-none" id="mainContainer">
     <div class="d-flex justify-content-between align-items-center mb-3 mx-2">
         <div class="d-flex align-items-center gap-3">
-            <a href="manage_staff.html" class="btn btn-sm btn-outline-secondary"><i data-lucide="arrow-left" class="size-4"></i> Back</a>
             <div>
                 <h5 class="fw-bold text-dark m-0" id="headerName">Loading...</h5>
                 <small class="text-muted" id="headerCode">EMP ID: -</small>
@@ -298,11 +297,11 @@
     import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs, deleteField } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-    // 引入配置文件和 Header 逻辑
+    // Import Configuration and Header Logic
     import { firebaseConfig } from "./firebase-config.js";
     import { initUnifiedHeader } from "./header-app.js";
 
-    // --- 1. EmailJS Init ---
+    // --- 1. Initialize EmailJS ---
     (function(){
         emailjs.init("yTP2W2IzGSKqHDqWa");
     })();
@@ -315,7 +314,7 @@
     const urlParams = new URLSearchParams(window.location.search);
     const uid = urlParams.get('uid');
 
-    // --- Auth Check & Admin Validation ---
+    // --- Authentication Check & Admin Role Validation ---
     onAuthStateChanged(auth, async (user) => {
         if (!user) {
             window.location.href = "index.html";
@@ -323,10 +322,10 @@
         }
 
         try {
-            // Verify Admin Role
+            // Check if user has Admin privileges
             const adminDoc = await getDoc(doc(db, "users", user.uid));
             if (adminDoc.exists() && adminDoc.data().role === 'admin') {
-                // Access Granted
+                // Access granted, initialize UI
                 initUnifiedHeader(auth, db);
                 document.getElementById('loadingText').innerText = "Loading Profile...";
                 document.getElementById('mainContainer').classList.remove('d-none');
@@ -334,7 +333,7 @@
                 if(uid) loadUserData(uid);
                 else { alert("No User ID provided"); window.location.href="manage_staff.html"; }
             } else {
-                // Access Denied
+                // Redirect if not admin
                 alert("Unauthorized Access. Admins only.");
                 await signOut(auth);
                 window.location.href = "index.html";
@@ -360,6 +359,7 @@
         return el.value;
     };
 
+    // Helper: Create a new row for children table
     window.createChildRow = function(name, dob, gender, cert, isMy, taxCat, taxPct) {
         const tr = document.createElement('tr');
         tr.innerHTML = `
@@ -400,6 +400,7 @@
         return children;
     };
 
+    // Toggle Form Editability based on User Status
     const toggleFormState = (status) => {
         const isEditable = (status === 'editable');
         const form = document.getElementById('masterForm');
@@ -435,6 +436,7 @@
         select.className = `form-select form-select-sm border-2 fw-bold ${borderClass} ${textClass}`;
     };
 
+    // Helper: Calculate Leave Entitlement based on tenure
     async function calculateAnnualEntitlement(joinDateStr) {
         if (!joinDateStr) return 0;
 
@@ -460,6 +462,7 @@
         return entitlement;
     }
 
+    // Logic: Load User Data from Firestore
     async function loadUserData(userId) {
         try {
             const docRef = doc(db, "users", userId);
@@ -469,11 +472,11 @@
                 const data = docSnap.data();
                 currentUserData = data; 
 
+                // Check for auto-lock expiry
                 if (data.status === 'editable' && data.unlockExpiresAt) {
                     const now = new Date();
                     const expiry = data.unlockExpiresAt.toDate(); 
                     if (now > expiry) {
-                        console.log("Session expired. Reverting to active.");
                         await updateDoc(docRef, { status: 'active', unlockExpiresAt: null });
                         data.status = 'active'; 
                         alert("The editing window has expired. Profile is now locked.");
@@ -512,7 +515,7 @@
                     setVal('Issue Date', data.foreign.issue);
                 }
 
-                // ... (Keeping all other field mappings from original code) ...
+                // ... (Populate other sections: Employment, Statutory, Payroll, Address, Family)
                 if(data.employment) {
                     setVal('Join Date', data.employment.joinDate);
                     setVal('Probation (Months)', data.employment.probation);
@@ -629,6 +632,7 @@
         }
     }
 
+    // Logic: Update Account Status (Editable/Active/Disabled)
     document.getElementById('btnUpdateStatus').addEventListener('click', async () => {
         const newStatus = document.getElementById('statusSelect').value;
         const btn = document.getElementById('btnUpdateStatus');
@@ -658,18 +662,18 @@
         }
     });
 
-    // --- SAVE LOGIC with DUPLICATE CHECK & PHONE FORMATTER ---
+    // --- Save Changes Logic with Duplicate Check & Phone Formatting ---
     document.getElementById('btnSaveChanges').addEventListener('click', async () => {
         const overlay = document.getElementById('loadingOverlay');
         const loadingText = document.getElementById('loadingText');
         
-        // 1. Get raw inputs & Format
+        // 1. Capture and format input values
         const newEmail = getVal('Email Address').trim();
         const rawNewPhone = getVal('Mobile Number');
         const newPhone = formatMalaysianPhone(rawNewPhone);
         
-        // --- 🔥 DUPLICATE CHECK LOGIC ---
-        // We must check if any *other* user already uses these unique identifiers
+        // --- Duplicate Detection Strategy ---
+        // Verify unique identifiers across the database to prevent conflicts
         const foreignId = getVal('Foreign ID No');
         const passport = getVal('Passport No');
         const icNo = getVal('MYKAD/IC (Malaysian or PR)');
@@ -689,19 +693,18 @@
             for (const check of checks) {
                 if (!check.val) continue; // Skip empty fields
                 
-                // Query users with this value
+                // Search Firestore for existing records
                 const q = query(collection(db, "users"), where(check.field, "==", check.val));
                 const snap = await getDocs(q);
                 
-                // If found, check if it belongs to SOMEONE ELSE
+                // Ensure the duplicate isn't the current user's own record
                 const duplicateDoc = snap.docs.find(d => d.id !== uid);
                 
                 if (duplicateDoc) {
                     overlay.style.display = 'none';
-                    // Highlight the field (optional)
                     const duplicatesName = duplicateDoc.data().personal?.name || "another user";
                     alert(`Save Failed: Duplicate Data Found!\n\nThe ${check.label} '${check.val}' is already assigned to ${duplicatesName}.`);
-                    return; // 🛑 STOP EXECUTION
+                    return; // Stop execution if duplicates found
                 }
             }
         } catch (e) {
@@ -711,7 +714,7 @@
             return;
         }
 
-        // --- CONTINUE SAVING IF NO DUPLICATES ---
+        // --- Proceed to Save ---
         loadingText.innerText = 'Calculating & Saving...';
 
         const oldEmail = currentUserData?.personal?.email || '';
@@ -719,7 +722,7 @@
         const empName = currentUserData?.personal?.name || 'Staff';
         const isActivated = !!currentUserData?.authUid; 
 
-        // Change Detection (Secure)
+        // Detect critical credential changes (Email/Phone)
         let requiresReset = false;
         if (isActivated && (newEmail !== oldEmail || newPhone !== oldPhone)) {
             const confirmReset = confirm(
@@ -904,7 +907,7 @@
                         user_name: empName,
                         to_email: oldEmail, 
                     }).then(
-                        function(response) { console.log("Security alert sent", response); },
+                        function(response) { /* Email sent successfully */ },
                         function(error) { console.error("Failed to send alert", error); }
                     );
                 }
@@ -930,7 +933,7 @@
         }
     });
 
-    // 🟢 Standard Malaysian Phone Formatter
+    // Helper: Format phone numbers to E.164 standard (+60)
     window.formatMalaysianPhone = function(input) {
         if (!input) return "";
         let cleaned = input.toString().replace(/\D/g, '');

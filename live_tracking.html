@@ -2,12 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Live Tracking - FieldTrack Pro</title>
+    
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="style.css" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
+
     <style>
-        /* Loading Overlay */
+        /* Loading Overlay Styling */
         #loadingOverlay { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(255, 255, 255, 0.95); z-index: 9999; 
@@ -16,21 +19,23 @@
 
         body { background-color: #f8fafc; height: 100vh; overflow: hidden; margin: 0; display: flex; flex-direction: column; }
         
-        /* Sidebar & Map Layout */
+        /* Layout: Sidebar + Map Container */
         .sidebar { width: 320px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; z-index: 10; box-shadow: 2px 0 5px rgba(0,0,0,0.05); height: calc(100vh - 58px); }
         .map-container { flex: 1; background: #e2e8f0; position: relative; height: calc(100vh - 58px); }
         
+        /* User List Item Styling */
         .user-item { cursor: pointer; transition: all 0.2s; border-bottom: 1px solid #f1f5f9; }
         .user-item:hover { background-color: #f8fafc; }
         .user-item.active { background-color: #eff6ff; border-left: 4px solid #3b82f6; }
         
-        /* Status Dots - Simplified */
+        /* Status Indicators */
         .dot-online { background-color: #22c55e; box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2); }
         .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 
         .avatar-placeholder { width: 40px; height: 40px; background: #e2e8f0; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #64748b; font-weight: bold; }
         #map { width: 100%; height: 100%; }
         
+        /* Floating Info Card on Map */
         .status-card {
             position: absolute; top: 10px; left: 10px; width: 280px;
             background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(5px);
@@ -66,6 +71,7 @@
 
     <div class="map-container">
         <div id="map"></div>
+        
         <div id="statusOverlay" class="status-card p-3 d-none">
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div>
@@ -100,15 +106,15 @@
     import { getFirestore, collection, query, where, onSnapshot, orderBy, getDocs, getDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-    // Import Header Logic
     import { firebaseConfig } from "./firebase-config.js";
     import { initUnifiedHeader } from "./header-app.js";
 
+    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const auth = getAuth(app);
 
-    // Map Config
+    // Map Configuration
     const STORE_LOCATION = { lat: 4.5975, lng: 101.0901 }; 
     const STORE_RADIUS_METERS = 500; 
 
@@ -117,7 +123,7 @@
     let usersMap = {};
     let lastKnownPosition = null;
 
-    // --- Auth Check & Admin Validation ---
+    // --- Authentication & Access Control ---
     onAuthStateChanged(auth, async (user) => {
         if (!user) {
             window.location.href = "index.html";
@@ -125,7 +131,7 @@
         }
 
         try {
-            // Verify Admin Role
+            // Check Admin Role
             const adminDoc = await getDoc(doc(db, "users", user.uid));
             if (adminDoc.exists() && adminDoc.data().role === 'admin') {
                 initUnifiedHeader(auth, db);
@@ -147,6 +153,10 @@
 
     window.initMap = function() {};
 
+    /**
+     * Main App Initialization
+     * Loads users, sets up Google Map, and initializes listeners.
+     */
     async function startApp() {
         await fetchUsers();
         
@@ -180,6 +190,9 @@
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
+    /**
+     * Cache user names for display
+     */
     async function fetchUsers() {
         try {
             const snap = await getDocs(collection(db, "users"));
@@ -190,6 +203,9 @@
         } catch (e) { console.error(e); }
     }
 
+    /**
+     * Loads the list of active tracking logs for the selected date.
+     */
     function loadDrivers() {
         const dateStr = document.getElementById('datePicker').value;
         const listDiv = document.getElementById('driverList');
@@ -206,14 +222,13 @@
                 const realName = usersMap[data.userId] || data.empName || "Staff";
                 const lastUpdate = data.lastUpdate ? data.lastUpdate.toDate() : new Date(0);
                 
-                // 🟢 Simplified Logic: Online if update within 15 mins
+                // Logic: Considered 'Online' if updated within last 15 mins
                 const isOnline = (new Date() - lastUpdate) < 1000 * 60 * 15; 
                 
                 let statusBadge = '';
                 if (!isOnline) {
                     statusBadge = '<span class="badge bg-secondary bg-opacity-10 text-secondary border" style="font-size:10px">Offline</span>';
                 } else {
-                    // 🟢 Unified "Online" badge for everyone
                     statusBadge = '<div class="d-flex align-items-center gap-1"><span class="status-dot dot-online"></span> <small class="text-success" style="font-size:10px">Active</small></div>';
                 }
 
@@ -234,6 +249,10 @@
         });
     }
 
+    /**
+     * Handles selection of a driver from the sidebar.
+     * Starts listening to real-time location points and draws path.
+     */
     window.selectDriver = function(event, docId, realName) {
         document.querySelectorAll('.user-item').forEach(el => el.classList.remove('active'));
         if (event) event.currentTarget.classList.add('active');
@@ -260,19 +279,17 @@
                 path.push(latLng);
                 lastPoint = p;
                 
-                // Keep distance calculation logic for badge text (optional, kept for info)
+                // Calculate distance from store (optional for logic/UI)
                 const dist = google.maps.geometry.spherical.computeDistanceBetween(latLng, new google.maps.LatLng(STORE_LOCATION));
                 if (dist > maxDistFromStore) maxDistFromStore = dist;
             });
 
-            // 🟢 Update Overlay Tag based on location, not mode
+            // Update Status Badge based on Geofence
             if (maxDistFromStore > STORE_RADIUS_METERS) {
                 polyline.setPath(path); 
                 document.getElementById('overlayStatusTag').innerText = "On Field";
                 document.getElementById('overlayStatusTag').className = "badge bg-primary";
             } else {
-                // If they haven't left the store area much, we can choose to hide path or show simple "In Store"
-                // But since we track everyone 200m, let's show path anyway if it exists
                 polyline.setPath(path); 
                 document.getElementById('overlayStatusTag').innerText = "Near Store";
                 document.getElementById('overlayStatusTag').className = "badge bg-warning text-dark";

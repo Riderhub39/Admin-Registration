@@ -10,7 +10,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
-        /* Loading Overlay */
+        /* Loading Overlay Styling */
         #loadingOverlay { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(255, 255, 255, 0.95); z-index: 9999; 
@@ -80,7 +80,7 @@
     import { getFirestore, doc, getDoc, updateDoc, arrayUnion, arrayRemove, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-    // Import Header Logic
+    // Import Configuration and Global Header
     import { firebaseConfig } from "./firebase-config.js";
     import { initUnifiedHeader } from "./header-app.js";
 
@@ -89,7 +89,7 @@
     const auth = getAuth(app);
     const holidayDocRef = doc(db, "settings", "holidays");
 
-    // --- Auth Check & Admin Validation ---
+    // --- Authentication & Access Control ---
     onAuthStateChanged(auth, async (user) => {
         if (!user) {
             window.location.href = "index.html";
@@ -97,19 +97,19 @@
         }
 
         try {
-            // Verify Admin Role
+            // Verify Admin Privileges
             const adminDoc = await getDoc(doc(db, "users", user.uid));
             if (adminDoc.exists() && adminDoc.data().role === 'admin') {
-                // Success: Init UI
+                // Access Granted
                 initUnifiedHeader(auth, db);
                 document.getElementById('loadingText').innerText = "Loading Holidays...";
                 
-                loadHolidays(); // Load Data
+                loadHolidays(); // Fetch data
 
                 document.getElementById('loadingOverlay').classList.add('d-none');
                 document.getElementById('mainContainer').classList.remove('d-none');
             } else {
-                // Fail: Kick out
+                // Access Denied
                 alert("Unauthorized Access. Admins only.");
                 await signOut(auth);
                 window.location.href = "index.html";
@@ -121,19 +121,26 @@
         }
     });
 
+    /**
+     * Fetches and renders the list of holidays.
+     * Sorts holidays chronologically by date.
+     */
     async function loadHolidays() {
         const listDiv = document.getElementById('holidayList');
         try {
             const docSnap = await getDoc(holidayDocRef);
             if (docSnap.exists()) {
                 const list = docSnap.data().holiday_list || [];
+                
                 if (list.length === 0) {
                     listDiv.innerHTML = "<div class='text-center py-3 text-muted small'>No holidays found.</div>";
                     return;
                 }
-                // Sort by date
+
+                // Sort by date (ascending)
                 list.sort((a,b) => a.date.localeCompare(b.date));
 
+                // Render List Items
                 listDiv.innerHTML = list.map(h => `
                     <div class="list-group-item d-flex justify-content-between align-items-center">
                         <div>
@@ -145,6 +152,7 @@
                         </button>
                     </div>
                 `).join('');
+                
                 lucide.createIcons();
             } else {
                 listDiv.innerHTML = "<div class='text-center py-3 text-muted small'>No holidays configured yet.</div>";
@@ -154,6 +162,10 @@
         }
     }
 
+    /**
+     * Adds a new holiday to the Firestore array.
+     * Uses arrayUnion to prevent duplicates.
+     */
     window.addHoliday = async function() {
         const name = document.getElementById('hName').value;
         const date = document.getElementById('hDate').value;
@@ -163,7 +175,7 @@
 
         status.innerHTML = "<span class='text-primary'>Saving...</span>";
         try {
-            // Check if doc exists, if not create it
+            // Check if document exists, create if not
             const docSnap = await getDoc(holidayDocRef);
             if (!docSnap.exists()) {
                 await setDoc(holidayDocRef, { holiday_list: [{ name: name, date: date }] });
@@ -176,7 +188,9 @@
             status.innerHTML = "<span class='text-success'>Saved!</span>";
             document.getElementById('hName').value = "";
             document.getElementById('hDate').value = "";
-            loadHolidays();
+            
+            loadHolidays(); // Refresh UI
+            
             setTimeout(() => status.innerHTML = "", 2000);
         } catch (e) {
             status.innerHTML = `<span class='text-danger'>Error: ${e.message}</span>`;
@@ -184,6 +198,10 @@
         }
     }
 
+    /**
+     * Removes a holiday from the Firestore array.
+     * Uses arrayRemove to find and delete the specific object.
+     */
     window.deleteHoliday = async function(name, date) {
         if(!confirm(`Remove ${name}?`)) return;
         try {

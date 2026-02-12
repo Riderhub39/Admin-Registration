@@ -47,10 +47,19 @@
         
         #bulkActionBar { transition: all 0.3s ease; border-left: 4px solid var(--primary); }
         
+        /* Weekday Picker */
         .weekday-selector { display: flex; gap: 5px; justify-content: space-between; }
         .weekday-selector input { display: none; }
         .weekday-selector label { flex: 1; text-align: center; padding: 6px 0; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-weight: 600; color: #64748b; transition: all 0.2s; }
         .weekday-selector input:checked + label { background-color: var(--primary); color: white; border-color: var(--primary); }
+
+        /* Preset Day Row */
+        .preset-day-row { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; font-size: 0.8rem; }
+        .preset-day-label { width: 40px; font-weight: bold; }
+
+        /* Preset Preview */
+        .preset-preview-table td { padding: 4px 8px; font-size: 0.8rem; border-bottom: 1px solid #f1f5f9; }
+        .preset-preview-table th { font-size: 0.75rem; text-transform: uppercase; color: #64748b; background: #f8fafc; padding: 4px 8px; }
     </style>
 </head>
 <body>
@@ -97,8 +106,8 @@
                 </div>
                 <div class="table-responsive">
                     <table class="table table-hover table-sm align-middle" style="font-size: 0.85rem;">
-                        <thead class="table-light"><tr><th style="width: 30px;"><input type="checkbox" id="selectAllList" class="form-check-input" onchange="toggleListSelectAll()"></th><th>Date</th><th>Staff Name</th><th>Time</th><th>Type</th><th>Notes</th><th class="text-end">Action</th></tr></thead>
-                        <tbody id="scheduleTableBody"><tr><td colspan="7" class="text-center text-muted">Loading...</td></tr></tbody>
+                        <thead class="table-light"><tr><th style="width: 30px;"><input type="checkbox" id="selectAllList" class="form-check-input" onchange="toggleListSelectAll()"></th><th>Date</th><th>Staff Name</th><th>Time</th><th>Break</th><th>Type</th><th>Notes</th><th class="text-end">Action</th></tr></thead>
+                        <tbody id="scheduleTableBody"><tr><td colspan="8" class="text-center text-muted">Loading...</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -133,7 +142,11 @@
                         <h6 class="fw-bold text-primary mb-3">Add Staff</h6>
                         <div class="mb-2"><label class="form-label x-small fw-bold text-muted mb-1">PRESET</label><select id="dmPresetSelect" class="form-select form-select-sm" onchange="applyDMPreset(this.value)"><option value="" selected>Custom</option></select></div>
                         <div class="mb-2"><label class="form-label x-small fw-bold text-muted mb-1">AVAILABLE STAFF</label><select id="dmStaffSelect" class="form-select form-select-sm" multiple size="5"></select></div>
-                        <div class="row g-2 mb-2"><div class="col-6"><label class="form-label x-small fw-bold text-muted mb-1">START</label><input type="time" id="dmStartTime" class="form-control form-control-sm"></div><div class="col-6"><label class="form-label x-small fw-bold text-muted mb-1">END</label><input type="time" id="dmEndTime" class="form-control form-control-sm"></div></div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-4"><label class="form-label x-small fw-bold text-muted mb-1">START</label><input type="time" id="dmStartTime" class="form-control form-control-sm"></div>
+                            <div class="col-4"><label class="form-label x-small fw-bold text-muted mb-1">END</label><input type="time" id="dmEndTime" class="form-control form-control-sm"></div>
+                            <div class="col-4"><label class="form-label x-small fw-bold text-muted mb-1">BREAK (MIN)</label><input type="number" id="dmBreak" class="form-control form-control-sm" value="60" min="0"></div>
+                        </div>
                         <div class="mb-3"><input type="text" id="dmNotes" class="form-control form-control-sm" placeholder="Notes..."></div>
                         <button class="btn btn-primary btn-sm w-100 fw-bold" onclick="addShiftToDay()"><i data-lucide="plus" class="size-3 me-1"></i> Add to Roster</button>
                     </div>
@@ -147,24 +160,66 @@
     <div class="modal-dialog modal-dialog-centered"> 
         <div class="modal-content">
             <div class="modal-header py-2 bg-primary bg-opacity-10">
-                <h6 class="modal-title fw-bold text-primary">Bulk Schedule (Multi-Day)</h6>
+                <h6 class="modal-title fw-bold text-primary">Bulk Schedule</h6>
                 <button type="button" class="btn-close small" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <form id="bulkForm">
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold text-muted m-0">QUICK PRESET</label>
-                        <a href="#" class="float-end text-primary text-decoration-none small fw-bold" style="font-size: 0.75rem;" onclick="openPresetModal()"><i data-lucide="settings" class="size-3 me-1"></i>Manage</a>
-                        <select id="bulkPresetSelect" class="form-select form-select-sm border-primary mt-1" onchange="applyBulkPreset(this.value)"><option value="" selected>Custom</option></select>
+                    <div class="mb-3 border-bottom pb-3">
+                        <label class="form-label small fw-bold text-muted m-0">STEP 1: SELECT PRESET (OPTIONAL)</label>
+                        <div class="d-flex gap-2 mt-1">
+                            <select id="bulkPresetSelect" class="form-select form-select-sm border-primary" onchange="handleBulkPresetChange(this.value)">
+                                <option value="" selected>Custom (Use settings below)</option>
+                            </select>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openPresetModal()"><i data-lucide="settings" class="size-4"></i></button>
+                        </div>
+                        
+                        <div id="presetPreviewBox" class="d-none mt-2 p-2 bg-light border rounded">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="x-small fw-bold text-muted">PRESET RULES:</span>
+                            </div>
+                            <table class="w-100 preset-preview-table">
+                                <thead><tr><th>Day</th><th>Hours</th><th>Break</th></tr></thead>
+                                <tbody id="presetPreviewBody"></tbody>
+                            </table>
+                        </div>
                     </div>
+
                     <div class="mb-3">
-                        <label class="form-label small fw-bold mb-1">Staff</label>
+                        <label class="form-label small fw-bold mb-1">STEP 2: DATE RANGE</label>
+                        <div class="btn-group w-100 mb-2" role="group">
+                            <input type="radio" class="btn-check" name="dateMode" id="modeRange" autocomplete="off" checked onchange="toggleDateMode()">
+                            <label class="btn btn-sm btn-outline-primary" for="modeRange">Specific Range</label>
+                            
+                            <input type="radio" class="btn-check" name="dateMode" id="modeMonth" autocomplete="off" onchange="toggleDateMode()">
+                            <label class="btn btn-sm btn-outline-primary" for="modeMonth">Whole Month</label>
+                        </div>
+                        
+                        <div class="row g-2" id="rangeInputs">
+                            <div class="col-6"><label class="form-label small fw-bold">From</label><input type="date" id="bulkStartDate" class="form-control form-control-sm"></div>
+                            <div class="col-6"><label class="form-label small fw-bold">To</label><input type="date" id="bulkEndDate" class="form-control form-control-sm"></div>
+                        </div>
+
+                        <div class="d-none" id="monthInputs">
+                            <input type="month" id="bulkMonthPicker" class="form-control form-control-sm">
+                            <div class="form-text text-success"><i data-lucide="info" class="size-3"></i> Auto-detects staff Join Date!</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold mb-1">STEP 3: SELECT STAFF</label>
                         <input type="text" id="bulkStaffSearch" class="form-control form-control-sm mb-1" placeholder="Filter staff..." onkeyup="filterBulkStaff()">
                         <select id="bulkStaffSelect" class="form-select form-select-sm" multiple size="5"></select>
                     </div>
-                    <div class="row g-2 mb-3"><div class="col-6"><label class="form-label small fw-bold">From</label><input type="date" id="bulkStartDate" class="form-control form-control-sm"></div><div class="col-6"><label class="form-label small fw-bold">To</label><input type="date" id="bulkEndDate" class="form-control form-control-sm"></div></div>
-                    <div class="mb-3"><label class="form-label small fw-bold">Repeat On</label><div class="weekday-selector"><input type="checkbox" id="bd1" value="1" checked><label for="bd1">M</label><input type="checkbox" id="bd2" value="2" checked><label for="bd2">T</label><input type="checkbox" id="bd3" value="3" checked><label for="bd3">W</label><input type="checkbox" id="bd4" value="4" checked><label for="bd4">T</label><input type="checkbox" id="bd5" value="5" checked><label for="bd5">F</label><input type="checkbox" id="bd6" value="6"><label for="bd6">S</label><input type="checkbox" id="bd0" value="0"><label for="bd0">S</label></div></div>
-                    <div class="row g-2 mb-2"><div class="col-6"><label class="form-label small fw-bold">Start</label><input type="time" id="bulkStartTime" class="form-control form-control-sm"></div><div class="col-6"><label class="form-label small fw-bold">End</label><input type="time" id="bulkEndTime" class="form-control form-control-sm"></div></div>
+                    
+                    <div id="manualSettingsBlock">
+                        <div class="mb-3"><label class="form-label small fw-bold">Repeat On</label><div class="weekday-selector"><input type="checkbox" id="bd1" value="1" checked><label for="bd1">M</label><input type="checkbox" id="bd2" value="2" checked><label for="bd2">T</label><input type="checkbox" id="bd3" value="3" checked><label for="bd3">W</label><input type="checkbox" id="bd4" value="4" checked><label for="bd4">T</label><input type="checkbox" id="bd5" value="5" checked><label for="bd5">F</label><input type="checkbox" id="bd6" value="6"><label for="bd6">S</label><input type="checkbox" id="bd0" value="0"><label for="bd0">S</label></div></div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-4"><label class="form-label small fw-bold">Start</label><input type="time" id="bulkStartTime" class="form-control form-control-sm"></div>
+                            <div class="col-4"><label class="form-label small fw-bold">End</label><input type="time" id="bulkEndTime" class="form-control form-control-sm"></div>
+                            <div class="col-4"><label class="form-label small fw-bold">Break</label><input type="number" id="bulkBreak" class="form-control form-control-sm" value="60" min="0"></div>
+                        </div>
+                    </div>
                 </form>
             </div>
             <div class="modal-footer bg-light py-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="runBulkSchedule()">Run Bulk Schedule</button></div>
@@ -189,19 +244,25 @@
 </div>
 
 <div class="modal fade" id="presetModal" tabindex="-1">
-    <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-dialog modal-md modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header py-2 bg-light">
-                <h6 class="modal-title fw-bold">Manage Presets</h6>
+                <h6 class="modal-title fw-bold">Manage Advanced Presets</h6>
                 <button type="button" class="btn-close small" onclick="closePresetModal()"></button>
             </div>
             <div class="modal-body p-3">
                 <div class="mb-3 border-bottom pb-3">
-                    <input type="text" id="newPresetName" class="form-control form-control-sm mb-2" placeholder="Name">
-                    <div class="row g-2"><div class="col-6"><input type="time" id="newPresetStart" class="form-control form-control-sm"></div><div class="col-6"><input type="time" id="newPresetEnd" class="form-control form-control-sm"></div></div>
-                    <button class="btn btn-primary btn-sm w-100 mt-2" onclick="saveNewPreset()">Add</button>
+                    <input type="hidden" id="editingPresetIndex" value="-1">
+                    <input type="text" id="newPresetName" class="form-control form-control-sm mb-3 font-weight-bold" placeholder="Preset Name (e.g., Standard Week)" style="font-weight: bold;">
+                    
+                    <div id="presetDaysContainer">
+                        </div>
+
+                    <button id="btnSavePreset" class="btn btn-primary btn-sm w-100 mt-2" onclick="savePreset()">Add Preset</button>
+                    <button id="btnCancelEdit" class="btn btn-secondary btn-sm w-100 mt-1 d-none" onclick="resetPresetForm()">Cancel Edit</button>
                 </div>
-                <div id="presetListContainer" class="d-flex flex-column gap-2"></div>
+                <h6 class="small fw-bold text-muted">Saved Presets</h6>
+                <div id="presetListContainer" class="d-flex flex-column gap-2" style="max-height: 250px; overflow-y: auto;"></div>
             </div>
         </div>
     </div>
@@ -247,7 +308,7 @@
     let rawSchedules = [];
     let holidayCache = {}; 
     let leaveCache = {}; 
-    let presetCache = [];
+    let presetCache = []; 
     let allStaff = []; 
     let listSelectedIds = new Set();
     let currentManagerDate = null;
@@ -268,32 +329,20 @@
         initFilters();
         initCalendar();
         initDateConstraints();
+        initPresetFormUI(); 
         
         onAuthStateChanged(auth, async (user) => {
-            if (!user) {
-                window.location.href = "index.html";
-                return;
-            }
-
+            if (!user) { window.location.href = "index.html"; return; }
             try {
                 const adminDoc = await getDoc(doc(db, "users", user.uid));
                 if (adminDoc.exists() && adminDoc.data().role === 'admin') {
                     initUnifiedHeader(auth, db);
                     document.getElementById('loadingText').innerText = "Loading Schedule...";
-                    
-                    await Promise.all([
-                        loadStaffList(),
-                        loadHolidays(),
-                        loadLeaves(),
-                        loadPresets()
-                    ]);
-                    
+                    await Promise.all([ loadStaffList(), loadHolidays(), loadLeaves(), loadPresets() ]);
                     loadSchedules(); 
-                    
                     document.getElementById('loadingOverlay').style.display = 'none';
                     document.getElementById('mainContainer').classList.remove('d-none');
                     setTimeout(() => { calendar.updateSize(); }, 200);
-
                 } else {
                     alert("Unauthorized Access. Admins only.");
                     await signOut(auth);
@@ -311,28 +360,54 @@
         const todayStr = getTodayStr();
         const startInput = document.getElementById('bulkStartDate');
         const endInput = document.getElementById('bulkEndDate');
+        const monthInput = document.getElementById('bulkMonthPicker');
+        
         startInput.min = todayStr;
         endInput.min = todayStr;
+        monthInput.min = todayStr.substring(0, 7);
+
         startInput.addEventListener('change', function() {
             endInput.min = this.value;
             if (endInput.value && endInput.value < this.value) endInput.value = this.value;
         });
     }
 
-    // --- DATA LOADERS ---
-    
-    // 🔥 UNFILTERED SCHEDULE LOADER (SHOWS EVERYTHING FOR HISTORY)
+    function initPresetFormUI() {
+        const container = document.getElementById('presetDaysContainer');
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        let html = '';
+        days.forEach((day, index) => {
+            const jsDayIndex = index === 6 ? 0 : index + 1;
+            html += `
+                <div class="preset-day-row" data-day="${jsDayIndex}">
+                    <div class="form-check m-0">
+                        <input class="form-check-input day-active" type="checkbox" checked id="pd_${jsDayIndex}">
+                    </div>
+                    <div class="preset-day-label">${day}</div>
+                    <input type="time" class="form-control form-control-sm day-start" value="09:00">
+                    <span class="mx-1">-</span>
+                    <input type="time" class="form-control form-control-sm day-end" value="18:00">
+                    <input type="number" class="form-control form-control-sm day-break ms-2" style="width:60px" placeholder="Brk" value="60">
+                    <small class="text-muted ms-1">m</small>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
     function loadSchedules() {
         onSnapshot(query(collection(db, "schedules")), (snapshot) => {
             rawSchedules = [];
-            
-            // NO FILTERING HERE: Show ALL schedules, even for disabled/deleted users
             snapshot.forEach(doc => {
                 const d = doc.data();
                 if(d.start && d.end) {
                     const start = d.start.toDate();
                     const end = d.end.toDate();
                     const hour = start.getHours();
+                    let duration = (end - start) / (1000 * 60 * 60);
+                    const breakMins = d.breakMins || 0;
+                    duration -= (breakMins / 60);
+                    if (duration < 0) duration = 0;
                     rawSchedules.push({
                         id: doc.id,
                         userId: d.userId,
@@ -340,8 +415,9 @@
                         date: d.date, 
                         start: start,
                         end: end,
+                        breakMins: breakMins,
                         shiftType: hour >= 13 ? 'Evening' : 'Morning',
-                        hours: (end - start) / (1000 * 60 * 60),
+                        hours: duration, 
                         notes: d.notes,
                         clockIn: d.clockIn ? d.clockIn.toDate() : null
                     });
@@ -365,9 +441,7 @@
                 try {
                     const data = doc.data();
                     if(!data.startDate || !data.endDate) return;
-                    const rawId = data.uid || data.userId;
-                    if (!rawId) return;
-                    const staffId = String(rawId).trim(); 
+                    const staffId = String(data.uid || data.userId).trim();
                     const sParts = data.startDate.split('-').map(Number);
                     const eParts = data.endDate.split('-').map(Number);
                     let current = new Date(Date.UTC(sParts[0], sParts[1] - 1, sParts[2], 12, 0, 0));
@@ -379,7 +453,7 @@
                         leaveEvents.push({ title: `🏖️ ${data.name}`, start: dateStr, allDay: true, display: 'background', className: 'leave-bg' });
                         current.setUTCDate(current.getUTCDate() + 1);
                     }
-                } catch(e) { console.error(e); }
+                } catch(e) {}
             });
             const old = calendar.getEventSourceById('leaves');
             if(old) old.remove();
@@ -388,23 +462,23 @@
         });
     }
 
-    // 🔥 FILTERED STAFF LIST (PREVENTS NEW ASSIGNMENTS FOR DISABLED STAFF)
     async function loadStaffList() {
         allStaff = []; 
         const bulkSelect = document.getElementById('bulkStaffSelect'); 
         bulkSelect.innerHTML = '';
-        
         const q = query(collection(db, "users"), where("role", "==", "staff"));
         const snap = await getDocs(q);
-        
         snap.forEach(d => { 
             const data = d.data();
-            // 🛑 Exclude disabled staff from Dropdowns only
             if (data.status === 'disabled') return;
-
             const name = data.personal?.name || "Unknown";
             const staffId = String(data.uid || d.id).trim();
-            allStaff.push({ id: staffId, name: name }); 
+            // 🟢 Store joinDate for smart scheduling
+            allStaff.push({ 
+                id: staffId, 
+                name: name,
+                joinDate: data.employment?.joinDate 
+            }); 
             bulkSelect.appendChild(new Option(name, staffId)); 
         });
     }
@@ -413,10 +487,8 @@
     window.openDayManager = function(dateStr, filterIds = null, preStart = "", preEnd = "") {
         currentManagerDate = dateStr;
         currentFilterIds = filterIds;
-        
         const todayStr = getTodayStr();
         const titleEl = document.getElementById('dayManagerTitle');
-        
         if (filterIds && filterIds.length > 0) {
             titleEl.innerHTML = `Shift Details <span class="badge bg-primary ms-2">${filterIds.length} Staff</span>`;
             document.getElementById('dmStartTime').value = preStart;
@@ -426,7 +498,6 @@
             document.getElementById('dmStartTime').value = "";
             document.getElementById('dmEndTime').value = "";
         }
-        
         const addPanel = document.querySelector('#dayManagerModal .col-md-5');
         if (dateStr < todayStr) {
             addPanel.style.opacity = '0.5';
@@ -436,14 +507,12 @@
             addPanel.style.opacity = '1';
             addPanel.style.pointerEvents = 'auto';
         }
-
         if(holidayCache[dateStr]) alert(`Note: ${dateStr} is a holiday.`);
-        
         renderDayRoster();
         renderAvailableStaffSelect();
-        
         document.getElementById('dmPresetSelect').value = "";
         document.getElementById('dmNotes').value = "";
+        document.getElementById('dmBreak').value = "60";
         dayManagerModal.show();
     }
 
@@ -467,7 +536,7 @@
             const div = document.createElement('div'); div.className = 'roster-item';
             const clockInBadge = s.clockIn ? `<span class="badge bg-success bg-opacity-10 text-success border border-success ms-1" style="font-size:0.6rem;">IN</span>` : '';
             const actionBtn = s.clockIn ? `<button class="btn btn-xs text-secondary border-0" disabled title="Clocked In"><i data-lucide="lock" class="size-4"></i></button>` : `<button class="btn btn-xs btn-outline-danger border-0" onclick="removeShift('${s.id}')"><i data-lucide="trash-2" class="size-4"></i></button>`;
-            div.innerHTML = `<div><div class="fw-bold text-dark small">${s.empName} ${clockInBadge}</div><div class="text-muted" style="font-size:0.75rem;">${formatTime(s.start)} - ${formatTime(s.end)} <span class="ms-2 text-info">${s.notes?'('+s.notes+')':''}</span></div></div>${actionBtn}`;
+            div.innerHTML = `<div><div class="fw-bold text-dark small">${s.empName} ${clockInBadge}</div><div class="text-muted" style="font-size:0.75rem;">${formatTime(s.start)} - ${formatTime(s.end)} <span class="ms-1 badge bg-secondary bg-opacity-10 text-secondary border text-xs">-${s.breakMins}m</span> <span class="ms-2 text-info">${s.notes?'('+s.notes+')':''}</span></div></div>${actionBtn}`;
             container.appendChild(div);
         });
         lucide.createIcons();
@@ -478,9 +547,7 @@
         const scheduledIds = rawSchedules.filter(s => s.date === currentManagerDate).map(s => String(s.userId).trim());
         allStaff.forEach(staff => {
             const cleanId = String(staff.id).trim();
-            const leaveKey = `${cleanId}_${currentManagerDate}`;
-            if (scheduledIds.includes(cleanId)) return;
-            if (leaveCache.hasOwnProperty(leaveKey)) return; 
+            if (scheduledIds.includes(cleanId) || leaveCache[`${cleanId}_${currentManagerDate}`]) return;
             const opt = document.createElement('option'); opt.value = staff.id; opt.text = staff.name; opt.dataset.name = staff.name;
             select.appendChild(opt);
         });
@@ -491,19 +558,29 @@
         const selectedOptions = Array.from(select.selectedOptions);
         const start = document.getElementById('dmStartTime').value;
         const end = document.getElementById('dmEndTime').value;
+        const breakMins = parseInt(document.getElementById('dmBreak').value) || 0;
         if(selectedOptions.length === 0 || !start || !end) return alert("Select staff and time.");
         const batch = writeBatch(db);
         const startDT = new Date(`${currentManagerDate}T${start}`);
         const endDT = new Date(`${currentManagerDate}T${end}`);
         selectedOptions.forEach(opt => {
             const ref = doc(collection(db, "schedules"));
-            batch.set(ref, { userId: opt.value, empName: opt.dataset.name, date: currentManagerDate, start: Timestamp.fromDate(startDT), end: Timestamp.fromDate(endDT), notes: document.getElementById('dmNotes').value, createdAt: Timestamp.now(), createdBy: auth.currentUser.uid });
+            batch.set(ref, { 
+                userId: opt.value, 
+                empName: opt.dataset.name, 
+                date: currentManagerDate, 
+                start: Timestamp.fromDate(startDT), 
+                end: Timestamp.fromDate(endDT), 
+                breakMins: breakMins, 
+                notes: document.getElementById('dmNotes').value, 
+                createdAt: Timestamp.now(), 
+                createdBy: auth.currentUser.uid 
+            });
         });
         await batch.commit();
         document.getElementById('dmStaffSelect').selectedIndex = -1; 
     }
 
-    // --- OTHER FUNCTIONS ---
     window.removeShift = async (id) => {
         const shift = rawSchedules.find(s => s.id === id);
         if (!shift) return;
@@ -541,56 +618,182 @@
         updateListBulkUI();
     }
 
+    // --- BULK SCHEDULER LOGIC (UPDATED WITH WHOLE MONTH + SMART JOIN DATE) ---
+    window.toggleDateMode = () => {
+        const rangeInputs = document.getElementById('rangeInputs');
+        const monthInputs = document.getElementById('monthInputs');
+        if(document.getElementById('modeRange').checked) {
+            rangeInputs.classList.remove('d-none');
+            monthInputs.classList.add('d-none');
+        } else {
+            rangeInputs.classList.add('d-none');
+            monthInputs.classList.remove('d-none');
+        }
+    }
+
+    window.handleBulkPresetChange = (idx) => {
+        const manualBlock = document.getElementById('manualSettingsBlock');
+        const previewBox = document.getElementById('presetPreviewBox');
+        const previewBody = document.getElementById('presetPreviewBody');
+        
+        if (idx === "") {
+            manualBlock.classList.remove('d-none');
+            previewBox.classList.add('d-none');
+        } else {
+            manualBlock.classList.add('d-none');
+            const p = presetCache[idx];
+            if(p && p.schedule) {
+                previewBox.classList.remove('d-none');
+                let html = '';
+                const dayMap = { "1":"Mon", "2":"Tue", "3":"Wed", "4":"Thu", "5":"Fri", "6":"Sat", "0":"Sun" };
+                const sortedKeys = Object.keys(p.schedule).sort((a,b) => (a==='0'?7:a) - (b==='0'?7:b));
+                
+                sortedKeys.forEach(dayKey => {
+                    const rule = p.schedule[dayKey];
+                    if(rule.active) {
+                        html += `
+                            <tr>
+                                <td><span class="badge bg-light text-dark border">${dayMap[dayKey]}</span></td>
+                                <td class="fw-bold">${rule.start} - ${rule.end}</td>
+                                <td class="text-muted text-end">${rule.break}m</td>
+                            </tr>`;
+                    }
+                });
+                if(html === '') html = '<tr><td colspan="3" class="text-center text-muted small">No active days in this preset.</td></tr>';
+                previewBody.innerHTML = html;
+            }
+        }
+    }
+
     window.runBulkSchedule = async () => {
-        const staff = Array.from(document.getElementById('bulkStaffSelect').selectedOptions).map(o => ({id: o.value, name: o.text}));
-        const startStr = document.getElementById('bulkStartDate').value;
-        const endStr = document.getElementById('bulkEndDate').value;
-        const startTime = document.getElementById('bulkStartTime').value;
-        const endTime = document.getElementById('bulkEndTime').value;
-        if (staff.length === 0 || !startStr || !endStr || !startTime || !endTime) return alert("All fields are required.");
-        if (startStr < getTodayStr()) return alert("Cannot schedule in the past.");
-        if (endStr < startStr) return alert("End date error.");
-        const activeDays = [];
-        document.querySelectorAll('.weekday-selector input:checked').forEach(c => activeDays.push(parseInt(c.value)));
-        if (activeDays.length === 0) return alert("Select at least one day.");
+        const staffSelect = document.getElementById('bulkStaffSelect');
+        // Get FULL staff objects (including joinDate) from allStaff array
+        const selectedIds = Array.from(staffSelect.selectedOptions).map(o => o.value);
+        const selectedStaff = allStaff.filter(s => selectedIds.includes(s.id));
+
+        const isMonthMode = document.getElementById('modeMonth').checked;
+        const presetIdx = document.getElementById('bulkPresetSelect').value;
+        
+        let sDateStr, eDateStr;
+        if (isMonthMode) {
+            const mVal = document.getElementById('bulkMonthPicker').value;
+            if(!mVal) return alert("Select a month.");
+            sDateStr = mVal + "-01";
+            const [y, m] = mVal.split('-');
+            const lastDay = new Date(y, m, 0).getDate();
+            eDateStr = mVal + "-" + lastDay;
+        } else {
+            sDateStr = document.getElementById('bulkStartDate').value;
+            eDateStr = document.getElementById('bulkEndDate').value;
+            if (!sDateStr || !eDateStr) return alert("Date Range is required.");
+        }
+
+        if (selectedStaff.length === 0) return alert("Select at least one staff.");
+
         const batch = writeBatch(db);
         const skippedLog = [];
         let successCount = 0;
-        const sParts = startStr.split('-').map(Number);
-        const eParts = endStr.split('-').map(Number);
-        let current = new Date(Date.UTC(sParts[0], sParts[1] - 1, sParts[2], 12, 0, 0));
-        const end = new Date(Date.UTC(eParts[0], eParts[1] - 1, eParts[2], 12, 0, 0));
-        while (current <= end) {
-            const dateStr = current.toISOString().split('T')[0];
-            const dayOfWeek = current.getUTCDay(); 
-            if (activeDays.includes(dayOfWeek) && !holidayCache[dateStr]) {
-                const startDT = new Date(`${dateStr}T${startTime}`);
-                const endDT = new Date(`${dateStr}T${endTime}`);
-                staff.forEach(u => {
-                    const cleanId = String(u.id).trim();
-                    const key = `${cleanId}_${dateStr}`;
-                    if (leaveCache[key]) { skippedLog.push(`${u.name}: Leave`); return; }
-                    if (rawSchedules.some(s => String(s.userId).trim() === cleanId && s.date === dateStr)) { skippedLog.push(`${u.name}: Scheduled`); return; }
-                    const ref = doc(collection(db, "schedules"));
-                    batch.set(ref, { userId: u.id, empName: u.name, date: dateStr, start: Timestamp.fromDate(startDT), end: Timestamp.fromDate(endDT), notes: '', createdAt: Timestamp.now(), createdBy: auth.currentUser.uid });
-                    successCount++;
-                });
-            }
-            current.setUTCDate(current.getUTCDate() + 1);
+        
+        let rules = {}; 
+        if (presetIdx !== "") {
+            const p = presetCache[presetIdx];
+            if (p && p.schedule) rules = p.schedule;
+        } else {
+            const start = document.getElementById('bulkStartTime').value;
+            const end = document.getElementById('bulkEndTime').value;
+            const brk = parseInt(document.getElementById('bulkBreak').value) || 0;
+            if(!start || !end) return alert("Enter Time.");
+            document.querySelectorAll('.weekday-selector input:checked').forEach(cb => {
+                rules[cb.value] = { active: true, start: start, end: end, break: brk };
+            });
+            if(Object.keys(rules).length === 0) return alert("Select at least one day.");
         }
+
+        // Loop through each staff to apply SMART START DATE
+        selectedStaff.forEach(u => {
+            const cleanId = String(u.id).trim();
+            
+            // 🟢 SMART LOGIC: Determine actual start date for this user
+            let userStartDateStr = sDateStr;
+            if (u.joinDate && u.joinDate > sDateStr) {
+                userStartDateStr = u.joinDate; // Use Join Date if later than selected start
+            }
+            if (userStartDateStr > eDateStr) return; // Skip if joined after end date
+
+            // Date Iteration
+            const sParts = userStartDateStr.split('-').map(Number);
+            const eParts = eDateStr.split('-').map(Number);
+            let current = new Date(Date.UTC(sParts[0], sParts[1] - 1, sParts[2], 12, 0, 0));
+            const end = new Date(Date.UTC(eParts[0], eParts[1] - 1, eParts[2], 12, 0, 0));
+            
+            while (current <= end) {
+                const dateStr = current.toISOString().split('T')[0];
+                const dayOfWeek = String(current.getUTCDay()); // 0=Sun
+                const dayRule = rules[dayOfWeek];
+                
+                if (dayRule && dayRule.active && dayRule.start && dayRule.end && !holidayCache[dateStr]) {
+                    const startDT = new Date(`${dateStr}T${dayRule.start}`);
+                    const endDT = new Date(`${dateStr}T${dayRule.end}`);
+                    const key = `${cleanId}_${dateStr}`;
+
+                    // Conflict Check
+                    if (leaveCache[key]) { 
+                        // Optional: Log leave conflict silently
+                    } else if (rawSchedules.some(s => String(s.userId).trim() === cleanId && s.date === dateStr)) { 
+                        // Optional: Log existing schedule conflict
+                    } else {
+                        const ref = doc(collection(db, "schedules"));
+                        batch.set(ref, { 
+                            userId: u.id, 
+                            empName: u.name, 
+                            date: dateStr, 
+                            start: Timestamp.fromDate(startDT), 
+                            end: Timestamp.fromDate(endDT), 
+                            breakMins: parseInt(dayRule.break) || 0,
+                            notes: '', 
+                            createdAt: Timestamp.now(), 
+                            createdBy: auth.currentUser.uid 
+                        });
+                        successCount++;
+                    }
+                }
+                current.setUTCDate(current.getUTCDate() + 1);
+            }
+        });
+        
         if (successCount > 0) await batch.commit();
         bulkModal.hide();
-        let msg = `✅ Scheduled ${successCount}.`;
-        if (skippedLog.length > 0) msg += `\nSkipped ${skippedLog.length} conflicts.`;
-        alert(msg);
+        alert(`✅ Scheduled ${successCount} shifts.\n\nSmart Feature: New joiners were only scheduled from their Join Date.`);
         if(successCount > 0) filterTable();
     }
 
-    window.openBulkModal = () => { document.getElementById('bulkForm').reset(); bulkModal.show(); }
-    window.applyBulkPreset = (idx) => { if(idx==="")return; const p=presetCache[idx]; if(p){document.getElementById('bulkStartTime').value=p.start;document.getElementById('bulkEndTime').value=p.end;} }
-    window.applyDMPreset = (idx) => { if(idx==="")return; const p=presetCache[idx]; if(p){document.getElementById('dmStartTime').value=p.start;document.getElementById('dmEndTime').value=p.end;} }
+    // --- UI HELPERS ---
+    window.openBulkModal = () => { 
+        document.getElementById('bulkForm').reset(); 
+        window.handleBulkPresetChange(""); 
+        // Default to current month for convenience
+        document.getElementById('bulkMonthPicker').value = getTodayStr().substring(0, 7);
+        bulkModal.show(); 
+    }
+    
+    window.applyDMPreset = (idx) => { 
+        if(idx==="") return; 
+        const p = presetCache[idx];
+        if(p && p.schedule) {
+            const dayIdx = new Date(currentManagerDate).getDay(); 
+            const rule = p.schedule[String(dayIdx)];
+            if(rule && rule.active) {
+                document.getElementById('dmStartTime').value=rule.start;
+                document.getElementById('dmEndTime').value=rule.end;
+                document.getElementById('dmBreak').value=rule.break;
+            } else {
+                alert("This preset has no hours set for " + new Date(currentManagerDate).toLocaleDateString('en-US', {weekday:'long'}));
+            }
+        }
+    }
     window.filterBulkStaff = function() { const term=document.getElementById('bulkStaffSearch').value.toLowerCase(); const s=document.getElementById('bulkStaffSelect'); for(let i=0;i<s.options.length;i++) s.options[i].style.display=s.options[i].text.toLowerCase().includes(term)?"":"none"; }
     
+    // Calendar Event Mapping
     function updateCalendarEvents() {
         calendar.removeAllEvents();
         const hEvents = []; 
@@ -610,7 +813,6 @@
         });
         calendar.addEventSource(shiftEvents);
     }
-
     function formatTime24(date) { return date.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}); }
     function initCalendar() {
         var el = document.getElementById('calendar');
@@ -626,17 +828,127 @@
     }
 
     async function loadHolidays() { const s=await getDoc(doc(db,"settings","holidays")); if(s.exists()) s.data().holiday_list.forEach(h=>holidayCache[h.date]=h.name); }
+    
+    // --- ADVANCED PRESET MANAGER ---
     async function loadPresets() { 
         const snap = await getDoc(doc(db, "settings", "shift_presets")); 
-        presetCache = (snap.exists() && snap.data().presets) ? snap.data().presets : [{ name: 'Regular (9-6)', start: '09:00', end: '18:00' }]; 
+        presetCache = (snap.exists() && snap.data().presets) ? snap.data().presets : []; 
         const dm = document.getElementById('dmPresetSelect'), bs = document.getElementById('bulkPresetSelect');
-        dm.innerHTML='<option value="">Custom</option>'; bs.innerHTML='<option value="">Custom</option>';
-        presetCache.forEach((p,i) => { const t = p.name; dm.appendChild(new Option(t,i)); bs.appendChild(new Option(t,i)); });
+        
+        if (dm && bs) {
+            while(dm.options.length > 1) dm.remove(1);
+            while(bs.options.length > 1) bs.remove(1);
+
+            const listContainer = document.getElementById('presetListContainer');
+            listContainer.innerHTML = ''; 
+
+            presetCache.forEach((p,i) => { 
+                const t = p.name; 
+                dm.appendChild(new Option(t,i)); 
+                bs.appendChild(new Option(t,i)); 
+
+                const item = document.createElement('div');
+                item.className = 'p-2 border rounded bg-white d-flex justify-content-between align-items-center';
+                item.innerHTML = `
+                    <div class="text-truncate" style="max-width: 200px;">
+                        <div class="fw-bold small">${p.name}</div>
+                        <div class="x-small text-muted">Advanced Rule Set</div>
+                    </div>
+                    <div class="d-flex gap-1">
+                        <button class="btn btn-xs btn-outline-primary" onclick="editPreset(${i})"><i data-lucide="edit-2" class="size-3"></i></button>
+                        <button class="btn btn-xs btn-outline-danger" onclick="deletePreset(${i})"><i data-lucide="trash-2" class="size-3"></i></button>
+                    </div>
+                `;
+                listContainer.appendChild(item);
+            });
+            lucide.createIcons();
+        }
     }
-    window.openPresetModal = () => { bulkModal.hide(); dayManagerModal.hide(); presetModal.show(); }
+    
+    window.openPresetModal = () => { bulkModal.hide(); dayManagerModal.hide(); resetPresetForm(); presetModal.show(); }
     window.closePresetModal = () => { presetModal.hide(); }
-    window.saveNewPreset = async () => { const n = document.getElementById('newPresetName').value, s = document.getElementById('newPresetStart').value, e = document.getElementById('newPresetEnd').value; if(n&&s&&e) { presetCache.push({name:n, start:s, end:e}); await setDoc(doc(db, "settings", "shift_presets"), {presets:presetCache}); loadPresets(); } }
-    window.deletePreset = async (i) => { if(confirm("Delete?")){ presetCache.splice(i,1); await setDoc(doc(db, "settings", "shift_presets"), {presets:presetCache}); loadPresets(); } }
+
+    window.savePreset = async () => { 
+        const idx = document.getElementById('editingPresetIndex').value;
+        const name = document.getElementById('newPresetName').value;
+        if(!name) return alert("Enter name");
+
+        const schedule = {};
+        let hasActive = false;
+        document.querySelectorAll('.preset-day-row').forEach(row => {
+            const dayIdx = row.dataset.day; 
+            const active = row.querySelector('.day-active').checked;
+            if(active) hasActive = true;
+            schedule[dayIdx] = {
+                active: active,
+                start: row.querySelector('.day-start').value,
+                end: row.querySelector('.day-end').value,
+                break: parseInt(row.querySelector('.day-break').value) || 0
+            };
+        });
+
+        if(!hasActive) return alert("Enable at least one day");
+
+        const newObj = { name, schedule };
+
+        if (idx === "-1") {
+            presetCache.push(newObj);
+        } else {
+            presetCache[idx] = newObj;
+        }
+        
+        await setDoc(doc(db, "settings", "shift_presets"), {presets:presetCache}); 
+        loadPresets(); 
+        resetPresetForm();
+    }
+
+    window.editPreset = (i) => {
+        const p = presetCache[i];
+        document.getElementById('editingPresetIndex').value = i;
+        document.getElementById('newPresetName').value = p.name;
+        
+        if(p.schedule) {
+            document.querySelectorAll('.preset-day-row').forEach(row => {
+                const dayIdx = row.dataset.day;
+                const rule = p.schedule[dayIdx];
+                if(rule) {
+                    row.querySelector('.day-active').checked = rule.active;
+                    row.querySelector('.day-start').value = rule.start;
+                    row.querySelector('.day-end').value = rule.end;
+                    row.querySelector('.day-break').value = rule.break || 0;
+                }
+            });
+        }
+        
+        document.getElementById('btnSavePreset').innerText = "Update Preset";
+        document.getElementById('btnSavePreset').classList.replace('btn-primary', 'btn-warning');
+        document.getElementById('btnCancelEdit').classList.remove('d-none');
+    }
+
+    window.resetPresetForm = () => {
+        document.getElementById('editingPresetIndex').value = "-1";
+        document.getElementById('newPresetName').value = "";
+        document.querySelectorAll('.preset-day-row').forEach(row => {
+            const d = parseInt(row.dataset.day);
+            const isWk = (d >= 1 && d <= 5);
+            row.querySelector('.day-active').checked = isWk;
+            row.querySelector('.day-start').value = "09:00";
+            row.querySelector('.day-end').value = "18:00";
+            row.querySelector('.day-break').value = 60;
+        });
+        
+        document.getElementById('btnSavePreset').innerText = "Add Preset";
+        document.getElementById('btnSavePreset').classList.replace('btn-warning', 'btn-primary');
+        document.getElementById('btnCancelEdit').classList.add('d-none');
+    }
+
+    window.deletePreset = async (i) => { 
+        if(confirm("Delete this preset?")){ 
+            presetCache.splice(i,1); 
+            await setDoc(doc(db, "settings", "shift_presets"), {presets:presetCache}); 
+            loadPresets(); 
+        } 
+    }
 
     function formatTime(d) { return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
     window.switchView = (v) => { const c=document.getElementById('calendar'), l=document.getElementById('listView'), bc=document.getElementById('btnCalendarView'), bl=document.getElementById('btnListView'); if(v==='calendar'){ c.classList.remove('d-none'); l.classList.add('d-none'); bc.classList.add('active'); bl.classList.remove('active'); calendar.render(); } else{ c.classList.add('d-none'); l.classList.remove('d-none'); bc.classList.remove('active'); bl.classList.add('active'); } }
@@ -644,12 +956,12 @@
     function renderListView(data) { 
         const t=document.getElementById('scheduleTableBody'); t.innerHTML=''; listSelectedIds.clear(); updateListBulkUI(); 
         data.sort((a,b)=>new Date(a.date)-new Date(b.date)); 
-        if(data.length===0) return t.innerHTML='<tr><td colspan="7" class="text-center text-muted">No data.</td></tr>'; 
+        if(data.length===0) return t.innerHTML='<tr><td colspan="8" class="text-center text-muted">No data.</td></tr>'; 
         data.forEach(i=>{ 
             const tr=document.createElement('tr'); 
             const statusIcon = i.clockIn ? `<span class="badge bg-success bg-opacity-10 text-success border border-success px-1 ms-1">IN</span>` : '';
             const actionBtn = i.clockIn ? `<button class="btn btn-xs text-secondary border-0" disabled><i data-lucide="lock" class="size-4"></i></button>` : `<button class="btn btn-xs text-danger border-0" onclick="removeShift('${i.id}')"><i data-lucide="trash-2" class="size-4"></i></button>`;
-            tr.innerHTML=`<td><input type="checkbox" class="form-check-input list-check" value="${i.id}" onchange="toggleListSelection('${i.id}')"></td><td>${i.date}</td><td class="fw-bold">${i.empName} ${statusIcon}</td><td>${formatTime(i.start)}-${formatTime(i.end)}</td><td>${i.shiftType}</td><td class="text-muted small">${i.notes||'-'}</td><td class="text-end">${actionBtn}</td>`; 
+            tr.innerHTML=`<td><input type="checkbox" class="form-check-input list-check" value="${i.id}" onchange="toggleListSelection('${i.id}')"></td><td>${i.date}</td><td class="fw-bold">${i.empName} ${statusIcon}</td><td>${formatTime(i.start)}-${formatTime(i.end)}</td><td>${i.breakMins}m</td><td>${i.shiftType}</td><td class="text-muted small">${i.notes||'-'}</td><td class="text-end">${actionBtn}</td>`; 
             t.appendChild(tr); 
         }); 
         lucide.createIcons();
@@ -666,7 +978,33 @@
 
     function initFilters() { const t=new Date(); document.getElementById('filterMonth').value=t.toISOString().slice(0,7); const y=document.getElementById('filterYear'); const c=t.getFullYear(); for(let i=c-2;i<=c+2;i++) y.appendChild(new Option(i,i,false,i===c)); }
     window.updateFilterUI = () => { const t=document.getElementById('filterType').value; ['filterMonth','filterWeek','filterYear'].forEach(i=>document.getElementById(i).classList.add('d-none')); if(t==='month')document.getElementById('filterMonth').classList.remove('d-none'); if(t==='week')document.getElementById('filterWeek').classList.remove('d-none'); if(t==='year')document.getElementById('filterYear').classList.remove('d-none'); renderAnalytics(); }
-    window.renderAnalytics = () => { const c=document.getElementById('analyticsList'), t=document.getElementById('filterType').value; let sF, eF; if (t==='month') { const v=document.getElementById('filterMonth').value; if(v) { sF=new Date(v+"-01"); eF=new Date(sF.getFullYear(), sF.getMonth()+1, 0); } } else if (t==='year') { const v=document.getElementById('filterYear').value; if(v) { sF=new Date(v,0,1); eF=new Date(v,11,31); } } else if (t==='week') { const v=document.getElementById('filterWeek').value; if(v) { const [y,w]=v.split('-W'); const s=new Date(y,0,1+(w-1)*7); const d=s.getDay(); const st=s; if(d<=4) st.setDate(s.getDate()-s.getDay()+1); else st.setDate(s.getDate()+8-s.getDay()); sF=st; eF=new Date(st); eF.setDate(eF.getDate()+6); } } if(!sF||isNaN(sF)) return c.innerHTML='<div class="text-center text-muted small py-4">Invalid Date.</div>'; const stats={}; rawSchedules.forEach(s=>{ const sd=new Date(s.date); if(sd>=sF && sd<=eF){ if(!stats[s.userId]) stats[s.userId]={name:s.empName, totalHours:0, distinctDates:new Set(), shifts:[]}; stats[s.userId].totalHours+=s.hours; stats[s.userId].distinctDates.add(s.date); stats[s.userId].shifts.push(s); } }); let html=''; Object.keys(stats).sort((a,b)=>stats[b].totalHours-stats[a].totalHours).forEach(uid=>{ const u=stats[uid]; html+=`<div class="stat-item d-flex justify-content-between align-items-center" onclick="openStaffAnalytics('${uid}')"><div class="d-flex align-items-center gap-2"><div class="bg-primary bg-opacity-10 text-primary rounded-circle d-flex align-items-center justify-content-center fw-bold" style="width:30px; height:30px; font-size:0.75rem;">${u.name.charAt(0)}</div><div><div class="text-dark small fw-bold">${u.name}</div><div class="stat-label">Workload</div></div></div><div class="text-end"><div class="stat-value text-primary">${u.distinctDates.size} <span style="font-size:0.7em; color:#94a3b8;">Days</span></div><div class="stat-value text-secondary" style="font-size:0.85rem;">${u.totalHours.toFixed(1)} <span style="font-size:0.7em; color:#94a3b8;">Hrs</span></div></div></div>`; }); c.innerHTML=html||'<div class="text-center text-muted small py-4">No shifts.</div>'; window.currentStats=stats; }
+    
+    window.renderAnalytics = () => { 
+        const c=document.getElementById('analyticsList'), t=document.getElementById('filterType').value; 
+        let sF, eF; 
+        if (t==='month') { const v=document.getElementById('filterMonth').value; if(v) { sF=new Date(v+"-01"); eF=new Date(sF.getFullYear(), sF.getMonth()+1, 0); eF.setHours(23, 59, 59, 999); } } 
+        else if (t==='year') { const v=document.getElementById('filterYear').value; if(v) { sF=new Date(v,0,1); eF=new Date(v,11,31); eF.setHours(23, 59, 59, 999); } } 
+        else if (t==='week') { const v=document.getElementById('filterWeek').value; if(v) { const [y,w]=v.split('-W'); const s=new Date(y,0,1+(w-1)*7); const d=s.getDay(); const st=s; if(d<=4) st.setDate(s.getDate()-s.getDay()+1); else st.setDate(s.getDate()+8-s.getDay()); sF=st; eF=new Date(st); eF.setDate(eF.getDate()+6); eF.setHours(23, 59, 59, 999); } } 
+        
+        if(!sF||isNaN(sF)) return c.innerHTML='<div class="text-center text-muted small py-4">Invalid Date.</div>'; 
+        const stats={}; 
+        rawSchedules.forEach(s=>{ 
+            const sd=new Date(s.date); 
+            if(sd>=sF && sd<=eF){ 
+                if(!stats[s.userId]) stats[s.userId]={name:s.empName, totalHours:0, distinctDates:new Set(), shifts:[]}; 
+                stats[s.userId].totalHours+=s.hours; 
+                stats[s.userId].distinctDates.add(s.date); 
+                stats[s.userId].shifts.push(s); 
+            } 
+        }); 
+        let html=''; 
+        Object.keys(stats).sort((a,b)=>stats[b].totalHours-stats[a].totalHours).forEach(uid=>{ 
+            const u=stats[uid]; 
+            html+=`<div class="stat-item d-flex justify-content-between align-items-center" onclick="openStaffAnalytics('${uid}')"><div class="d-flex align-items-center gap-2"><div class="bg-primary bg-opacity-10 text-primary rounded-circle d-flex align-items-center justify-content-center fw-bold" style="width:30px; height:30px; font-size:0.75rem;">${u.name.charAt(0)}</div><div><div class="text-dark small fw-bold">${u.name}</div><div class="stat-label">Workload</div></div></div><div class="text-end"><div class="stat-value text-primary">${u.distinctDates.size} <span style="font-size:0.7em; color:#94a3b8;">Days</span></div><div class="stat-value text-secondary" style="font-size:0.85rem;">${u.totalHours.toFixed(1)} <span style="font-size:0.7em; color:#94a3b8;">Hrs</span></div></div></div>`; 
+        }); 
+        c.innerHTML=html||'<div class="text-center text-muted small py-4">No shifts.</div>'; 
+        window.currentStats=stats; 
+    }
 
     window.openStaffAnalytics = (uid) => {
         const data = window.currentStats[uid]; if(!data) return;

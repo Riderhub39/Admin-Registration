@@ -156,7 +156,7 @@
                             </div>
                         </div>
 
-                        <div class="form-section-title text-primary"><i data-lucide="clock" class="size-4 me-1" style="vertical-align: text-bottom;"></i> Attendance Analytics (Auto-Calculated)</div>
+                        <div class="form-section-title text-primary"><i data-lucide="clock" class="size-4 me-1" style="vertical-align: text-bottom;"></i> Attendance Analytics</div>
                         <div class="row g-2 mb-4">
                             <div class="col-3">
                                 <div class="stats-box">
@@ -194,28 +194,41 @@
                             <input type="hidden" id="metaOT" value="0">
                         </div>
 
-                        <div class="form-section-title">Earnings</div>
+                        <div class="form-section-title">Earnings Configuration</div>
+                        <div class="alert alert-info py-2 mb-3 d-none" id="newJoinerAlert">
+                            <i data-lucide="user-plus" class="size-4 me-2"></i>
+                            <strong>New Joiner detected!</strong> Joined on <span id="joinDateDisplay">-</span>.
+                        </div>
+
                         <div class="row g-3 mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label text-muted small">Basic Salary (Full)</label>
+                             <div class="col-md-3">
+                                <label class="form-label text-muted small fw-bold">Standard Work Days</label>
+                                <input type="number" id="inpStdDays" class="form-control" value="26" oninput="calcTotals()">
+                                <div class="form-text" style="font-size: 0.65rem">Used for proration</div>
+                            </div>
+
+                            <div class="col-md-5">
+                                <label class="form-label text-muted small">Basic Salary (Full Month)</label>
                                 <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpBasic" class="form-control bg-light" step="0.01" oninput="calcTotals()"></div>
                             </div>
-                            <div class="col-md-6">
+                             
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold">Gross Basic (Calculated)</label>
+                                <div class="input-group"><span class="input-group-text bg-calc">RM</span><input type="text" id="dispGrossBasic" class="form-control bg-calc fw-bold" readonly></div>
+                                <div class="form-text text-danger" id="prorationMsg" style="font-size: 0.65rem; visibility: hidden;">Pro-rated</div>
+                            </div>
+
+                            <div class="col-md-4">
                                 <label class="form-label text-muted small fw-bold text-primary">Commission</label>
                                 <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpComm" class="form-control" step="0.01" placeholder="0.00" oninput="calcTotals()"></div>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label text-muted small">Overtime (OT)</label>
                                 <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpOT" class="form-control" step="0.01" placeholder="0.00" oninput="calcTotals()"></div>
-                                <div class="form-text" style="font-size: 0.7rem">Suggested: <span id="suggOT">RM 0.00</span></div>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label text-muted small">Allowance / Bonus</label>
                                 <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpAllowance" class="form-control" step="0.01" placeholder="0.00" oninput="calcTotals()"></div>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label small fw-bold">Gross Pay (Pro-rated)</label>
-                                <div class="input-group"><span class="input-group-text bg-calc">RM</span><input type="text" id="dispGross" class="form-control bg-calc fw-bold" readonly></div>
                             </div>
                         </div>
 
@@ -232,7 +245,7 @@
                                     <span class="input-group-text text-danger">RM</span>
                                     <input type="number" id="inpLateDed" class="form-control text-danger border-danger" step="0.01" placeholder="0.00" oninput="calcTotals()">
                                 </div>
-                                <div class="form-text" style="font-size: 0.65rem">Auto: (Basic / SchedHrs / 60) * LateMins</div>
+                                <div class="form-text" style="font-size: 0.65rem">Auto: (Basic/StdDays/8/60) * LateMins</div>
                             </div>
                         </div>
 
@@ -315,17 +328,10 @@
             if(el) el.style.display = show ? 'flex' : 'none';
         };
 
-        // 🟢🟢🟢 Adaptive Date Logic 🟢🟢🟢
         function initAdaptiveDatePickers() {
-            // Check for Chromium based browsers (Chrome, Edge, Opera)
             const ua = navigator.userAgent;
-            const isChromium = /Chrome/.test(ua) && /Google Inc/.test(navigator.vendor); 
-            // Better Check: Chromium sends "Chrome" and "Safari". Firefox sends "Firefox". Safari sends "Safari" but not "Chrome".
-            // However, a simpler check is often:
             const useMonth = (ua.indexOf("Chrome") !== -1 || ua.indexOf("Edg") !== -1);
-
             const inputType = useMonth ? "month" : "date";
-            console.log("Browser Detection: ", useMonth ? "Chromium (Month)" : "Other (Date)");
 
             const now = new Date();
             const year = now.getFullYear();
@@ -356,7 +362,6 @@
                     printModal = new bootstrap.Modal(document.getElementById('printModal'));
                 }
                 
-                // 🟢 Run Adaptive Init
                 initAdaptiveDatePickers();
                 
                 fetch('header.html').then(res => res.text()).then(html => {});
@@ -384,8 +389,9 @@
                     const s = doc.data();
                     const personal = s.personal || {}; 
                     const payroll = s.payroll || {};
+                    const employment = s.employment || {};
 
-                    const displayName = personal.name || s.name || (personal.email ? personal.email.split('@')[0] : 'Unknown Staff');
+                    const displayName = personal.name || s.name || 'Unknown Staff';
                     const displayId = personal.empCode || s.staffId || 'ID--';
                     
                     staffMap[doc.id] = { 
@@ -394,6 +400,7 @@
                         ...s, 
                         displayName: displayName, 
                         displayId: displayId,
+                        joinDate: employment.joinDate, // Critical for Proration
                         payroll: payroll 
                     };
 
@@ -406,8 +413,6 @@
 
         window.autoFillStaffData = async () => {
             const uid = document.getElementById('staffSelect').value;
-            
-            // 🟢 Robust Date Extraction
             let rawDate = document.getElementById('formMonthPicker').value;
             const month = rawDate ? rawDate.substring(0, 7) : "";
             
@@ -420,13 +425,23 @@
             }
 
             if (month) {
+                // Check New Joiner
+                const joinDateStr = staff.joinDate;
+                const alertBox = document.getElementById('newJoinerAlert');
+                if (joinDateStr && joinDateStr.startsWith(month)) {
+                    alertBox.classList.remove('d-none');
+                    document.getElementById('joinDateDisplay').innerText = joinDateStr;
+                } else {
+                    alertBox.classList.add('d-none');
+                }
+
                 await calculateAttendanceStats(uid, month);
             }
             
             calcTotals();
         };
 
-        // 🟢🟢🟢 考勤计算逻辑 🟢🟢🟢
+        // --- Calculate Stats based on Attendance & Schedule Rules ---
         async function calculateAttendanceStats(uid, monthStr) {
             document.getElementById('dispDays').innerText = "Calculating...";
             document.getElementById('dispHours').innerText = "...";
@@ -435,29 +450,17 @@
                 const staff = staffMap[uid];
                 if (!staff) return;
 
-                if (!monthStr) {
-                    let rawDate = document.getElementById('formMonthPicker').value;
-                    monthStr = rawDate ? rawDate.substring(0, 7) : "";
-                }
-                if (!monthStr) return;
-
                 const [year, month] = monthStr.split('-');
                 const startDate = `${monthStr}-01`;
                 const lastDayVal = new Date(year, month, 0).getDate();
                 const endDate = `${monthStr}-${lastDayVal}`;
 
-                console.group(`📊 Analysis: ${staff.displayName} (${monthStr})`);
-                
                 const targetIds = new Set();
                 if (uid) targetIds.add(String(uid));
                 if (staff.authUid) targetIds.add(String(staff.authUid));
-                if (staff.displayId) targetIds.add(String(staff.displayId));
                 
-                // A. Scheduled
-                const schedQ = query(collection(db, "schedules"), 
-                    where("date", ">=", startDate), 
-                    where("date", "<=", endDate)
-                );
+                // A. Get Schedule (Use Break Mins)
+                const schedQ = query(collection(db, "schedules"), where("date", ">=", startDate), where("date", "<=", endDate));
                 const schedSnap = await getDocs(schedQ);
                 const scheduleMap = {}; 
                 let scheduledDays = 0;
@@ -478,21 +481,20 @@
                         const end = parseTime(s.end, s.date);
 
                         if (start && end) {
-                            scheduleMap[s.date] = start; 
+                            scheduleMap[s.date] = { start, end }; 
                             scheduledDays++;
                             let diffMs = end - start;
-                            if (diffMs > (6 * 60 * 60 * 1000)) diffMs -= (1 * 60 * 60 * 1000);
+                            const breakMs = (s.breakMins || 60) * 60000; // Default 60m if missing
+                            diffMs -= breakMs;
+                            
                             const h = diffMs / (1000 * 60 * 60);
                             if (h > 0) scheduledHoursTotal += h;
                         }
                     }
                 });
                 
-                // B. Actual
-                const attQ = query(collection(db, "attendance"), 
-                    where("date", ">=", startDate), 
-                    where("date", "<=", endDate)
-                );
+                // B. Get Attendance
+                const attQ = query(collection(db, "attendance"), where("date", ">=", startDate), where("date", "<=", endDate));
                 const attSnap = await getDocs(attQ);
                 const dailyRecords = {}; 
                 attSnap.forEach(doc => {
@@ -514,11 +516,8 @@
                     let firstInTime = null;
                     let lastOutTime = null;
                     let dayOT = 0;
-                    let hasBreakOut = false;
-                    let hasBreakIn = false;
 
                     records.forEach(r => {
-                        let t = parseTime(r.timestamp || r.timeIn || r.manualIn, r.date);
                         if (r.session === 'Clock In' || r.clockIn) {
                             const tIn = parseTime(r.manualIn || r.timeIn || r.timestamp, r.date);
                             if (!firstInTime || (tIn && tIn < firstInTime)) firstInTime = tIn;
@@ -527,31 +526,43 @@
                             const tOut = parseTime(r.manualOut || r.timeOut || r.timestamp, r.date);
                             if (!lastOutTime || (tOut && tOut > lastOutTime)) lastOutTime = tOut;
                         }
-                        if (r.session === 'Break Out') hasBreakOut = true;
-                        if (r.session === 'Break In') hasBreakIn = true;
-                        if (r.overtimeHours) dayOT += (parseFloat(r.overtimeHours) || 0);
                     });
 
                     if (firstInTime) {
                         actualDays++;
+                        
+                        // Calculate Work Hours if Clock Out exists
                         if (lastOutTime && lastOutTime > firstInTime) {
-                            let diffMs = lastOutTime - firstInTime;
-                            if (hasBreakOut && hasBreakIn) diffMs -= (1 * 60 * 60 * 1000);
-                            actualHours += (diffMs / (1000 * 60 * 60));
+                             // Determine effective start (Schedule vs Actual)
+                             let effectiveStart = firstInTime;
+                             let effectiveBreak = 60; // Default
+
+                             if(scheduleMap[date]) {
+                                 const sched = scheduleMap[date];
+                                 // If arrived earlier than schedule, count from schedule start
+                                 if(firstInTime < sched.start) effectiveStart = sched.start;
+                                 
+                                 // Use specific break time
+                                 if(sched.breakMins !== undefined) effectiveBreak = sched.breakMins;
+                             }
+
+                             let diffMs = lastOutTime - effectiveStart;
+                             diffMs -= (effectiveBreak * 60000); 
+                             if(diffMs < 0) diffMs = 0;
+                             actualHours += (diffMs / (1000 * 60 * 60));
                         }
+
+                        // Late Calculation
                         if (scheduleMap[date]) {
-                            const schedStart = scheduleMap[date];
-                            const bufferTime = new Date(schedStart.getTime() + 15 * 60000); 
-                            if (firstInTime > bufferTime) {
+                            const schedStart = scheduleMap[date].start;
+                            // Strict Late: No buffer
+                            if (firstInTime > schedStart) {
                                 const lateMs = firstInTime - schedStart;
                                 totalLateMins += Math.floor(lateMs / 60000);
                             }
                         }
                     }
-                    totalOTHours += dayOT;
                 });
-
-                console.groupEnd();
 
                 document.getElementById('dispDays').innerText = `${actualDays} / ${scheduledDays}`;
                 document.getElementById('dispHours').innerText = `${actualHours.toFixed(1)}h / ${scheduledHoursTotal.toFixed(1)}h`;
@@ -576,43 +587,53 @@
         window.calcTotals = () => {
             const getVal = (id) => parseFloat(document.getElementById(id)?.value) || 0;
             
-            const actDays = parseFloat(document.getElementById('metaDaysAct').value) || 0;
-            const schDays = parseFloat(document.getElementById('metaDaysSch').value) || 26; 
-            const schHours = parseFloat(document.getElementById('metaHrsSch').value) || 0;
-            const lateMins = parseFloat(document.getElementById('metaLate').value) || 0;
+            const schDays = parseFloat(document.getElementById('metaDaysSch').value) || 0;
+            const actDays = parseFloat(document.getElementById('metaDaysAct').value) || 0; // Not used for basic calc usually, but maybe for unpaid leave logic
+            const stdDays = getVal('inpStdDays'); // Standard Monthly Days (e.g., 26)
             
             const fullBasic = getVal('inpBasic');
             
-            let proRatedBasic = fullBasic;
-            const daysRatio = schDays > 0 ? (actDays / schDays) : 1;
-            if (schDays > 0 && actDays < schDays) {
-                proRatedBasic = fullBasic * daysRatio;
-                document.getElementById('dispGross').title = `Pro-rated: ${actDays}/${schDays} days`;
-                document.getElementById('dispGross').classList.add('text-danger'); 
+            // --- Proration Logic ---
+            let calculatedBasic = fullBasic;
+            const prorationMsg = document.getElementById('prorationMsg');
+            
+            // If Scheduled Days < Standard Days (e.g. New Joiner or Part timer), prorate based on daily rate
+            if (schDays > 0 && schDays < stdDays) {
+                const dailyRate = fullBasic / stdDays;
+                calculatedBasic = dailyRate * schDays;
+                
+                prorationMsg.style.visibility = 'visible';
+                prorationMsg.innerText = `Pro-rated: ${schDays} days @ RM${dailyRate.toFixed(2)}/day`;
+                document.getElementById('dispGrossBasic').classList.add('text-primary');
             } else {
-                document.getElementById('dispGross').title = "Full Basic";
-                document.getElementById('dispGross').classList.remove('text-danger');
+                prorationMsg.style.visibility = 'hidden';
+                document.getElementById('dispGrossBasic').classList.remove('text-primary');
             }
+
+            document.getElementById('dispGrossBasic').value = formatMoney(calculatedBasic);
 
             const comm = getVal('inpComm');
             const ot = getVal('inpOT');
             const allow = getVal('inpAllowance');
-            const gross = proRatedBasic + comm + ot + allow;
+            const gross = calculatedBasic + comm + ot + allow;
 
+            // Late Deduction Calculation
+            // Formula: (Full Basic / Std Days / 8 hours) per hour rate? 
+            // Or (Full Basic / 26 / 8 / 60) per minute rate?
             let lateDed = 0;
-            if (schHours > 0 && lateMins > 0) {
-                const minuteRate = fullBasic / (schHours * 60);
+            const lateMins = parseFloat(document.getElementById('metaLate').value) || 0;
+            
+            if (lateMins > 0) {
+                // Assuming 8 hours standard work day for deduction rate
+                const minuteRate = (fullBasic / stdDays) / 8 / 60;
                 lateDed = minuteRate * lateMins;
                 
+                // Only auto-fill if user hasn't manually edited (simple check: focus)
                 if(document.activeElement.id !== 'inpLateDed') {
                     document.getElementById('inpLateDed').value = lateDed.toFixed(2);
                 } else {
                     lateDed = getVal('inpLateDed'); 
                 }
-            } else if (document.activeElement.id !== 'inpLateDed') {
-                 document.getElementById('inpLateDed').value = 0; 
-            } else {
-                 lateDed = getVal('inpLateDed');
             }
 
             const epf = getVal('inpEPF');
@@ -622,7 +643,6 @@
             
             const totalDed = epf + socso + eis + pcb + lateDed;
 
-            document.getElementById('dispGross').value = formatMoney(gross);
             document.getElementById('dispNet').innerText = "RM " + formatMoney(gross - totalDed);
         };
 
@@ -664,8 +684,6 @@
 
                     d.staffName = displayName; 
 
-                    const commDisplay = (d.earnings?.commission > 0) ? `<br><small class='text-success'>+Comm: ${d.earnings.commission}</small>` : '';
-
                     const row = document.createElement('div');
                     row.className = `row align-items-center py-3 border-bottom px-3 bg-white status-${d.status}`;
                     row.innerHTML = `
@@ -673,10 +691,7 @@
                             <div class="fw-bold text-primary" style="cursor:pointer" onclick="openEditModal('${d.id}')">${displayName}</div>
                             <small class="text-muted">${displayCode}</small>
                         </div>
-                        <div class="col-2">
-                            RM ${formatMoney(d.basic)}
-                            ${commDisplay}
-                        </div>
+                        <div class="col-2">RM ${formatMoney(d.basic + (d.earnings.commission||0))}</div>
                         <div class="col-2">RM ${formatMoney(d.gross)}</div>
                         <div class="col-2 fw-bold">RM ${formatMoney(d.net)}</div>
                         <div class="col-1"><span class="badge ${d.status === 'Published' ? 'bg-success' : 'bg-warning text-dark'}">${d.status}</span></div>
@@ -701,19 +716,14 @@
             document.getElementById('formModalTitle').innerText = "Create New Payslip";
             document.getElementById('staffSelect').disabled = false;
             
-            // Sync month pickers. Use value directly (handled by Adaptive logic)
             const globalDate = document.getElementById('globalMonthPicker').value;
-            if(globalDate) {
-                document.getElementById('formMonthPicker').value = globalDate;
-            }
+            if(globalDate) document.getElementById('formMonthPicker').value = globalDate;
 
             document.getElementById('dispNet').innerText = "RM 0.00";
+            document.getElementById('dispGrossBasic').value = "0.00";
             document.getElementById('dispDays').innerText = "- / -";
             document.getElementById('dispHours').innerText = "- / -";
-            document.getElementById('dispLate').innerText = "-";
-            document.getElementById('dispOT').innerText = "-";
-            document.getElementById('metaHrsSch').value = 0;
-            document.getElementById('metaLate').value = 0;
+            document.getElementById('newJoinerAlert').classList.add('d-none');
             
             formModal.show();
         };
@@ -729,15 +739,10 @@
             document.getElementById('staffSelect').value = d.uid;
             document.getElementById('staffSelect').disabled = true;
             
-            // 🟢 Adaptive Fill (Check current type)
             const el = document.getElementById('formMonthPicker');
-            if(el.type === 'date') {
-                el.value = d.month + "-01"; // Add day for Date picker
-            } else {
-                el.value = d.month; // Month picker takes YYYY-MM
-            }
+            el.value = (el.type === 'date') ? d.month + "-01" : d.month;
 
-            document.getElementById('inpBasic').value = d.basic;
+            document.getElementById('inpBasic').value = d.basic; 
             document.getElementById('inpComm').value = d.earnings.commission || 0;
             document.getElementById('inpOT').value = d.earnings.ot || 0;
             document.getElementById('inpAllowance').value = d.earnings.allowance || 0;
@@ -776,7 +781,6 @@
             const docId = document.getElementById('editDocId').value;
             const uid = document.getElementById('staffSelect').value;
             
-            // 🟢 Robust Date Extraction
             let rawDate = document.getElementById('formMonthPicker').value;
             const month = rawDate ? rawDate.substring(0, 7) : "";
             
@@ -786,19 +790,20 @@
             const staff = staffMap[uid]; 
             const getVal = (id) => parseFloat(document.getElementById(id).value) || 0;
 
-            const basic = getVal('inpBasic');
+            // Recalculate Gross inside save just to be safe
+            const fullBasic = getVal('inpBasic');
+            const stdDays = getVal('inpStdDays');
+            const schDays = parseFloat(document.getElementById('metaDaysSch').value) || 26;
+            
+            let finalBasic = fullBasic;
+            if (schDays > 0 && schDays < stdDays) {
+                finalBasic = (fullBasic / stdDays) * schDays;
+            }
+            
             const comm = getVal('inpComm');
             const ot = getVal('inpOT');
             const allow = getVal('inpAllowance');
-            
-            const actDays = parseFloat(document.getElementById('metaDaysAct').value) || 0;
-            const schDays = parseFloat(document.getElementById('metaDaysSch').value) || 26;
-            
-            let proRatedBasic = basic;
-            if (schDays > 0 && actDays < schDays) {
-                proRatedBasic = basic * (actDays / schDays);
-            }
-            const gross = proRatedBasic + comm + ot + allow;
+            const gross = finalBasic + comm + ot + allow;
 
             const epf = getVal('inpEPF');
             const socso = getVal('inpSOCSO');
@@ -838,7 +843,8 @@
                 period: displayPeriod,
                 paymentDate: `${year}-${mth}-${lastDay}`,
 
-                basic: basic, 
+                basic: fullBasic, // Store FULL basic for reference
+                final_basic: finalBasic, // Store calculated basic
                 earnings: { commission: comm, ot: ot, allowance: allow, total: gross },
                 deductions: { epf: epf, socso: socso, eis: eis, tax: pcb, late: lateDed, total: totalDed },
                 
@@ -884,6 +890,9 @@
         window.viewPayslip = (id) => {
             const d = currentPayrollData.find(x => x.id === id);
             if(!d) return;
+            
+            // Use final_basic if available, else basic
+            const usedBasic = d.final_basic || d.basic; 
 
             let extraEarnRows = "";
             if(d.earnings.commission > 0) extraEarnRows += `<tr><td>COMMISSION</td><td style="text-align: right;">${formatMoney(d.earnings.commission)}</td><td></td><td></td></tr>`;
@@ -921,7 +930,6 @@
                             <div class="info-row"><span>Employee Name</span> <span>: ${d.staffName}</span></div>
                             <div class="info-row"><span>Department</span> <span>: ${d.department}</span></div>
                             <div class="info-row"><span>Employee Code</span> <span>: ${d.staffCode}</span></div>
-                            <div class="info-row"><span>Pay Group</span> <span>: ${d.payGroup}</span></div>
                         </div>
                         <div class="info-col">
                             <div class="info-row"><span>IC Number</span> <span>: ${d.icNo}</span></div>
@@ -943,7 +951,7 @@
                         <tbody>
                             <tr>
                                 <td>BASIC PAY</td>
-                                <td style="text-align: right;">${formatMoney(d.basic)}</td>
+                                <td style="text-align: right;">${formatMoney(usedBasic)}</td>
                                 <td style="padding-left: 20px;">EPF (Employee)</td>
                                 <td style="text-align: right;">${formatMoney(d.deductions.epf)}</td>
                             </tr>
