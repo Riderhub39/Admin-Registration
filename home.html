@@ -424,41 +424,31 @@
     // Navigation Helper
     window.goToAttendance = (filter) => { window.location.href = `attendance.html?filter=${filter}`; };
 
-   /**
-     * Logic: Live GPS Tracking Stats
-     * Counts active users (unique staff) instead of raw logs
+  /**
+     * Logic: Live GPS Tracking Stats (Optimized for 100+ Staff)
+     * Directly listens to user_last_locations for better performance
      */
     function loadTrackingStats() {
-        const todayStr = getLocalDateStr();
-        onSnapshot(query(collection(db, "tracking_logs"), where("date", "==", todayStr)), (snap) => {
-            const uniqueStaff = {}; // 🟢 用于存储每个员工的最新时间
-            
-            snap.forEach(doc => {
-                const d = doc.data();
-                if (!d.uid) return;
-
-                // 🟢 兼容不同的时间字段名 (timestamp 或 lastUpdate)
-                const logTime = d.timestamp ? d.timestamp.toDate() : (d.lastUpdate ? d.lastUpdate.toDate() : new Date(0));
-                
-                // 🟢 只保留该员工最新的时间戳
-                if (!uniqueStaff[d.uid] || logTime > uniqueStaff[d.uid]) {
-                    uniqueStaff[d.uid] = logTime;
-                }
-            });
-
-            let online = 0, offline = 0;
+        // 🟢 核心改动：不再监听海量日志，直接监听“每人最新位置”集合
+        onSnapshot(collection(db, "user_last_locations"), (snap) => {
+            let online = 0;
+            let offline = 0;
             const now = new Date();
 
-            // 🟢 遍历去重后的员工列表进行统计
-            Object.values(uniqueStaff).forEach(lastTime => {
-                // 15 分钟内有更新视为在线
-                if ((now - lastTime) / 60000 <= 15) {
+            snap.forEach(doc => {
+                const data = doc.data();
+                // 🟢 使用我们在 tracking_service.dart 中新定义的 lastUpdate 字段
+                const lastUpdate = data.timestamp ? data.timestamp.toDate() : (data.lastUpdate ? data.lastUpdate.toDate() : new Date(0));
+                
+                // 15 分钟内有更新视为活跃
+                if ((now - lastUpdate) / 60000 <= 15) {
                     online++;
                 } else {
                     offline++;
                 }
             });
 
+            // 更新仪表盘数字
             document.getElementById('trackOnline').innerText = online;
             document.getElementById('trackOffline').innerText = offline;
         });
