@@ -1063,25 +1063,29 @@
 
                 } else if (type === 'Absent') {
                     // Absent Logic
-                    await runTransaction(db, async (transaction) => {
-                        const q = query(collection(db, "attendance"), where("uid", "==", targetAuthUid), where("date", "==", dateStr));
-                        const snap = await getDocs(q);
-                        snap.forEach(d => transaction.delete(d.ref));
+                   const batch = writeBatch(db);
+    const q = query(collection(db, "attendance"), where("uid", "==", targetAuthUid), where("date", "==", dateStr));
+    const snap = await getDocs(q);
+    
+    // 1. 删除所有现有的今日打卡记录
+    snap.forEach(d => batch.delete(d.ref));
 
-                        const leaveRef = doc(collection(db, "leaves"));
-                        transaction.set(leaveRef, {
-                            uid: targetDocId,         // Leave 通常存 Doc ID
-                            authUid: targetAuthUid,   // 同时存 Auth UID 方便查询
-                            empName: userObj.name, email: userObj.email,
-                            type: 'Absent',
-                            startDate: dateStr, endDate: dateStr, days: 1,
-                            reason: document.getElementById('manualReason').value || "Marked Absent by Admin",
-                            status: 'Approved', 
-                            reviewedAt: serverTimestamp(), 
-                            reviewer: auth.currentUser.email,
-                            isPayrollDeductible: true
-                        });
-                    });
+    // 2. 创建一条 Absent 的假期记录
+    const leaveRef = doc(collection(db, "leaves"));
+    batch.set(leaveRef, {
+        uid: targetDocId,         // Leave 通常存 Doc ID
+        authUid: targetAuthUid,   // 同时存 Auth UID 方便查询
+        empName: userObj.name, email: userObj.email,
+        type: 'Absent',
+        startDate: dateStr, endDate: dateStr, days: 1,
+        reason: document.getElementById('manualReason').value || "Marked Absent by Admin",
+        status: 'Approved', 
+        reviewedAt: serverTimestamp(), // 🟢 顺便触发一个缺勤通知给员工
+        reviewer: auth.currentUser.email,
+        isPayrollDeductible: true
+    });
+    
+    await batch.commit();
 
                 } else {
                     // Leave Transaction
