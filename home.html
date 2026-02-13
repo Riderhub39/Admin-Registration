@@ -175,11 +175,43 @@
 </div>
 
 <div class="modal fade" id="announceModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
-            <div class="modal-header"><h6 class="modal-title fw-bold">Post New Announcement</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-            <div class="modal-body"><textarea id="announceText" class="form-control" rows="3" placeholder="Type your message here..."></textarea></div>
-            <div class="modal-footer"><button class="btn btn-primary btn-sm" onclick="submitAnnouncement()">Post Message</button></div>
+            <div class="modal-header bg-warning bg-opacity-10">
+                <h6 class="modal-title fw-bold text-dark">
+                    <i data-lucide="megaphone" class="size-4 me-2"></i>Manage Announcements
+                </h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                
+                <div class="card border border-warning border-opacity-25 bg-warning bg-opacity-10 mb-4">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="small fw-bold text-dark" id="announceLabel">📢 Draft New Message</label>
+                            <span class="badge bg-warning text-dark d-none" id="editBadge">EDITING MODE</span>
+                        </div>
+                        
+                        <textarea id="announceText" class="form-control bg-white mb-3" rows="3" placeholder="Type your important announcement here..."></textarea>
+                        <input type="hidden" id="editAnnounceId"> <div class="d-flex justify-content-end gap-2">
+                            <button class="btn btn-sm btn-light border text-muted d-none" id="cancelEditBtn" onclick="resetAnnounceForm()">Cancel Edit</button>
+                            <button class="btn btn-primary btn-sm fw-bold px-4" id="postBtn" onclick="submitAnnouncement()">
+                                <i data-lucide="send" class="size-3 me-2"></i>Post Now
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
+                    <h6 class="fw-bold m-0 text-muted small">Previous Announcements</h6>
+                    <span class="badge bg-light text-secondary border" id="announceCount">0</span>
+                </div>
+
+                <div id="announceList" style="max-height: 300px; overflow-y: auto; padding-right: 5px;">
+                    <div class="text-center text-muted small py-4">Loading history...</div>
+                </div>
+
+            </div>
         </div>
     </div>
 </div>
@@ -214,7 +246,10 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-    import { getFirestore, collection, query, where, getDocs, onSnapshot, addDoc, serverTimestamp, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { 
+        getFirestore, collection, query, where, getDocs, onSnapshot, 
+        addDoc, serverTimestamp, doc, getDoc, setDoc, updateDoc, deleteDoc, orderBy 
+    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { firebaseConfig } from "./firebase-config.js";
     import { initUnifiedHeader } from "./header-app.js";
 
@@ -264,8 +299,6 @@
 
     /**
      * Logic: Attendance Statistics
-     * Fetches Users, today's Schedules, and today's Attendance.
-     * Calculates Present, Late, and Absent counts by mapping User Docs to Auth UIDs.
      */
     async function loadAttendanceStats() {
         const todayStr = getLocalDateStr();
@@ -374,9 +407,6 @@
         } catch (e) { console.error("Error loading stats:", e); }
     }
 
-    /**
-     * Logic: Render Chart.js Doughnut Chart
-     */
     function updateChart(present, absent, late) {
         const ctx = document.getElementById('attChart').getContext('2d');
         if (attChartInstance) attChartInstance.destroy();
@@ -394,45 +424,58 @@
     // Navigation Helper
     window.goToAttendance = (filter) => { window.location.href = `attendance.html?filter=${filter}`; };
 
-    /**
+   /**
      * Logic: Live GPS Tracking Stats
-     * Counts active users (updated within last 15 mins) vs offline
+     * Counts active users (unique staff) instead of raw logs
      */
     function loadTrackingStats() {
         const todayStr = getLocalDateStr();
         onSnapshot(query(collection(db, "tracking_logs"), where("date", "==", todayStr)), (snap) => {
+            const uniqueStaff = {}; // 🟢 用于存储每个员工的最新时间
+            
+            snap.forEach(doc => {
+                const d = doc.data();
+                if (!d.uid) return;
+
+                // 🟢 兼容不同的时间字段名 (timestamp 或 lastUpdate)
+                const logTime = d.timestamp ? d.timestamp.toDate() : (d.lastUpdate ? d.lastUpdate.toDate() : new Date(0));
+                
+                // 🟢 只保留该员工最新的时间戳
+                if (!uniqueStaff[d.uid] || logTime > uniqueStaff[d.uid]) {
+                    uniqueStaff[d.uid] = logTime;
+                }
+            });
+
             let online = 0, offline = 0;
             const now = new Date();
-            snap.forEach(doc => {
-                const last = doc.data().lastUpdate ? doc.data().lastUpdate.toDate() : new Date(0);
-                // 15 minute threshold for "Active"
-                if ((now - last) / 60000 <= 15) online++; else offline++;
+
+            // 🟢 遍历去重后的员工列表进行统计
+            Object.values(uniqueStaff).forEach(lastTime => {
+                // 15 分钟内有更新视为在线
+                if ((now - lastTime) / 60000 <= 15) {
+                    online++;
+                } else {
+                    offline++;
+                }
             });
+
             document.getElementById('trackOnline').innerText = online;
             document.getElementById('trackOffline').innerText = offline;
         });
     }
-
-    /**
-     * Logic: Action Required Counters
-     * Listens for pending leaves, attendance corrections, and edit requests.
-     */
     function loadAllTasks() {
-        // Pending Leaves
         onSnapshot(query(collection(db, "leaves"), where("status", "==", "Pending")), (snap) => {
             const count = snap.size;
             document.getElementById('count-leave').innerText = count;
             document.getElementById('badge-leave').style.display = count > 0 ? 'inline-block' : 'none';
         });
         
-        // Pending Attendance Corrections
         onSnapshot(query(collection(db, "attendance_corrections"), where("status", "==", "Pending")), (snap) => {
             const count = snap.size;
             document.getElementById('count-att').innerText = count;
             document.getElementById('badge-att').style.display = count > 0 ? 'inline-block' : 'none';
         });
 
-        // Pending Profile Edits
         onSnapshot(query(collection(db, "edit_requests"), where("status", "==", "pending")), (snap) => {
             const count = snap.size;
             document.getElementById('count-edit').innerText = count;
@@ -442,7 +485,6 @@
 
     /**
      * Logic: Office Settings Modal
-     * Handles fetching and updating Geofence coords and WiFi whitelist
      */
     let currentWifiList = [];
     
@@ -456,7 +498,6 @@
                 document.getElementById('officeLng').value = data.longitude || '';
                 document.getElementById('officeRadius').value = data.radius || 500;
                 
-                // Handle legacy string array or new object array for WiFi
                 if (Array.isArray(data.allowedWifis)) {
                     currentWifiList = data.allowedWifis.map(item => typeof item === 'string' ? { ssid: item, bssid: '' } : item);
                 } else if (data.wifiSSID) {
@@ -488,7 +529,6 @@
         const bssid = document.getElementById('newWifiBSSID').value.trim().toLowerCase();
         if (!ssid) return alert("WiFi Name (SSID) is required.");
         currentWifiList.push({ ssid, bssid });
-        // Clear inputs
         document.getElementById('newWifiSSID').value = "";
         document.getElementById('newWifiBSSID').value = "";
         renderWifiList();
@@ -517,23 +557,136 @@
     };
 
     /**
-     * Logic: Announcements
+     * Logic: Announcements Manager (Updated)
      */
-    window.openAnnouncementModal = () => announceModal.show();
-    
-    window.submitAnnouncement = async () => {
-        const text = document.getElementById('announceText').value;
-        if (!text) return;
-        try {
-            await addDoc(collection(db, "announcements"), { 
-                message: text, 
-                createdAt: serverTimestamp(), 
-                author: auth.currentUser.email 
+    window.openAnnouncementModal = () => {
+        resetAnnounceForm(); // Ensure clean state
+        announceModal.show();
+        loadAnnouncements(); // Start listening
+    };
+
+    let announceUnsubscribe = null;
+
+    function loadAnnouncements() {
+        if (announceUnsubscribe) return; // Avoid duplicate listeners
+
+        const q = query(collection(db, "announcements"), orderBy("createdAt", "desc"));
+        const listContainer = document.getElementById('announceList');
+
+        announceUnsubscribe = onSnapshot(q, (snapshot) => {
+            document.getElementById('announceCount').innerText = snapshot.size;
+            listContainer.innerHTML = '';
+
+            if (snapshot.empty) {
+                listContainer.innerHTML = '<div class="text-center text-muted small py-4">No announcements yet.</div>';
+                return;
+            }
+
+            snapshot.forEach(doc => {
+                const d = doc.data();
+                const timeStr = d.createdAt ? new Date(d.createdAt.seconds * 1000).toLocaleString() : 'Just now';
+                const safeMsg = d.message.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+                listContainer.innerHTML += `
+                    <div class="card mb-2 border-0 shadow-sm">
+                        <div class="card-body p-3">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <div class="small text-dark mb-1" style="white-space: pre-wrap;">${d.message}</div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <small class="text-muted" style="font-size: 0.75rem"><i data-lucide="clock" class="size-3 me-1"></i>${timeStr}</small>
+                                        <small class="text-muted border-start ps-2" style="font-size: 0.75rem">by ${d.author || 'Admin'}</small>
+                                    </div>
+                                </div>
+                                <div class="d-flex gap-1 ms-2">
+                                    <button class="btn btn-sm btn-light border text-primary p-1" onclick="editAnnouncement('${doc.id}', '${safeMsg}')" title="Edit">
+                                        <i data-lucide="edit-2" class="size-3"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-light border text-danger p-1" onclick="deleteAnnouncement('${doc.id}')" title="Delete">
+                                        <i data-lucide="trash-2" class="size-3"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
             });
-            alert("Announcement Posted!");
-            document.getElementById('announceText').value = "";
-            announceModal.hide();
-        } catch (e) { alert("Error posting."); }
+            lucide.createIcons();
+        });
+    }
+
+    // Prepare UI for Editing
+    window.editAnnouncement = (id, message) => {
+        document.getElementById('announceText').value = message;
+        document.getElementById('editAnnounceId').value = id;
+        
+        // UI Changes
+        document.getElementById('announceLabel').innerText = "✏️ Editing Announcement";
+        document.getElementById('editBadge').classList.remove('d-none');
+        document.getElementById('cancelEditBtn').classList.remove('d-none');
+        document.getElementById('postBtn').innerHTML = '<i data-lucide="save" class="size-3 me-2"></i>Update';
+        document.getElementById('announceText').focus();
+        lucide.createIcons();
+    };
+
+    // Reset UI to "Create Mode"
+    window.resetAnnounceForm = () => {
+        document.getElementById('announceText').value = "";
+        document.getElementById('editAnnounceId').value = "";
+        
+        // UI Changes
+        document.getElementById('announceLabel').innerText = "📢 Draft New Message";
+        document.getElementById('editBadge').classList.add('d-none');
+        document.getElementById('cancelEditBtn').classList.add('d-none');
+        document.getElementById('postBtn').innerHTML = '<i data-lucide="send" class="size-3 me-2"></i>Post Now';
+        lucide.createIcons();
+    };
+
+    // Handle Delete
+    window.deleteAnnouncement = async (id) => {
+        if (!confirm("Are you sure you want to delete this announcement?")) return;
+        try {
+            await deleteDoc(doc(db, "announcements", id));
+        } catch (e) {
+            alert("Error deleting: " + e.message);
+        }
+    };
+
+    // Handle Submit (Create or Update)
+    window.submitAnnouncement = async () => {
+        const text = document.getElementById('announceText').value.trim();
+        const editId = document.getElementById('editAnnounceId').value;
+        const btn = document.getElementById('postBtn');
+
+        if (!text) return alert("Please enter a message.");
+        
+        btn.disabled = true;
+
+        try {
+            if (editId) {
+                // UPDATE Existing
+                await updateDoc(doc(db, "announcements", editId), {
+                    message: text,
+                    updatedAt: serverTimestamp() 
+                });
+                alert("Updated successfully!");
+                resetAnnounceForm();
+            } else {
+                // CREATE New
+                await addDoc(collection(db, "announcements"), { 
+                    message: text, 
+                    createdAt: serverTimestamp(), 
+                    author: auth.currentUser.email 
+                });
+                alert("Announcement Posted!");
+                resetAnnounceForm();
+            }
+        } catch (e) { 
+            console.error(e);
+            alert("Error: " + e.message); 
+        } finally {
+            btn.disabled = false;
+        }
     };
 
     // Initialize Icons
