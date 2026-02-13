@@ -119,9 +119,13 @@
     const STORE_RADIUS_METERS = 500; 
 
     let map, polyline, currentMarker, storeCircle;
-    let pointUnsubscribe = null;
-    let usersMap = {};
+    
+    // Cache for grouping "flat" logs into users
+    let dailyLogsCache = {}; // Format: { uid: [log1, log2, ...] }
+    let usersMap = {}; // Format: { uid: "Real Name" }
+    
     let lastKnownPosition = null;
+    let unsubscribeSnapshot = null;
 
     // --- Authentication & Access Control ---
     onAuthStateChanged(auth, async (user) => {
@@ -155,10 +159,9 @@
 
     /**
      * Main App Initialization
-     * Loads users, sets up Google Map, and initializes listeners.
      */
     async function startApp() {
-        await fetchUsers();
+        await fetchUsers(); // Cache user names first
         
         map = new google.maps.Map(document.getElementById("map"), {
             center: STORE_LOCATION,
@@ -177,7 +180,7 @@
 
         const datePicker = document.getElementById('datePicker');
         datePicker.valueAsDate = new Date();
-        datePicker.addEventListener('change', loadDrivers);
+        datePicker.addEventListener('change', listenToDailyLogs);
         
         document.getElementById('searchInput').addEventListener('keyup', (e) => {
             const term = e.target.value.toLowerCase();
@@ -186,54 +189,81 @@
             });
         });
 
-        loadDrivers();
+        listenToDailyLogs();
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
     /**
-     * Cache user names for display
+     * Cache user names for display (Map UID -> Name)
      */
     async function fetchUsers() {
         try {
             const snap = await getDocs(collection(db, "users"));
             snap.forEach(doc => {
                 const d = doc.data();
-                if (d.authUid && d.personal?.name) usersMap[d.authUid] = d.personal.name;
+                // We use authUid or doc.id to map to 'uid' in tracking_logs
+                const key = d.authUid || doc.id;
+                const name = d.personal?.name || d.name || "Unknown Staff";
+                usersMap[key] = name;
             });
         } catch (e) { console.error(e); }
     }
 
     /**
-     * Loads the list of active tracking logs for the selected date.
+     * Listens to the flattened 'tracking_logs' collection
+     * and groups points by UID on the client side.
      */
-    function loadDrivers() {
+    function listenToDailyLogs() {
+        if(unsubscribeSnapshot) unsubscribeSnapshot(); // Detach old listener
+
         const dateStr = document.getElementById('datePicker').value;
         const listDiv = document.getElementById('driverList');
-        const q = query(collection(db, "tracking_logs"), where("date", "==", dateStr));
+        
+        // Query flat collection by date
+        const q = query(
+            collection(db, "tracking_logs"), 
+            where("date", "==", dateStr),
+            orderBy("timestamp", "asc") // Ensure route draws in correct order
+        );
 
-        onSnapshot(q, (snapshot) => {
+        listDiv.innerHTML = '<div class="text-center py-5 text-muted">Listening for updates...</div>';
+
+        unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
+            dailyLogsCache = {}; // Reset cache on update
+
             if(snapshot.empty) {
-                listDiv.innerHTML = '<div class="text-center py-5 text-muted">No logs for today.</div>';
+                listDiv.innerHTML = '<div class="text-center py-5 text-muted">No tracking data today.</div>';
                 return;
             }
-            let html = '';
+
+            // 1. Group data by UID
             snapshot.forEach(doc => {
                 const data = doc.data();
-                const realName = usersMap[data.userId] || data.empName || "Staff";
-                const lastUpdate = data.lastUpdate ? data.lastUpdate.toDate() : new Date(0);
+                const uid = data.uid; 
+                if(!uid) return;
+
+                if (!dailyLogsCache[uid]) dailyLogsCache[uid] = [];
+                dailyLogsCache[uid].push(data);
+            });
+
+            // 2. Render Sidebar List (Unique Users)
+            let html = '';
+            Object.keys(dailyLogsCache).forEach(uid => {
+                const logs = dailyLogsCache[uid];
+                const lastLog = logs[logs.length - 1]; // Most recent point
+                const realName = usersMap[uid] || "Staff"; // Use cached name
                 
-                // Logic: Considered 'Online' if updated within last 15 mins
+                const lastUpdate = lastLog.timestamp ? lastLog.timestamp.toDate() : new Date();
+                
+                // Logic: Online if updated within last 15 mins
                 const isOnline = (new Date() - lastUpdate) < 1000 * 60 * 15; 
                 
-                let statusBadge = '';
-                if (!isOnline) {
-                    statusBadge = '<span class="badge bg-secondary bg-opacity-10 text-secondary border" style="font-size:10px">Offline</span>';
-                } else {
-                    statusBadge = '<div class="d-flex align-items-center gap-1"><span class="status-dot dot-online"></span> <small class="text-success" style="font-size:10px">Active</small></div>';
-                }
+                const statusBadge = isOnline 
+                    ? '<div class="d-flex align-items-center gap-1"><span class="status-dot dot-online"></span> <small class="text-success" style="font-size:10px">Active</small></div>'
+                    : '<span class="badge bg-secondary bg-opacity-10 text-secondary border" style="font-size:10px">Offline</span>';
 
                 html += `
-                    <div class="user-item p-3" data-name="${realName}" onclick="selectDriver(event, '${doc.id}', '${realName}')">
+                    <div class="user-item p-3" data-name="${realName}" onclick="selectDriver('${uid}', '${realName}')">
                         <div class="d-flex align-items-center gap-3">
                             <div class="avatar-placeholder bg-primary bg-opacity-10 text-primary small">${realName.substring(0, 2).toUpperCase()}</div>
                             <div class="flex-grow-1 overflow-hidden">
@@ -244,76 +274,89 @@
                         </div>
                     </div>`;
             });
+
             listDiv.innerHTML = html;
+            
+            // 3. If a driver is currently selected, redraw their route with new data
+            const currentNameInOverlay = document.getElementById('overlayName').innerText;
+            // Find UID for currently selected name (reverse lookup or store selected UID globally)
+            // Simplified: we check if the selected UID exists in our new cache
+            // Better approach: Store 'selectedUid' variable.
+            if(window.selectedUid && dailyLogsCache[window.selectedUid]) {
+                drawRoute(dailyLogsCache[window.selectedUid], usersMap[window.selectedUid] || "Driver");
+            }
+            
             if (typeof lucide !== 'undefined') lucide.createIcons();
         });
     }
 
     /**
-     * Handles selection of a driver from the sidebar.
-     * Starts listening to real-time location points and draws path.
+     * Handles selection of a driver.
+     * Draws route from the grouped logs in memory.
      */
-    window.selectDriver = function(event, docId, realName) {
+    window.selectDriver = function(uid, realName) {
+        window.selectedUid = uid; // Track selection
+        
+        // Highlight UI
         document.querySelectorAll('.user-item').forEach(el => el.classList.remove('active'));
-        if (event) event.currentTarget.classList.add('active');
+        // (Note: To highlight the specific clicked element, we'd need to pass 'event', but for now we focus on map logic)
 
         document.getElementById('statusOverlay').classList.remove('d-none');
         document.getElementById('overlayName').innerText = realName;
 
-        if(pointUnsubscribe) pointUnsubscribe();
+        const userLogs = dailyLogsCache[uid];
+        if(userLogs) {
+            drawRoute(userLogs, realName);
+        }
+    };
+
+    /**
+     * Draws Polyline and Marker based on array of log objects
+     */
+    function drawRoute(logs, realName) {
         if(polyline) polyline.setMap(null);
         if(currentMarker) currentMarker.setMap(null);
 
-        polyline = new google.maps.Polyline({ strokeColor: "#2563eb", strokeOpacity: 0.8, strokeWeight: 5, map: map });
+        const path = [];
+        let maxDistFromStore = 0;
 
-        const q = query(collection(db, "tracking_logs", docId, "points"), orderBy("timestamp", "asc"));
-
-        pointUnsubscribe = onSnapshot(q, (snapshot) => {
-            const path = [];
-            let lastPoint = null;
-            let maxDistFromStore = 0;
-
-            snapshot.forEach(doc => {
-                const p = doc.data();
-                const latLng = new google.maps.LatLng(p.lat, p.lng);
-                path.push(latLng);
-                lastPoint = p;
-                
-                // Calculate distance from store (optional for logic/UI)
-                const dist = google.maps.geometry.spherical.computeDistanceBetween(latLng, new google.maps.LatLng(STORE_LOCATION));
-                if (dist > maxDistFromStore) maxDistFromStore = dist;
-            });
-
-            // Update Status Badge based on Geofence
-            if (maxDistFromStore > STORE_RADIUS_METERS) {
-                polyline.setPath(path); 
-                document.getElementById('overlayStatusTag').innerText = "On Field";
-                document.getElementById('overlayStatusTag').className = "badge bg-primary";
-            } else {
-                polyline.setPath(path); 
-                document.getElementById('overlayStatusTag').innerText = "Near Store";
-                document.getElementById('overlayStatusTag').className = "badge bg-warning text-dark";
-            }
-
-            if(lastPoint) {
-                const pos = { lat: lastPoint.lat, lng: lastPoint.lng };
-                lastKnownPosition = pos;
-                
-                if(!currentMarker) {
-                    currentMarker = new google.maps.Marker({
-                        position: pos, map: map, title: realName,
-                        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: "#2563eb", fillOpacity: 1, strokeWeight: 2, strokeColor: "white" }
-                    });
-                    map.panTo(pos);
-                } else {
-                    currentMarker.setPosition(pos);
-                }
-                
-                document.getElementById('overlaySpeed').innerText = (lastPoint.speed * 3.6).toFixed(1);
-                document.getElementById('overlayTime').innerText = lastPoint.timestamp ? lastPoint.timestamp.toDate().toLocaleTimeString() : '-';
-            }
+        logs.forEach(log => {
+            const latLng = new google.maps.LatLng(log.lat, log.lng);
+            path.push(latLng);
+            
+            // Calc distance
+            const dist = google.maps.geometry.spherical.computeDistanceBetween(latLng, new google.maps.LatLng(STORE_LOCATION));
+            if (dist > maxDistFromStore) maxDistFromStore = dist;
         });
-    };
+
+        // Draw Route
+        polyline = new google.maps.Polyline({ strokeColor: "#2563eb", strokeOpacity: 0.8, strokeWeight: 5, map: map, path: path });
+
+        // Update Badge
+        if (maxDistFromStore > STORE_RADIUS_METERS) {
+            document.getElementById('overlayStatusTag').innerText = "On Field";
+            document.getElementById('overlayStatusTag').className = "badge bg-primary";
+        } else {
+            document.getElementById('overlayStatusTag').innerText = "Near Store";
+            document.getElementById('overlayStatusTag').className = "badge bg-warning text-dark";
+        }
+
+        // Draw Car Marker at last point
+        const lastLog = logs[logs.length - 1];
+        if(lastLog) {
+            const pos = { lat: lastLog.lat, lng: lastLog.lng };
+            lastKnownPosition = pos;
+            
+            currentMarker = new google.maps.Marker({
+                position: pos, map: map, title: realName,
+                icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: "#2563eb", fillOpacity: 1, strokeWeight: 2, strokeColor: "white" }
+            });
+            map.panTo(pos);
+            
+            document.getElementById('overlaySpeed').innerText = (lastLog.speed * 3.6).toFixed(1);
+            document.getElementById('overlayTime').innerText = lastLog.timestamp ? lastLog.timestamp.toDate().toLocaleTimeString() : '-';
+        }
+    }
 
     window.focusOnDriver = function() {
         if (lastKnownPosition) { map.panTo(lastKnownPosition); map.setZoom(16); }

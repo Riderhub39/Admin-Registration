@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Attendance Manager - FieldTrack Pro</title>
+    
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="style.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -10,7 +12,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <style>
-        /* Loading Overlay */
         #loadingOverlay { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(255, 255, 255, 0.95); z-index: 9999; 
@@ -20,12 +21,10 @@
         .control-hub { 
             background: white; border-bottom: 1px solid #e2e8f0; 
             padding: 16px 0; position: sticky; 
-            top: 58px; /* Sticky below header */
-            z-index: 1020; 
+            top: 58px; z-index: 1020; 
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
         }
 
-        /* Card Styling */
         .user-card {
             border: 1px solid #e2e8f0; border-radius: 12px; background: white;
             transition: all 0.2s ease; margin-bottom: 12px;
@@ -47,7 +46,6 @@
         .inner-list-item { border-bottom: 1px solid #f1f5f9; padding: 12px 24px; font-size: 0.95rem; }
         .inner-list-item:last-child { border-bottom: none; }
         
-        /* Highlight Classes */
         .row-absent { background-color: #fef2f2 !important; border-left: 4px solid #ef4444 !important; }
         .row-late { background-color: #fffbeb; border-left: 4px solid #f59e0b; }
         .row-leave { background-color: #f0f9ff !important; border-left: 4px solid #0ea5e9 !important; }
@@ -60,6 +58,7 @@
         .chevron-icon { transition: transform 0.3s; }
         .collapsed .chevron-icon { transform: rotate(0deg); }
         .chevron-icon { transform: rotate(180deg); }
+        .month-mode-hidden { display: none !important; }
     </style>
 </head>
 <body>
@@ -120,7 +119,7 @@
 
         <div class="container-fluid px-4 pt-3">
             <ul class="nav nav-tabs mb-4" id="attendanceTabs" role="tablist">
-                <li class="nav-item">
+                <li class="nav-item" id="navItemDashboard">
                     <button class="nav-link active" id="tab-dashboard" data-bs-toggle="tab" data-bs-target="#content-dashboard">
                         <i data-lucide="pie-chart" class="size-4 me-2"></i>Dashboard
                     </button>
@@ -187,11 +186,73 @@
         </div>
     </div>
 
+    <div class="modal fade" id="manualActionModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary bg-opacity-10">
+                    <h6 class="modal-title fw-bold text-primary">Admin Override / Manual Entry</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="manualUid">
+                    <input type="hidden" id="manualDate">
+                    
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Select Action</label>
+                        <select id="manualActionType" class="form-select" onchange="toggleManualInputs()">
+                            <option value="">-- Choose Action --</option>
+                            <option value="Present">Mark Present (Manual Clock In/Out)</option>
+                            <option value="Absent" class="text-danger fw-bold">Mark Absent (Fake Record / No Show)</option>
+                            <option value="Annual Leave">Assign Annual Leave</option>
+                            <option value="Medical Leave">Assign Medical Leave</option>
+                            <option value="Unpaid Leave">Assign Unpaid Leave</option>
+                        </select>
+                    </div>
+
+                    <div id="boxPresent" class="d-none p-3 bg-light rounded border mb-3">
+                        <small class="d-block text-success fw-bold mb-2"><i data-lucide="check-circle" class="size-3 me-1"></i> Shift & Break Times</small>
+                        <div class="row g-2 mb-2">
+                            <div class="col-6"><label class="small text-muted fw-bold">Clock In</label><input type="time" id="manualClockIn" class="form-control form-control-sm"></div>
+                            <div class="col-6"><label class="small text-muted fw-bold">Clock Out</label><input type="time" id="manualClockOut" class="form-control form-control-sm"></div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6"><label class="small text-muted">Break Out (Optional)</label><input type="time" id="manualBreakOut" class="form-control form-control-sm"></div>
+                            <div class="col-6"><label class="small text-muted">Break In (Optional)</label><input type="time" id="manualBreakIn" class="form-control form-control-sm"></div>
+                        </div>
+                        <div class="form-text text-muted small mt-2">Creates Verified records. Only fill Break times if needed.</div>
+                    </div>
+
+                    <div id="boxAbsent" class="d-none p-3 bg-danger bg-opacity-10 rounded border border-danger mb-3">
+                        <small class="d-block text-danger fw-bold mb-2"><i data-lucide="alert-triangle" class="size-3 me-1"></i> Violation / Fake Record</small>
+                        <p class="small text-dark mb-0">This will <b>permanently delete</b> any existing attendance records for this day and mark the status as <b>ABSENT</b>.</p>
+                    </div>
+
+                    <div id="boxLeave" class="d-none p-3 bg-light rounded border mb-3">
+                        <small class="d-block text-primary fw-bold mb-2"><i data-lucide="calendar" class="size-3 me-1"></i> Create Leave Record</small>
+                        <div class="alert alert-warning py-1 px-2 mb-2 small" id="annualWarn">
+                            This will deduct <b>1 day</b> from Annual Leave balance.
+                        </div>
+                    </div>
+                    
+                    <div class="mb-2" id="reasonGroup">
+                        <label class="small text-muted">Reason / Remarks</label>
+                        <input type="text" id="manualReason" class="form-control form-control-sm" placeholder="Admin Manual Entry">
+                    </div>
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary btn-sm fw-bold px-4" onclick="submitManualAction()">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="photoModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-body p-0 bg-dark"><img id="modalImg" src="" class="img-fluid" onerror="this.src='https://placehold.co/400?text=Image+Error'"></div></div></div></div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, getDocs, query, where, doc, updateDoc, deleteDoc, onSnapshot, writeBatch, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, query, where, doc, updateDoc, deleteDoc, onSnapshot, writeBatch, serverTimestamp, getDoc, runTransaction, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         import { firebaseConfig } from "./firebase-config.js";
@@ -212,6 +273,7 @@
         document.getElementById('dateFilter').value = currentDate;
         document.getElementById('monthFilter').value = new Date().toISOString().slice(0, 7); 
         const photoModal = new bootstrap.Modal(document.getElementById('photoModal'));
+        const manualActionModal = new bootstrap.Modal(document.getElementById('manualActionModal'));
 
         // --- Auth & Role Check ---
         onAuthStateChanged(auth, async (user) => {
@@ -260,27 +322,54 @@
                         if (d.id) docIdToAuthMap[String(d.id)] = authUid;
                         if (d.empCode) docIdToAuthMap[d.empCode] = authUid;
                     }
+                    
+                    // 优先使用 AuthUID 作为 Key，与 loadData 逻辑保持一致
                     const key = authUid || doc.id;
+                    
                     usersMap[key] = {
                         name: d.personal?.name || d.personal?.shortName || "Unknown",
                         photo: d.faceIdPhoto && d.faceIdPhoto.startsWith('http') ? d.faceIdPhoto : null,
                         email: d.personal?.email,
-                        status: d.status || 'active'
+                        status: d.status || 'active',
+                        // 🟢 关键修复：显式存储两个 ID，避免混淆
+                        docId: doc.id,       // 用于操作数据库文档 (扣余额)
+                        authUid: authUid     // 用于标记考勤记录 (App识别)
                     };
                 });
-            } catch (e) {}
+            } catch (e) { console.error(e); }
         }
 
+        // 🟢 FIX: Toggle Mode & Tab Handling (Residue Fix)
         window.toggleMode = (mode) => {
             currentMode = mode;
+            const dashTabLi = document.getElementById('navItemDashboard');
+            const dashTabBtn = document.getElementById('tab-dashboard');
+            const logTabBtn = document.getElementById('tab-logs');
+
             if(mode === 'day') {
                 document.getElementById('dayControls').classList.remove('d-none');
                 document.getElementById('monthControls').classList.add('d-none');
+                
+                // Show Dashboard Tab
+                dashTabLi.classList.remove('month-mode-hidden');
+                
+                // Switch to Dashboard Tab
+                const tabInstance = new bootstrap.Tab(dashTabBtn);
+                tabInstance.show();
             } else {
                 document.getElementById('dayControls').classList.add('d-none');
                 document.getElementById('monthControls').classList.remove('d-none');
+                
+                // Hide Dashboard Tab (Causes residue if not hidden)
+                dashTabLi.classList.add('month-mode-hidden');
+                
+                // Force switch to Logs
+                const tabInstance = new bootstrap.Tab(logTabBtn);
+                tabInstance.show();
             }
-            document.getElementById('attendanceList').innerHTML = '<div class="text-center py-4 text-muted">Click Load to view data</div>';
+            // Clear content to prevent residue
+            document.getElementById('attendanceList').innerHTML = '<div class="text-center py-4 text-muted">Loading new view...</div>';
+            loadData();
         }
 
         window.handleSearch = () => {
@@ -300,6 +389,13 @@
             return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
         }
 
+        // 🟢 Helper for Dates (Timezone Safe)
+        function getNextDay(dateStr) {
+            const date = new Date(dateStr);
+            date.setDate(date.getDate() + 1);
+            return date.toISOString().split('T')[0];
+        }
+
         window.loadData = async function() {
             const loading = document.getElementById('loadingState');
             const empty = document.getElementById('emptyState');
@@ -307,7 +403,11 @@
             const searchVal = document.getElementById('searchInput').value.trim();
             const statusFilter = document.getElementById('monthStatusFilter').value; 
 
+            // Clear UI
             listContainer.innerHTML = '';
+            document.getElementById('absentList').innerHTML = ''; 
+            document.getElementById('lateList').innerHTML = '';   
+            
             loading.classList.remove('d-none');
             empty.classList.add('d-none');
 
@@ -329,64 +429,84 @@
                     endDate = monthStr + "-" + lastDay;
                 }
 
-                // 1. Fetch Attendance
-                const attQuery = query(collection(db, "attendance"), where("date", ">=", startDate), where("date", "<=", endDate));
-                const attSnap = await getDocs(attQuery);
+                console.log(`%c[LOAD] Mode: ${currentMode}, Range: ${startDate} to ${endDate}`, "color: blue; font-weight: bold;");
 
-                // 2. Fetch Schedules
-                const schedQuery = query(collection(db, "schedules"), where("date", ">=", startDate), where("date", "<=", endDate));
-                const schedSnap = await getDocs(schedQuery);
-                
+                // 1. Fetch Data
+                const [attSnap, schedSnap, leaveSnap] = await Promise.all([
+                    getDocs(query(collection(db, "attendance"), where("date", ">=", startDate), where("date", "<=", endDate))),
+                    getDocs(query(collection(db, "schedules"), where("date", ">=", startDate), where("date", "<=", endDate))),
+                    getDocs(query(collection(db, "leaves"), where("status", "==", "Approved"), where("endDate", ">=", startDate)))
+                ]);
+
+                // 2. Process Schedules
                 schedulesMap = {};
                 schedSnap.forEach(doc => {
                     const d = doc.data();
                     const effectiveUid = docIdToAuthMap[d.userId] || d.userId;
                     if(effectiveUid && d.date) {
                         const normDate = normalizeDate(d.date); 
-                        schedulesMap[effectiveUid + "_" + normDate] = { 
-                            id: doc.id,
-                            start: d.start, 
-                            end: d.end,
-                            breakMins: d.breakMins || 60 // Default break 60 mins if undefined
-                        };
+                        schedulesMap[effectiveUid + "_" + normDate] = { id: doc.id, start: d.start, end: d.end, breakMins: d.breakMins || 60 };
                     }
                 });
 
-                // 3. Fetch Leaves
-                const leaveQuery = query(collection(db, "leaves"), where("status", "==", "Approved"), where("endDate", ">=", startDate)); 
-                // Note: Firestore range filter limitation might require client-side filter if start date < range
-                const leaveSnap = await getDocs(leaveQuery);
+                // 3. Process Leaves
                 leavesMap = {};
-                
                 leaveSnap.forEach(doc => {
                     const d = doc.data();
-                    const rawUid = d.uid || d.userId;
-                    const effectiveUid = docIdToAuthMap[rawUid] || rawUid;
-                    if(effectiveUid) {
-                        const s = new Date(d.startDate);
-                        const e = new Date(d.endDate);
-                        // Iterate and mark dates
-                        for(let dt = new Date(s); dt <= e; dt.setDate(dt.getDate()+1)) {
-                            const dateStr = dt.toISOString().split('T')[0];
-                            if(dateStr >= startDate && dateStr <= endDate) {
-                                leavesMap[effectiveUid + "_" + dateStr] = d.leaveType; 
+                    const effectiveUid = d.authUid || docIdToAuthMap[d.uid] || docIdToAuthMap[d.userId] || d.uid;
+                    if(effectiveUid && d.startDate && d.endDate) {
+                        let curr = d.startDate;
+                        const end = d.endDate;
+                        while (curr <= end) {
+                            if (curr >= startDate && curr <= endDate) {
+                                leavesMap[effectiveUid + "_" + curr] = d.type || d.leaveType;
                             }
+                            curr = getNextDay(curr);
                         }
                     }
                 });
 
+                // 4. Process Attendance (🔍 调试重点)
                 attSnap.forEach(doc => { 
                     const d = doc.data();
-                    if (usersMap[d.uid] && d.verificationStatus !== 'Rejected') {
+                    let matchedUserKey = null;
+                    
+                    // --- 🔍 DEBUG START: 检查 Manual Entry ---
+                    const isManual = d.address === "Admin Manual Entry";
+                  
+
+                    // 匹配逻辑
+                    if (usersMap[d.uid]) {
+                        matchedUserKey = d.uid;
+                    } else if (docIdToAuthMap[d.uid]) {
+                        // 如果记录存的是 DocID，转为 AuthID
+                        matchedUserKey = docIdToAuthMap[d.uid];
+                    } else {
+                        // 反向查找：记录存的是 AuthID，但 UsersMap 只有 DocID (罕见情况)
+                        const foundKey = Object.keys(docIdToAuthMap).find(key => docIdToAuthMap[key] === d.uid);
+                        if (foundKey && usersMap[foundKey]) matchedUserKey = foundKey;
+                    }
+
+                    if (isManual) {
+                        console.log("Final Matched Key:", matchedUserKey);
+                        if (!matchedUserKey) console.error("❌ FAILED TO MATCH USER. Record will be skipped.");
+                        else console.log("✅ Match Successful.");
+                        console.groupEnd();
+                    }
+
+                    if (matchedUserKey && d.verificationStatus !== 'Rejected') {
                         if(d.date) d.date = normalizeDate(d.date);
-                        attendanceData.push({ id: doc.id, ...d });
-                        if(currentMode === 'day') presentUids.add(d.uid);
-                        if (d.verificationStatus !== 'Verified') {
-                            unverifiedCount++;
-                        }
+                        
+                        // 强制统一 UID
+                        const cleanRecord = { id: doc.id, ...d, uid: matchedUserKey };
+                        attendanceData.push(cleanRecord); 
+
+                        if(currentMode === 'day') presentUids.add(matchedUserKey);
+                        if (d.verificationStatus !== 'Verified') unverifiedCount++;
                     }
                 });
                 
+                // Update Badge
                 const verifyBadge = document.getElementById('tabVerifyBadge');
                 if (unverifiedCount > 0) {
                     verifyBadge.innerText = unverifiedCount;
@@ -404,22 +524,31 @@
                     grouped[item.uid].push(item);
                 });
 
+                console.log(`%c[RENDER] Grouped Data for ${Object.keys(grouped).length} users`, "color: green");
+
                 let visibleCardsCount = 0;
+                
                 if (currentMode === 'day') {
                     const targetDate = normalizeDate(startDate);
                     Object.keys(usersMap).forEach(uid => {
                         const userRecords = grouped[uid] || [];
                         if (renderDayUserCard(uid, userRecords, listContainer, targetDate)) visibleCardsCount++;
                     });
+                    renderDashboard(attendanceData, presentUids);
                 } else {
+                    // Month View
                     Object.keys(usersMap).forEach(uid => {
                         const userRecords = grouped[uid] || [];
+                        // 🔍 Debug Specific User in Month View
+                        if (userRecords.some(r => r.address === "Admin Manual Entry")) {
+                            console.log(`rendering Month Card for ${usersMap[uid].name} with ${userRecords.length} records`);
+                        }
+                        
                         if (renderMonthUserCard(uid, userRecords, listContainer, statusFilter)) visibleCardsCount++;
                     });
                 }
                 
                 if(searchVal) window.handleSearch();
-                if(currentMode === 'day') renderDashboard(attendanceData, presentUids);
                 
                 if (visibleCardsCount === 0) {
                     empty.classList.remove('d-none');
@@ -427,12 +556,13 @@
                     empty.classList.add('d-none');
                 }
                 lucide.createIcons();
+
             } catch (e) {
                 loading.classList.add('d-none');
-                alert("Error: " + e.message);
+                console.error("Load Data Error:", e);
+                alert("Error loading data: " + e.message);
             }
         }
-
         // 🟢 1. Day Mode Card
         function renderDayUserCard(uid, records, container, targetDate) {
             const user = usersMap[uid] || { name: 'Unknown', photo: null, status: 'active' };
@@ -441,7 +571,7 @@
             const isOnLeave = leavesMap[uid + "_" + targetDate];
             
             // Hide if no schedule AND no record (unless on leave, but usually we hide completely inactive people)
-            if (!userSched && records.length === 0) return false;
+            if (!userSched && records.length === 0 && !isOnLeave) return false;
 
             const today = new Date().toISOString().split('T')[0];
             const isPastOrToday = targetDate <= today;
@@ -481,6 +611,16 @@
 
             let disabledBadge = user.status === 'disabled' ? `<span class="badge bg-secondary ms-2" style="font-size:0.6rem;">Disabled</span>` : '';
 
+            // 🟢 NEW: Manual Manage Button
+            const manageBtn = `
+                <button class="btn btn-sm btn-outline-secondary ms-2 border" 
+                    onclick="openManualAction('${uid}', '${targetDate}', '${isAbsent?'absent':(isOnLeave?'leave':'present')}')" 
+                    title="Manage / Manual Entry"
+                    style="margin-right: -10px;">
+                    <i data-lucide="settings-2" class="size-3"></i>
+                </button>
+            `;
+
             const headerHtml = `
                 <div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#${collapseId}">
                     <div class="row align-items-center">
@@ -502,9 +642,10 @@
                                 <div class="col-6 stat-box"><div class="stat-label">Clock Out</div><div class="stat-value text-success font-monospace">${summaryOut}</div></div>
                             </div>
                         </div>
-                        <div class="col-md-2 text-end d-flex flex-column align-items-end justify-content-center">
+                        <div class="col-md-2 text-end d-flex align-items-center justify-content-end">
                             ${badgeHtml}
-                            <i data-lucide="chevron-down" class="text-muted chevron-icon"></i>
+                            ${manageBtn}
+                            <i data-lucide="chevron-down" class="text-muted chevron-icon ms-2"></i>
                         </div>
                     </div>
                 </div>
@@ -512,7 +653,7 @@
             let listHtml = `<div id="${collapseId}" class="collapse"><div class="list-group list-group-flush">`;
             if (records.length > 0) records.forEach(item => { listHtml += renderRecordItem(item); });
             else if (isAbsent) listHtml += `<div class="p-4 text-center text-danger small fw-bold">Employee scheduled but failed to clock in.</div>`;
-            else if (isOnLeave) listHtml += `<div class="p-4 text-center text-info small fw-bold">Employee is on approved leave.</div>`;
+            else if (isOnLeave) listHtml += `<div class="p-4 text-center text-info small fw-bold">Employee is on approved leave (${isOnLeave}).</div>`;
             listHtml += '</div></div>';
 
             card.innerHTML = headerHtml + listHtml;
@@ -520,7 +661,7 @@
             return true;
         }
 
-        // 🟢 2. Month Mode Card (New Logic)
+       // 🟢 2. Month Mode Card (FIXED for Manual Entry)
         function renderMonthUserCard(uid, allRecords, container, filterType) {
             const user = usersMap[uid] || { name: 'Unknown', photo: null };
             const collapseId = `collapse-month-${uid}`;
@@ -535,6 +676,13 @@
             let scheduledDaysCount = 0; 
             let rowsHtml = "";
 
+            // Helper to safe convert Firestore Timestamp or String to Date
+            const toDate = (t) => {
+                if (!t) return null;
+                if (t.toDate) return t.toDate(); // Firestore Timestamp
+                return new Date(t); // Native Date or String
+            };
+
             for(let d = 1; d <= daysInMonth; d++) {
                 const dateStr = `${y}-${m}-${d.toString().padStart(2, '0')}`;
                 const isPastOrToday = dateStr <= today;
@@ -543,12 +691,22 @@
                 const dayRecords = dayMap[dateStr] || [];
 
                 let tInObj = null, tOutObj = null, bOutObj = null, bInObj = null;
+                
                 dayRecords.forEach(r => {
                     if(r.verificationStatus === 'Verified') {
-                        if(r.session === 'Clock In') tInObj = r.manualIn ? null : (r.timeIn || r.timestamp);
-                        if(r.session === 'Clock Out') tOutObj = r.timeOut || r.timestamp;
-                        if(r.session === 'Break Out') bOutObj = r.timestamp;
-                        if(r.session === 'Break In') bInObj = r.timestamp;
+                        // 🟢 修复逻辑：如果是 Manual Entry，构建 Date 对象，而不是 null
+                        if(r.session === 'Clock In') {
+                            if (r.manualIn) tInObj = new Date(`${r.date}T${r.manualIn}:00`);
+                            else tInObj = toDate(r.timeIn || r.timestamp);
+                        }
+                        
+                        if(r.session === 'Clock Out') {
+                            if (r.manualOut) tOutObj = new Date(`${r.date}T${r.manualOut}:00`);
+                            else tOutObj = toDate(r.timeOut || r.timestamp);
+                        }
+
+                        if(r.session === 'Break Out') bOutObj = toDate(r.breakOut || r.timestamp);
+                        if(r.session === 'Break In') bInObj = toDate(r.breakIn || r.timestamp);
                     }
                 });
 
@@ -556,7 +714,7 @@
                 let scheduledMs = 0;
                 if (isPastOrToday && sched && sched.start && sched.end && !isOnLeave) {
                     scheduledDaysCount++;
-                    scheduledMs = (sched.end.toDate() - sched.start.toDate());
+                    scheduledMs = (toDate(sched.end) - toDate(sched.start));
                     const schedBreakMs = (sched.breakMins || 0) * 60000;
                     scheduledMs -= schedBreakMs;
                     if(scheduledMs < 0) scheduledMs = 0;
@@ -572,32 +730,24 @@
                     stats.present++; sText = ""; rowCls = "";
                     
                     if(sched && sched.start) {
-                        const schedStart = sched.start.toDate();
-                        // 1. Late Calculation (Clock In > Shift Start + 15m)
-                        const buffer = new Date(schedStart.getTime() + 15*60000);
-                        if(tInObj.toDate() > buffer) { stats.late++; isLate = true; }
+                        const schedStart = toDate(sched.start);
+                        // 1. Late Calculation (Strict: No Buffer based on previous discussion)
+                        // If you want buffer back, use: new Date(schedStart.getTime() + 15*60000)
+                        if(tInObj > schedStart) { stats.late++; isLate = true; }
 
                         // 2. Work Calculation Logic
                         if(tOutObj) {
-                            // Effective Start: If ClockIn is early, use SchedStart. If Late, use ClockIn.
-                            const actualIn = tInObj.toDate();
-                            const effectiveStart = actualIn < schedStart ? schedStart : actualIn;
-                            
-                            // Gross duration (End - Start)
-                            let grossDuration = tOutObj.toDate() - effectiveStart;
+                            const effectiveStart = tInObj < schedStart ? schedStart : tInObj;
+                            let grossDuration = tOutObj - effectiveStart;
 
                             // 3. Break Logic
                             const schedBreakMs = (sched.breakMins || 0) * 60000;
-                            let breakDeduction = schedBreakMs; // Standard deduction
+                            let breakDeduction = schedBreakMs; 
 
-                            // Check Break Overstay
                             if(bOutObj && bInObj) {
-                                const actualBreak = bInObj.toDate() - bOutObj.toDate();
+                                const actualBreak = bInObj - bOutObj;
                                 if (actualBreak > schedBreakMs) {
-                                    // Overstay logic: If requested "count into late", we mark as late or just reduce hours?
-                                    // Requirement says: "if break > set time, count into late".
-                                    // Let's flag it as Late and deduct actual duration.
-                                    isLate = true; 
+                                    // isLate = true; // Optional: Mark late if break overstay?
                                     breakDeduction = actualBreak;
                                 }
                             }
@@ -606,16 +756,15 @@
                             if (dWork < 0) dWork = 0;
                             stats.totalWorkMs += dWork;
 
-                            // 4. OT Calculation (Clock Out > Shift End)
+                            // 4. OT Calculation
                             if(sched.end) {
-                                const schedEnd = sched.end.toDate();
-                                if(tOutObj.toDate() > schedEnd) {
-                                    stats.totalOTMs += (tOutObj.toDate() - schedEnd);
+                                const schedEnd = toDate(sched.end);
+                                if(tOutObj > schedEnd) {
+                                    stats.totalOTMs += (tOutObj - schedEnd);
                                 }
-                                // 5. Undertime Calculation (Clock Out < Shift End)
-                                if(tOutObj.toDate() < schedEnd) {
+                                if(tOutObj < schedEnd) {
                                     isUnder = true;
-                                    stats.undertime++; // Count incidents
+                                    stats.undertime++; 
                                 }
                             }
                         }
@@ -627,6 +776,7 @@
                 }
 
                 if (dayRecords.length > 0 || (isPastOrToday && sched) || isOnLeave) {
+                    // Update: use toDate() wrapper for safety or formatTime logic
                     const timeDisp = tInObj ? `<span class="text-dark fw-bold">${formatTime(tInObj)}</span> - <span class="text-dark fw-bold">${formatTime(tOutObj)}</span>` : sText;
                     
                     let statusBadges = "";
@@ -651,7 +801,6 @@
             container.appendChild(card);
             return true;
         }
-
         function renderRecordItem(item) {
             const isVerified = item.verificationStatus === 'Verified';
             const rowClass = isVerified ? 'record-item verified' : 'record-item pending';
@@ -798,6 +947,183 @@
                 batch.update(doc(db, "attendance_corrections", reqId), { status: "Approved", resolvedAt: serverTimestamp() });
             } else batch.update(doc(db, "attendance_corrections", reqId), { status: "Rejected", resolvedAt: serverTimestamp() });
             await batch.commit(); if(action === 'approve') loadData();
+        }
+
+        // --- NEW: Manual Action Logic ---
+        window.openManualAction = (uid, date, currentStatus) => {
+            document.getElementById('manualUid').value = uid;
+            document.getElementById('manualDate').value = date;
+            document.getElementById('manualActionType').value = ""; // Reset dropdown
+            
+            toggleManualInputs(); // Hide inputs initially
+            manualActionModal.show();
+        }
+        
+        window.toggleManualInputs = () => {
+            const type = document.getElementById('manualActionType').value;
+            const boxPresent = document.getElementById('boxPresent');
+            const boxLeave = document.getElementById('boxLeave');
+            const boxAbsent = document.getElementById('boxAbsent'); // 🟢 Added this line
+            const warn = document.getElementById('annualWarn');
+
+            boxPresent.classList.add('d-none');
+            boxLeave.classList.add('d-none');
+            boxAbsent.classList.add('d-none'); // 🟢 Added this line
+            
+            if (type === 'Present') {
+                boxPresent.classList.remove('d-none');
+                
+                // Pre-fill with schedule if exists
+                const uid = document.getElementById('manualUid').value;
+                const date = document.getElementById('manualDate').value;
+                const sched = schedulesMap[uid + "_" + date];
+                
+                if(sched && sched.start && sched.end) {
+                     const fmtTime = (ts) => new Date(ts.seconds*1000).toTimeString().substring(0,5);
+                     document.getElementById('manualClockIn').value = fmtTime(sched.start);
+                     document.getElementById('manualClockOut').value = fmtTime(sched.end);
+                } else {
+                     // Default
+                     document.getElementById('manualClockIn').value = "09:00";
+                     document.getElementById('manualClockOut').value = "18:00";
+                }
+
+            } else if (type === 'Absent') { // 🟢 Added 'Absent' Check
+                boxAbsent.classList.remove('d-none');
+            } else if (type.includes('Leave')) {
+                boxLeave.classList.remove('d-none');
+                warn.classList.toggle('d-none', type !== 'Annual Leave');
+            }
+        }
+        
+        window.submitManualAction = async () => {
+            const uid = document.getElementById('manualUid').value; // 这个 uid 来自 UI，可能是 AuthUid
+            const dateStr = document.getElementById('manualDate').value;
+            const type = document.getElementById('manualActionType').value;
+            
+            // 🟢 从 Map 中获取完整的用户对象
+            const userObj = usersMap[uid];
+            if (!userObj) { alert("User data mapping error."); return; }
+
+            // 🟢 关键：分离出两个 ID
+            // targetDocId: 用来寻找 User 文档 (操作余额)
+            // targetAuthUid: 用来写入 Attendance 记录 (确保 App 能读到)
+            const targetDocId = userObj.docId; 
+            const targetAuthUid = userObj.authUid || userObj.docId; // 如果没有 authUid，回退到 docId
+
+            if(!type) return alert("Select an action");
+            if(!confirm(`Confirm ${type} for ${userObj.name} on ${dateStr}?`)) return;
+
+            const btn = document.querySelector('#manualActionModal .btn-primary');
+            btn.disabled = true;
+
+            try {
+                if (type === 'Present') {
+                    const cin = document.getElementById('manualClockIn').value;
+                    const cout = document.getElementById('manualClockOut').value;
+                    const bout = document.getElementById('manualBreakOut').value; 
+                    const bin = document.getElementById('manualBreakIn').value;   
+                    
+                    const batch = writeBatch(db);
+                    const commonData = {
+                         uid: targetAuthUid, // 🟢 写入 Auth UID
+                         name: userObj.name, 
+                         email: userObj.email,
+                         date: dateStr, 
+                         verificationStatus: "Verified",
+                         location: null, 
+                         address: "Admin Manual Entry", 
+                         photoUrl: null,
+                         timestamp: serverTimestamp()
+                    };
+                    
+                    if(cin) {
+                        const refIn = doc(collection(db, "attendance"));
+                        batch.set(refIn, { ...commonData, session: "Clock In", manualIn: cin });
+                    }
+                    
+                    if(cout) {
+                        const refOut = doc(collection(db, "attendance"));
+                        batch.set(refOut, { ...commonData, session: "Clock Out", manualOut: cout });
+                    }
+
+                    if (bout) {
+                        const refBreakOut = doc(collection(db, "attendance"));
+                        const breakOutTs = Timestamp.fromDate(new Date(`${dateStr}T${bout}:00`));
+                        batch.set(refBreakOut, { ...commonData, session: "Break Out", timestamp: breakOutTs, breakOut: breakOutTs });
+                    }
+
+                    if (bin) {
+                        const refBreakIn = doc(collection(db, "attendance"));
+                        const breakInTs = Timestamp.fromDate(new Date(`${dateStr}T${bin}:00`));
+                        batch.set(refBreakIn, { ...commonData, session: "Break In", timestamp: breakInTs, breakIn: breakInTs });
+                    }
+                    
+                    await batch.commit();
+
+                } else if (type === 'Absent') {
+                    // Absent Logic
+                    await runTransaction(db, async (transaction) => {
+                        const q = query(collection(db, "attendance"), where("uid", "==", targetAuthUid), where("date", "==", dateStr));
+                        const snap = await getDocs(q);
+                        snap.forEach(d => transaction.delete(d.ref));
+
+                        const leaveRef = doc(collection(db, "leaves"));
+                        transaction.set(leaveRef, {
+                            uid: targetDocId,         // Leave 通常存 Doc ID
+                            authUid: targetAuthUid,   // 同时存 Auth UID 方便查询
+                            empName: userObj.name, email: userObj.email,
+                            type: 'Absent',
+                            startDate: dateStr, endDate: dateStr, days: 1,
+                            reason: document.getElementById('manualReason').value || "Marked Absent by Admin",
+                            status: 'Approved', 
+                            reviewedAt: serverTimestamp(), 
+                            reviewer: auth.currentUser.email,
+                            isPayrollDeductible: true
+                        });
+                    });
+
+                } else {
+                    // Leave Transaction
+                    await runTransaction(db, async (transaction) => {
+                        // 🟢 使用 targetDocId 查找用户文档
+                        const userRef = doc(db, "users", targetDocId);
+                        const userDoc = await transaction.get(userRef);
+                        
+                        if (!userDoc.exists()) throw `User doc not found (ID: ${targetDocId})`;
+                        
+                        const userData = userDoc.data();
+                        const isAnnual = (type === 'Annual Leave');
+                        
+                        if (isAnnual) {
+                             const currentBalance = userData.leave_balance?.annual || 0;
+                             // 如果你是 Admin，可能允许透支，或者这里你可以去掉这个检查
+                             // if (currentBalance < 1) throw "Insufficient Balance!";
+                             transaction.update(userRef, { "leave_balance.annual": currentBalance - 1 });
+                        }
+                        
+                        const leaveRef = doc(collection(db, "leaves"));
+                        transaction.set(leaveRef, {
+                            uid: targetDocId, 
+                            authUid: targetAuthUid, 
+                            empName: userObj.name, email: userObj.email,
+                            type: type, startDate: dateStr, endDate: dateStr, days: 1,
+                            reason: document.getElementById('manualReason').value || "Admin Manual Entry",
+                            status: 'Approved', reviewedAt: serverTimestamp(), reviewer: auth.currentUser.email,
+                            isPayrollDeductible: (type === 'Unpaid Leave')
+                        });
+                    });
+                }
+                
+                manualActionModal.hide();
+                loadData(); 
+
+            } catch(e) {
+                console.error(e);
+                alert("Error: " + e.message);
+            } finally {
+                btn.disabled = false;
+            }
         }
 
         lucide.createIcons();

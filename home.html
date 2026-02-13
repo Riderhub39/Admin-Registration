@@ -335,10 +335,24 @@
                         .sort((a, b) => (a.timestamp?.toDate() || 0) - (b.timestamp?.toDate() || 0))[0];
                     
                     if (clockIn) {
-                        const time = clockIn.timeIn ? clockIn.timeIn.toDate() : clockIn.timestamp.toDate();
+                        // 1. 获取实际打卡时间（优先 Manual，其次 TimeIn，最后 Timestamp）
+                        let time;
+                        if (clockIn.manualIn) {
+                            // 将 "09:00" 结合今天的日期转为 Date 对象
+                            time = new Date(`${todayStr}T${clockIn.manualIn}:00`);
+                        } else if (clockIn.timeIn) {
+                            time = clockIn.timeIn.toDate();
+                        } else {
+                            time = clockIn.timestamp.toDate();
+                        }
+
+                        // 2. 计算迟到界限 (严格模式：没有缓冲期)
+                        // 如果有排班，直接用排班开始时间；如果没有排班，默认设为 9:00:00
                         let threshold = schedStart 
-                            ? new Date(schedStart.getTime() + 15 * 60000) // 15 min buffer
-                            : new Date(todayStr + "T09:15:00"); // Default default
+                            ? schedStart 
+                            : new Date(todayStr + "T09:00:00"); 
+
+                        // 3. 判断迟到：只要实际时间晚于排班时间，就算 Late
                         if (time > threshold) lateCount++;
                     }
                 } else {
