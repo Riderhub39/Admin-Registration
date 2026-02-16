@@ -620,8 +620,8 @@
                 if(data.status !== 'disabled'){
                     allStaffCache.push({
                         id: doc.id,
-                        name: data.personal?.name || data.name || "Unknown Staff",
-                        email: data.email || 'No Email',
+                        name: data.personal?.name || "Unknown Staff",
+                        email: data.personal?.email || 'No Email',
                         isDriver: data.isDriver || false,
                         photo: data.faceIdPhoto
                     });

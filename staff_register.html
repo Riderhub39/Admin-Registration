@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Upload New Staff - HRIS Admin</title>
+    <title>New Staff - HRIS Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="style.css" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -58,7 +58,7 @@
                             <i data-lucide="download" class="size-3 me-1"></i> Download Template
                         </a>
                     </div>
-                    <small class="text-muted">Upload filled <code>EMP_Master.xlsx</code> to create User accounts.</small>
+                    <small class="text-muted">Upload filled <code>EMP_Master.xlsx</code> to staff.</small>
                 </div>
             </div>
             <div>
@@ -97,7 +97,7 @@
         <div class="d-flex align-items-center gap-2">
             <button type="button" class="btn btn-sm btn-light border" onclick="location.reload()">Clear Form</button>
             <button type="button" id="btnSubmitFirebase" class="btn btn-sm btn-success fw-bold px-4">
-                <i data-lucide="cloud-upload" class="size-4 me-2"></i> Create User Account
+                <i data-lucide="database" class="size-4 me-2"></i>  Staff (Save to DB)
             </button>
         </div>
     </div>
@@ -150,11 +150,11 @@
                         </div>
                         <div class="section-title">Contact</div>
                         <div class="row g-2">
-                            <div class="col-md-6"><label class="form-label">Email Address</label><input type="text" id="Email Address" class="form-control"></div>
+                            <div class="col-md-6"><label class="form-label">Email Address *</label><input type="email" id="Email Address" class="form-control" required placeholder="This will be their login ID"></div>
                             <div class="col-md-6"><label class="form-label">Mobile Number</label><input type="text" id="Mobile Number" class="form-control" placeholder="e.g. 0123456789"></div>
                         </div>
                     </div>
-
+                    
                     <div class="tab-pane fade" id="employment">
                         <div class="section-title">Timeline</div>
                         <div class="row g-2">
@@ -174,6 +174,7 @@
                             <div class="col-md-3"><label class="form-label">Status</label><input type="text" id="Employee Status" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Holiday Grp</label><input type="text" id="Holiday Group Code" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Leave Cat</label><input type="text" id="Leave Category Code" class="form-control"></div>
+                            <div class="col-md-3"><div class="form-check pt-4"><input type="checkbox" id="isDriver" class="form-check-input"><label class="form-check-label fw-bold">Is Driver / Field Staff?</label></div></div>
                         </div>
                         <div class="section-title">Schedule</div>
                         <div class="row g-2">
@@ -186,7 +187,7 @@
                             <div class="col-md-2"><div class="form-check pt-3"><input type="checkbox" id="Flexi Hours" class="form-check-input"><label class="form-check-label">Flexi Hours</label></div></div>
                         </div>
                     </div>
-
+                    
                     <div class="tab-pane fade" id="statutory">
                         <div class="section-title">EPF</div>
                         <div class="row g-2">
@@ -221,7 +222,7 @@
                     </div>
 
                     <div class="tab-pane fade" id="payroll">
-                        <div class="section-title">Salary & Rates</div>
+                         <div class="section-title">Salary & Rates</div>
                         <div class="row g-2">
                             <div class="col-md-3"><label class="form-label">Basic Salary</label><input type="text" id="Basic Salary" class="form-control fw-bold"></div>
                             <div class="col-md-3"><label class="form-label">Pay Group</label><input type="text" id="Pay Day Group" class="form-control"></div>
@@ -258,7 +259,7 @@
                     </div>
 
                     <div class="tab-pane fade" id="family">
-                        <div class="section-title">Spouse</div>
+                         <div class="section-title">Spouse</div>
                         <div class="row g-2">
                             <div class="col-md-4"><label class="form-label">Spouse Name</label><input type="text" id="Spouse Name" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">ID/Passport</label><input type="text" id="Spouse MyKad/Passport" class="form-control"></div>
@@ -293,7 +294,7 @@
                     </div>
 
                     <div class="tab-pane fade" id="address">
-                        <div class="section-title">Local Address</div>
+                         <div class="section-title">Local Address</div>
                         <div class="row g-2">
                             <div class="col-md-2"><label class="form-label">Door No</label><input type="text" id="Local Address Door No" class="form-control"></div>
                             <div class="col-md-4"><label class="form-label">Location</label><input type="text" id="Local Address Location" class="form-control"></div>
@@ -332,6 +333,7 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script type="module">
+    // 🟢 1. Removed unnecessary Auth creation imports
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -363,7 +365,6 @@
                     overlay.style.display = 'none'; 
                     mainContainer.classList.remove('d-none'); 
 
-                    // 🟢 NEW: Set default Join Date to today
                     const joinDateInput = document.getElementById('Join Date');
                     if (joinDateInput && !joinDateInput.value) {
                         joinDateInput.value = new Date().toISOString().split('T')[0];
@@ -507,6 +508,14 @@
         const empCode = document.getElementById('Employee Code').value;
         if (!empCode) { alert("Error: Employee Code is required!"); return; }
 
+        // 🟢 2. Validation: Email 
+        const emailInput = document.getElementById('Email Address').value;
+        if(!emailInput || emailInput.trim() === '') {
+            alert("Error: Email Address is required for App Login.");
+            document.getElementById('Email Address').focus();
+            return;
+        }
+
         overlay.style.display = 'flex';
         loadingText.innerText = `Checking for duplicates...`;
 
@@ -596,8 +605,10 @@
         const annualEntitlement = await calculateAnnualEntitlement(getVal('Join Date'));
 
         const formData = {
+            authUid: null, // 🟢 3. CRITICAL: Explicitly set to null. App will fill this upon registration.
             role: "staff",
             status: "active",
+            isDriver: getVal('isDriver'), // 🟢 4. Added isDriver field to data
             meta: {
                 updatedAt: new Date(),
                 isPreRegistered: true,
@@ -621,7 +632,8 @@
                 religion: getVal('Religion'),
                 empType: getVal('Employment Type'),
                 blood: getVal('Blood Type'),
-                email: getVal('Email Address'),
+                // 🟢 5. Force email to lower case and trim
+                email: getVal('Email Address').toLowerCase().trim(),
                 mobile: formatMalaysianPhone(getVal('Mobile Number')) 
             },
             foreign: {
@@ -749,8 +761,12 @@
         };
 
         try {
+            // 🟢 6. Write to Firestore only (No Auth Creation)
             await setDoc(doc(db, "users", empCode), formData);
-            alert(`Success! User ${empCode} created.\nRole: Staff\nStatus: Completed`);
+            alert(`✅ Staff Successfully Added!\n\nName: ${getVal('Employee Name')}\nEmail: ${getVal('Email Address')}\n\n👉 Please instruct the staff to download the App and REGISTER using this email.`);
+            
+            // Optional: Clear form or redirect
+             window.location.reload(); 
         } catch (error) {
             if(error.code === 'permission-denied') {
                 alert("Permission Denied! Check Firestore Rules for 'users' collection.");
