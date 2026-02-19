@@ -84,12 +84,12 @@
                             <th class="ps-4">Emp Code</th>
                             <th>Full Name</th>
                             <th>Department</th>
-                            <th>Status</th>
+                            <th>Leave Balance</th> <th>Status</th>
                             <th class="text-end pe-4">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="staffTableBody">
-                        <tr><td colspan="5" class="text-center py-4 text-muted">Loading staff list...</td></tr>
+                        <tr><td colspan="6" class="text-center py-4 text-muted">Loading staff list...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -107,7 +107,7 @@
             <div class="modal-body">
                 <div class="alert alert-info d-flex align-items-center gap-2">
                     <i data-lucide="info" class="size-4"></i>
-                    <small>Approving this will unlock the profile for <strong>5 minutes</strong>.</small>
+                    <small>Approving this will unlock the profile for <strong class="text-danger">5 minutes</strong>.</small>
                 </div>
                 <div class="mb-3">
                     <label class="small text-muted fw-bold">REQUESTER</label>
@@ -130,50 +130,46 @@
 </div>
 
 <div class="modal fade" id="leaveConfigModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-light">
-                <h6 class="modal-title fw-bold">Annual Leave Entitlement Rules</h6>
+                <h6 class="modal-title fw-bold">Leave Entitlement Rules</h6>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p class="text-muted small">Define how many days of Annual Leave staff get based on their years of service.</p>
-                <form id="leaveRuleForm">
-                    <div class="alert alert-warning py-2 mb-3">
-                        <i data-lucide="alert-circle" class="size-4 me-1"></i>
-                        <small>Staff with service <strong>less than 1 year</strong> will receive <strong>0 days</strong>.</small>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">Tier 1: Junior</label>
-                        <div class="input-group input-group-sm">
-                            <span class="input-group-text">Min Years</span>
-                            <input type="number" id="t1_min" class="form-control" value="1">
-                            <span class="input-group-text">Days</span>
-                            <input type="number" id="t1_days" class="form-control" value="8">
+                <p class="text-muted small mb-2">Define leave days based on years of service. <strong class="text-danger">Ranges cannot overlap.</strong> (Logic: Min ≤ Years &lt; Max)</p>
+                <p class="text-muted small mb-3"><em>Tip: For the highest tier, set Max Yrs to 99.</em></p>
+                
+                <ul class="nav nav-tabs mb-3" id="leaveRulesTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active fw-bold" id="annual-tab" data-bs-toggle="tab" data-bs-target="#annual-pane" type="button" role="tab">🏖️ Annual Leave</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link fw-bold" id="medical-tab" data-bs-toggle="tab" data-bs-target="#medical-pane" type="button" role="tab">🏥 Medical Leave</button>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="annual-pane" role="tabpanel">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="small fw-bold text-primary">Annual Leave Tiers</span>
+                            <button class="btn btn-sm btn-outline-primary py-0" onclick="addRuleRow('annual')"><i data-lucide="plus" class="size-3"></i> Add Rule</button>
                         </div>
+                        <div id="annualRulesContainer"></div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">Tier 2: Mid</label>
-                        <div class="input-group input-group-sm">
-                            <span class="input-group-text">Min Years</span>
-                            <input type="number" id="t2_min" class="form-control" value="2">
-                            <span class="input-group-text">Days</span>
-                            <input type="number" id="t2_days" class="form-control" value="12">
+
+                    <div class="tab-pane fade" id="medical-pane" role="tabpanel">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="small fw-bold text-danger">Medical Leave Tiers</span>
+                            <button class="btn btn-sm btn-outline-danger py-0" onclick="addRuleRow('medical')"><i data-lucide="plus" class="size-3"></i> Add Rule</button>
                         </div>
+                        <div id="medicalRulesContainer"></div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">Tier 3: Senior</label>
-                        <div class="input-group input-group-sm">
-                            <span class="input-group-text">Min Years</span>
-                            <input type="number" id="t3_min" class="form-control" value="5">
-                            <span class="input-group-text">Days</span>
-                            <input type="number" id="t3_days" class="form-control" value="16">
-                        </div>
-                    </div>
-                </form>
+                </div>
+
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-primary w-100" onclick="saveLeaveRules()">Save Configuration</button>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-primary w-100 fw-bold" onclick="saveLeaveRules()">Save & Validate Rules</button>
             </div>
         </div>
     </div>
@@ -189,21 +185,18 @@
     import { firebaseConfig } from "./firebase-config.js";
     import { initUnifiedHeader } from "./header-app.js";
 
-    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const auth = getAuth(app);
     const settingsRef = doc(db, "settings", "leave_rules");
     
     let reviewModal; 
-    let staffList = [];       // Store staff data locally
-    let pendingRequests = {}; // Store update requests locally
-    let searchTerm = "";      // Store current search query
+    let staffList = [];       
+    let pendingRequests = {}; 
+    let searchTerm = "";      
+    let leaveRulesConfig = { annual: [], medical: [] };
 
-    /**
-     * Authentication Observer
-     * Ensures only Admins can access this page
-     */
+    // --- Auth Guard ---
     onAuthStateChanged(auth, async (user) => {
         if (!user) {
             window.location.href = "index.html";
@@ -216,11 +209,9 @@
                 document.getElementById('loadingText').innerText = "Loading Staff List...";
                 reviewModal = new bootstrap.Modal(document.getElementById('reviewModal'));
                 
-                // Initialize Listeners
                 initData();
                 loadLeaveRules();
                 
-                // Show Content
                 document.getElementById('loadingOverlay').classList.add('d-none');
                 document.getElementById('mainContainer').classList.remove('d-none');
             } else {
@@ -234,12 +225,8 @@
         }
     });
 
-    /**
-     * Data Initialization
-     * Sets up real-time listeners for Staff Users and Pending Edit Requests
-     */
+    // --- Real-time Listeners ---
     async function initData() {
-        // Listener 1: Staff Users
         const q = query(collection(db, "users"), where("role", "==", "staff"));
         onSnapshot(q, (snapshot) => {
             staffList = [];
@@ -247,7 +234,6 @@
             renderTable(); 
         });
 
-        // Listener 2: Pending Edit Requests (for badges)
         const reqQuery = query(collection(db, "edit_requests"), where("status", "==", "pending"));
         onSnapshot(reqQuery, (snap) => {
             pendingRequests = {}; 
@@ -259,27 +245,20 @@
         });
     }
 
-    /**
-     * Search Input Event Listener
-     * Updates local state and re-renders table
-     */
+    // --- Search Logic ---
     document.getElementById('searchInput').addEventListener('keyup', (e) => {
         searchTerm = e.target.value.toLowerCase().trim();
         renderTable();
     });
 
-    /**
-     * Render Staff Table
-     * Merges User Data with Request Data and applies Search Filter
-     */
+    // --- Table Render ---
     function renderTable() {
         const tbody = document.getElementById('staffTableBody');
         const now = new Date();
-        
         tbody.innerHTML = ''; 
 
         if (staffList.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">No staff found.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">No staff found.</td></tr>';
             return;
         }
 
@@ -287,22 +266,20 @@
         let visibleCount = 0;
 
         staffList.forEach(user => {
-            // Check for Auto-Lock Expiration (Logic only, does not affect visual filter)
+            // Check Auto-Lock
             if (user.status === 'editable' && user.unlockExpiresAt) {
                 const expiry = user.unlockExpiresAt.toDate(); 
                 if (now > expiry) {
                     updateDoc(doc(db, "users", user.id), { status: 'active', unlockExpiresAt: null });
-                    return; // Skip rendering this frame to allow status update to propagate
+                    return; 
                 }
             }
 
-            // --- FILTER LOGIC ---
             const name = (user.personal?.name || "").toLowerCase();
             const email = (user.personal?.email || "").toLowerCase();
             const id = user.id.toLowerCase();
             const dept = (user.employment?.dept || "").toLowerCase();
 
-            // If search term exists and doesn't match any field, skip row
             if (searchTerm && !name.includes(searchTerm) && !email.includes(searchTerm) && !id.includes(searchTerm) && !dept.includes(searchTerm)) {
                 return;
             }
@@ -313,7 +290,15 @@
             const employment = user.employment || {};
             const status = user.status || 'active';
             
-            // Determine Badge Color
+            // 🌟 提取假期余额 (如果没有数据，显示 '-' 或 0)
+            const leaveBalance = user.leave_balance || {};
+            const al = leaveBalance.annual !== undefined ? leaveBalance.annual : '-';
+            const ml = leaveBalance.medical !== undefined ? leaveBalance.medical : '-';
+            
+            // 颜色逻辑：如果假期 <= 3 天，显示警告色（橙/红）
+            const alColor = (al !== '-' && al <= 3) ? 'text-danger' : 'text-success';
+            const mlColor = (ml !== '-' && ml <= 3) ? 'text-danger' : 'text-success';
+
             let statusClass = 'bg-active'; 
             if(status === 'complete') statusClass = 'bg-complete';
             if(status === 'editable') statusClass = 'bg-editable';
@@ -322,7 +307,6 @@
             const request = pendingRequests[user.id];
             const hasRequest = !!request;
 
-            // Generate Row HTML
             htmlBuffer += `
                 <tr>
                     <td class="ps-4 fw-bold text-primary">${user.id}</td>
@@ -331,6 +315,18 @@
                         <small class="text-muted">${personal.email || '-'}</small>
                     </td>
                     <td>${employment.dept || '-'}</td>
+                    
+                    <td>
+                        <div class="d-flex flex-column gap-1" style="font-size: 0.75rem;">
+                            <div class="border rounded px-2 py-1 bg-light text-muted fw-bold d-flex justify-content-between align-items-center" style="width: 85px;">
+                                <span>AL:</span> <span class="${alColor} fs-6">${al}</span>
+                            </div>
+                            <div class="border rounded px-2 py-1 bg-light text-muted fw-bold d-flex justify-content-between align-items-center" style="width: 85px;">
+                                <span>ML:</span> <span class="${mlColor} fs-6">${ml}</span>
+                            </div>
+                        </div>
+                    </td>
+
                     <td><span class="status-badge ${statusClass}">${status}</span></td>
                     <td class="text-end pe-4">
                         <div class="action-btn-group">
@@ -339,7 +335,7 @@
                                     ${!hasRequest ? 'disabled' : ''}>
                                 <span class="notif-dot ${hasRequest ? 'active' : ''}"></span>
                                 <i data-lucide="bell" class="size-3 me-1"></i> 
-                                ${hasRequest ? 'Review' : 'No Req'}
+                                ${hasRequest ? 'Review Req' : 'No Req'}
                             </button>
                             <a href="staff_details.html?uid=${user.id}" class="btn btn-sm btn-light border text-dark">
                                 Manage <i data-lucide="chevron-right" class="size-3 ms-1"></i>
@@ -350,14 +346,14 @@
         });
 
         if (visibleCount === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">No results found matching your search.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">No results found matching your search.</td></tr>';
         } else {
             tbody.innerHTML = htmlBuffer;
             lucide.createIcons();
         }
     }
 
-    // Expose Modal Functions to Window
+    // --- Profile Unlock Logic ---
     window.openReview = function(userId) {
         const request = pendingRequests[userId];
         if(!request) return;
@@ -369,11 +365,6 @@
         reviewModal.show();
     };
 
-    /**
-     * Handle Approve/Reject Logic
-     * Approve: Unlocks profile for 5 minutes.
-     * Reject: Marks request as rejected.
-     */
     window.processDecision = async function(decision) {
         const reqId = document.getElementById('hiddenRequestId').value;
         const userId = document.getElementById('hiddenUserId').value;
@@ -385,8 +376,7 @@
         try {
             if(decision === 'approve') {
                 await updateDoc(doc(db, "edit_requests", reqId), { status: 'approved', reviewedAt: serverTimestamp() });
-                // Unlock profile for 5 minutes
-                const expiryDate = new Date(Date.now() + 5 * 60 * 1000); 
+                const expiryDate = new Date(Date.now() + 5 * 60 * 1000); // Unlock 5 mins
                 await updateDoc(doc(db, "users", userId), { status: 'editable', unlockExpiresAt: expiryDate });
             } else {
                 await updateDoc(doc(db, "edit_requests", reqId), { status: 'rejected', reviewedAt: serverTimestamp() });
@@ -400,78 +390,160 @@
         }
     };
 
-    /**
-     * Leave Rules Management
-     * Loads and Saves entitlement configuration from Firestore
-     */
+    // --------------------------------------------------------
+    // 🌴 Leave Rules Management (Dynamic & Overlap Prevention)
+    // --------------------------------------------------------
+    window.createRuleRow = function(type, min = 0, max = 1, days = 8) {
+        const div = document.createElement('div');
+        div.className = 'input-group input-group-sm mb-2 rule-row';
+        div.innerHTML = `
+            <span class="input-group-text bg-light border-end-0">Min Yrs</span>
+            <input type="number" class="form-control rule-min" value="${min}" step="0.1" min="0">
+            <span class="input-group-text bg-light border-end-0 border-start-0">Max Yrs</span>
+            <input type="number" class="form-control rule-max" value="${max}" step="0.1" min="0.1">
+            <span class="input-group-text bg-light border-end-0 border-start-0">Days</span>
+            <input type="number" class="form-control rule-days" value="${days}" min="0">
+            <button type="button" class="btn btn-outline-danger px-2" onclick="this.closest('.rule-row').remove()">
+                <i data-lucide="trash-2" class="size-4"></i>
+            </button>
+        `;
+        return div;
+    };
+
+    window.addRuleRow = function(type) {
+        document.getElementById(`${type}RulesContainer`).appendChild(window.createRuleRow(type, 0, 1, 0));
+        lucide.createIcons();
+    };
+
     async function loadLeaveRules() {
         try {
             const snap = await getDoc(settingsRef);
-            if (snap.exists()) {
-                const data = snap.data();
-                document.getElementById('t1_min').value = data.t1?.min ?? 1; 
-                document.getElementById('t1_days').value = data.t1?.days ?? 8;
-                document.getElementById('t2_min').value = data.t2?.min ?? 2;
-                document.getElementById('t2_days').value = data.t2?.days ?? 12;
-                document.getElementById('t3_min').value = data.t3?.min ?? 5;
-                document.getElementById('t3_days').value = data.t3?.days ?? 16;
+            if (snap.exists() && snap.data().annual) {
+                leaveRulesConfig = snap.data();
+            } else {
+                // Default fallback
+                leaveRulesConfig = {
+                    annual: [ {min: 0, max: 2, days: 8}, {min: 2, max: 5, days: 12}, {min: 5, max: 99, days: 16} ],
+                    medical: [ {min: 0, max: 2, days: 14}, {min: 2, max: 5, days: 18}, {min: 5, max: 99, days: 22} ]
+                };
             }
+            renderRules('annual');
+            renderRules('medical');
+            lucide.createIcons();
         } catch (e) { 
-            // Silent fail or UI toast could go here
+            console.error("Error loading rules:", e);
         }
     }
 
+    function renderRules(type) {
+        const container = document.getElementById(`${type}RulesContainer`);
+        container.innerHTML = '';
+        if(leaveRulesConfig[type]) {
+            leaveRulesConfig[type].forEach(r => {
+                container.appendChild(window.createRuleRow(type, r.min, r.max, r.days));
+            });
+        }
+    }
+
+    // Scrape DOM and validate Overlaps
+    function parseAndValidateRules(type, typeName) {
+        const rules = [];
+        const rows = document.querySelectorAll(`#${type}RulesContainer .rule-row`);
+        
+        rows.forEach(row => {
+            rules.push({
+                min: parseFloat(row.querySelector('.rule-min').value),
+                max: parseFloat(row.querySelector('.rule-max').value),
+                days: parseInt(row.querySelector('.rule-days').value)
+            });
+        });
+
+        if (rules.length === 0) throw new Error(`${typeName} must have at least one rule.`);
+
+        rules.sort((a, b) => a.min - b.min);
+
+        for (let i = 0; i < rules.length; i++) {
+            if (isNaN(rules[i].min) || isNaN(rules[i].max) || isNaN(rules[i].days)) {
+                throw new Error(`${typeName}: All fields must be valid numbers.`);
+            }
+            if (rules[i].min >= rules[i].max) {
+                throw new Error(`${typeName}: 'Min Years' (${rules[i].min}) must be strictly less than 'Max Years' (${rules[i].max}).`);
+            }
+            // Overlap Detection
+            if (i < rules.length - 1) {
+                if (rules[i].max > rules[i+1].min) {
+                    throw new Error(
+                        `🚫 OVERLAP DETECTED in ${typeName}!\n\n` +
+                        `Rule 1: ${rules[i].min} to ${rules[i].max} yrs\n` +
+                        `Rule 2: ${rules[i+1].min} to ${rules[i+1].max} yrs\n\n` +
+                        `Please adjust the years so they don't overlap.`
+                    );
+                }
+            }
+        }
+        return rules;
+    }
+
     window.saveLeaveRules = async function() {
-        let t1Min = parseInt(document.getElementById('t1_min').value);
-        if(t1Min < 1) t1Min = 1; 
-        const rules = {
-            t1: { min: t1Min, days: parseInt(document.getElementById('t1_days').value) },
-            t2: { min: parseInt(document.getElementById('t2_min').value), days: parseInt(document.getElementById('t2_days').value) },
-            t3: { min: parseInt(document.getElementById('t3_min').value), days: parseInt(document.getElementById('t3_days').value) }
-        };
         try {
-            await setDoc(settingsRef, rules);
-            alert("Rules saved! Please now click 'Recalculate Balances' to fix any errors.");
+            const annualRules = parseAndValidateRules('annual', 'Annual Leave');
+            const medicalRules = parseAndValidateRules('medical', 'Medical Leave');
+            
+            const newRules = { annual: annualRules, medical: medicalRules };
+            await setDoc(settingsRef, newRules);
+            
+            alert("✅ Leave Rules saved successfully!\n\nPlease click 'Recalculate Balances' to apply these changes to all staff.");
             bootstrap.Modal.getInstance(document.getElementById('leaveConfigModal')).hide();
-        } catch (e) { alert("Error saving: " + e.message); }
+        } catch (e) { 
+            alert(e.message); 
+        }
     };
 
-    /**
-     * Batch Recalculation Logic
-     * 1. Fetches all leaves for the current year.
-     * 2. Calculates entitlement based on service years.
-     * 3. Performs a Batch Write to update all user documents at once.
-     */
+    // --------------------------------------------------------
+    // ⚙️ Batch Recalculation (Calculates Annual & Medical)
+    // --------------------------------------------------------
     window.recalculateAllBalances = async function() {
         const currentYear = new Date().getFullYear();
         const startOfYear = `${currentYear}-01-01`;
-        if(!confirm(`Recalculate Annual Leave for ${currentYear}?\n\nLogic:\n1. Calculate Entitlement.\n2. Subtract leaves taken AFTER ${startOfYear}.\n3. Reset Balance.`)) return;
+        
+        if(!confirm(`Recalculate BOTH Annual & Medical Leave for ${currentYear}?\n\nThis will map staff years of service to the new rules and deduct taken leaves.`)) return;
 
-        // Create temporary status toast
         const statusDiv = document.createElement('div');
-        statusDiv.style.position = 'fixed'; statusDiv.style.top = '10px'; statusDiv.style.left = '50%'; statusDiv.style.transform = 'translateX(-50%)'; statusDiv.style.background = 'black'; statusDiv.style.color = 'white'; statusDiv.style.padding = '10px 20px'; statusDiv.style.borderRadius = '5px'; statusDiv.style.zIndex = '9999';
+        statusDiv.style.position = 'fixed'; statusDiv.style.top = '10px'; statusDiv.style.left = '50%'; statusDiv.style.transform = 'translateX(-50%)'; statusDiv.style.background = '#0f172a'; statusDiv.style.color = 'white'; statusDiv.style.padding = '12px 24px'; statusDiv.style.borderRadius = '8px'; statusDiv.style.zIndex = '9999'; statusDiv.style.boxShadow = '0 4px 6px -1px rgb(0 0 0 / 0.1)';
         document.body.appendChild(statusDiv);
-        statusDiv.innerText = `Analyzing Leave History for ${currentYear}...`;
+        statusDiv.innerHTML = `<div class="spinner-border spinner-border-sm me-2" role="status"></div> Analyzing Leave History for ${currentYear}...`;
 
         try {
-            // 1. Get Rules
             const ruleSnap = await getDoc(settingsRef);
-            const rules = ruleSnap.exists() ? ruleSnap.data() : { t1: {min:1, days:8}, t2: {min:2, days:12}, t3: {min:5, days:16} };
+            if (!ruleSnap.exists() || !ruleSnap.data().annual) throw new Error("Leave rules missing. Please configure rules first.");
+            const rules = ruleSnap.data();
             
-            // 2. Get Used Leaves
-            const leavesQ = query(collection(db, "leaves"), where("status", "==", "Approved"), where("type", "==", "Annual Leave"), where("startDate", ">=", startOfYear));
+            // Query all approved leaves for the year
+            const leavesQ = query(
+                collection(db, "leaves"), 
+                where("status", "==", "Approved"), 
+                where("startDate", ">=", startOfYear)
+            );
             const leaveSnaps = await getDocs(leavesQ);
-            const usedMap = {};
+            
+            // Map usage: { uid: { annual: X, medical: Y } }
+            const usedMap = {}; 
             leaveSnaps.forEach(doc => {
                 const data = doc.data();
                 if (data.uid && data.days) {
-                    const currentUsed = usedMap[data.uid] || 0;
-                    usedMap[data.uid] = currentUsed + data.days;
+                    if (!usedMap[data.uid]) usedMap[data.uid] = { annual: 0, medical: 0 };
+                    
+                    if (data.type === "Annual Leave") usedMap[data.uid].annual += data.days;
+                    if (data.type === "Medical Leave") usedMap[data.uid].medical += data.days;
                 }
             });
 
-            // 3. Update Users
-            statusDiv.innerText = "Updating User Balances...";
+            const getEntitlement = (years, rulesArray) => {
+                const rule = rulesArray.find(r => years >= r.min && years < r.max);
+                return rule ? rule.days : 0; 
+            };
+
+            statusDiv.innerHTML = `<div class="spinner-border spinner-border-sm me-2 text-warning" role="status"></div> Updating User Balances...`;
             const q = query(collection(db, "users"), where("role", "==", "staff"));
             const snapshot = await getDocs(q);
             const batch = writeBatch(db);
@@ -480,35 +552,44 @@
             snapshot.forEach((docSnap) => {
                 const data = docSnap.data();
                 const joinDateStr = data.employment?.joinDate;
+                
                 if (joinDateStr) {
-                    // Calculate Entitlement
                     const joinDate = new Date(joinDateStr);
                     const diffTime = Math.abs(new Date() - joinDate);
                     const yearsService = diffTime / (1000 * 60 * 60 * 24 * 365.25);
                     
-                    let entitlement = 0;
-                    if (yearsService >= rules.t3.min) entitlement = rules.t3.days;
-                    else if (yearsService >= rules.t2.min) entitlement = rules.t2.days;
-                    else if (yearsService >= rules.t1.min) entitlement = rules.t1.days;
+                    const annualEntitlement = getEntitlement(yearsService, rules.annual || []);
+                    const medicalEntitlement = getEntitlement(yearsService, rules.medical || []);
                     
-                    const usedDays = usedMap[docSnap.id] || 0;
-                    let finalBalance = entitlement - usedDays;
+                    const usedAnnual = usedMap[docSnap.id]?.annual || 0;
+                    const usedMedical = usedMap[docSnap.id]?.medical || 0;
+                    
+                    const finalAnnual = annualEntitlement - usedAnnual;
+                    const finalMedical = medicalEntitlement - usedMedical;
                     
                     const userRef = doc(db, "users", docSnap.id);
-                    batch.update(userRef, { "leave_balance.annual": finalBalance, "meta.balanceLastUpdated": serverTimestamp(), "meta.balanceYear": currentYear });
+                    batch.update(userRef, { 
+                        "leave_balance.annual": finalAnnual, 
+                        "leave_balance.medical": finalMedical,
+                        "meta.balanceLastUpdated": serverTimestamp(), 
+                        "meta.balanceYear": currentYear 
+                    });
                     count++;
                 }
             });
 
             await batch.commit();
-            statusDiv.style.background = 'green';
-            statusDiv.innerText = `Success! Updated ${count} records.`;
+            statusDiv.style.background = '#16a34a'; // Green
+            statusDiv.innerHTML = `<i data-lucide="check-circle" class="size-4 me-2"></i> Success! Updated ${count} staff balances.`;
+            lucide.createIcons();
             setTimeout(() => statusDiv.remove(), 4000);
 
         } catch (e) {
-            statusDiv.style.background = 'red';
-            statusDiv.innerText = "Error: " + e.message;
-            setTimeout(() => statusDiv.remove(), 5000);
+            console.error(e);
+            statusDiv.style.background = '#dc2626'; // Red
+            statusDiv.innerHTML = `<i data-lucide="alert-triangle" class="size-4 me-2"></i> Error: ${e.message}`;
+            lucide.createIcons();
+            setTimeout(() => statusDiv.remove(), 7000);
         }
     };
 </script>
