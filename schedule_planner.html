@@ -64,12 +64,12 @@
 </head>
 <body>
 
-<div id="header-placeholder"></div>
-
 <div id="loadingOverlay">
     <div class="spinner-border text-primary mb-3" role="status"></div>
     <h5 class="fw-bold text-dark" id="loadingText">Verifying Access...</h5>
 </div>
+
+<div id="header-placeholder"></div>
 
 <div class="d-none" id="mainContainer">
     
@@ -255,8 +255,7 @@
                     <input type="hidden" id="editingPresetIndex" value="-1">
                     <input type="text" id="newPresetName" class="form-control form-control-sm mb-3 font-weight-bold" placeholder="Preset Name (e.g., Standard Week)" style="font-weight: bold;">
                     
-                    <div id="presetDaysContainer">
-                        </div>
+                    <div id="presetDaysContainer"></div>
 
                     <button id="btnSavePreset" class="btn btn-primary btn-sm w-100 mt-2" onclick="savePreset()">Add Preset</button>
                     <button id="btnCancelEdit" class="btn btn-secondary btn-sm w-100 mt-1 d-none" onclick="resetPresetForm()">Cancel Edit</button>
@@ -295,10 +294,12 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, collection, getDocs, getDoc, setDoc, doc, writeBatch, deleteDoc, updateDoc, onSnapshot, query, where, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
+    // 导入配置文件、格式化工具和权限守卫
     import { firebaseConfig } from "./firebase-config.js";
-    import { initUnifiedHeader } from "./header-app.js";
+    import { requireAdmin } from "./auth-guard.js";
+    import { formatTime, normalizeDate } from "./utils.js"; 
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
@@ -314,46 +315,34 @@
     let currentManagerDate = null;
     let currentFilterIds = null;
 
-    const dayManagerModal = new bootstrap.Modal(document.getElementById('dayManagerModal'));
-    const bulkModal = new bootstrap.Modal(document.getElementById('bulkModal'));
-    const listEditModal = new bootstrap.Modal(document.getElementById('listEditModal'));
-    const presetModal = new bootstrap.Modal(document.getElementById('presetModal'));
-    const staffAnalyticsModal = new bootstrap.Modal(document.getElementById('staffAnalyticsModal'));
+    let dayManagerModal, bulkModal, listEditModal, presetModal, staffAnalyticsModal;
 
     function getTodayStr() {
         const now = new Date();
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        return normalizeDate(`${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`);
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
+    // 🟢 使用 requireAdmin 自动处理验证
+    requireAdmin(app, db, async (user) => {
+        document.getElementById('loadingText').innerText = "Loading Schedule...";
+        
+        // Initialize Modals
+        dayManagerModal = new bootstrap.Modal(document.getElementById('dayManagerModal'));
+        bulkModal = new bootstrap.Modal(document.getElementById('bulkModal'));
+        listEditModal = new bootstrap.Modal(document.getElementById('listEditModal'));
+        presetModal = new bootstrap.Modal(document.getElementById('presetModal'));
+        staffAnalyticsModal = new bootstrap.Modal(document.getElementById('staffAnalyticsModal'));
+
         initFilters();
         initCalendar();
         initDateConstraints();
         initPresetFormUI(); 
         
-        onAuthStateChanged(auth, async (user) => {
-            if (!user) { window.location.href = "index.html"; return; }
-            try {
-                const adminDoc = await getDoc(doc(db, "users", user.uid));
-                if (adminDoc.exists() && adminDoc.data().role === 'admin') {
-                    initUnifiedHeader(auth, db);
-                    document.getElementById('loadingText').innerText = "Loading Schedule...";
-                    await Promise.all([ loadStaffList(), loadHolidays(), loadLeaves(), loadPresets() ]);
-                    loadSchedules(); 
-                    document.getElementById('loadingOverlay').style.display = 'none';
-                    document.getElementById('mainContainer').classList.remove('d-none');
-                    setTimeout(() => { calendar.updateSize(); }, 200);
-                } else {
-                    alert("Unauthorized Access. Admins only.");
-                    await signOut(auth);
-                    window.location.href = "index.html";
-                }
-            } catch (e) {
-                console.error(e);
-                alert("Auth Error: " + e.message);
-                window.location.href = "index.html";
-            }
-        });
+        await Promise.all([ loadStaffList(), loadHolidays(), loadLeaves(), loadPresets() ]);
+        loadSchedules(); 
+        
+        setTimeout(() => { if (calendar) calendar.updateSize(); }, 200);
+        lucide.createIcons();
     });
 
     function initDateConstraints() {
@@ -408,6 +397,7 @@
                     const breakMins = d.breakMins || 0;
                     duration -= (breakMins / 60);
                     if (duration < 0) duration = 0;
+                    
                     rawSchedules.push({
                         id: doc.id,
                         userId: d.userId,
@@ -473,7 +463,6 @@
             if (data.status === 'disabled') return;
             const name = data.personal?.name || "Unknown";
             const staffId = String(data.uid || d.id).trim();
-            // 🟢 Store joinDate for smart scheduling
             allStaff.push({ 
                 id: staffId, 
                 name: name,
@@ -536,6 +525,7 @@
             const div = document.createElement('div'); div.className = 'roster-item';
             const clockInBadge = s.clockIn ? `<span class="badge bg-success bg-opacity-10 text-success border border-success ms-1" style="font-size:0.6rem;">IN</span>` : '';
             const actionBtn = s.clockIn ? `<button class="btn btn-xs text-secondary border-0" disabled title="Clocked In"><i data-lucide="lock" class="size-4"></i></button>` : `<button class="btn btn-xs btn-outline-danger border-0" onclick="removeShift('${s.id}')"><i data-lucide="trash-2" class="size-4"></i></button>`;
+            // 🟢 Using imported formatTime
             div.innerHTML = `<div><div class="fw-bold text-dark small">${s.empName} ${clockInBadge}</div><div class="text-muted" style="font-size:0.75rem;">${formatTime(s.start)} - ${formatTime(s.end)} <span class="ms-1 badge bg-secondary bg-opacity-10 text-secondary border text-xs">-${s.breakMins}m</span> <span class="ms-2 text-info">${s.notes?'('+s.notes+')':''}</span></div></div>${actionBtn}`;
             container.appendChild(div);
         });
@@ -618,7 +608,7 @@
         updateListBulkUI();
     }
 
-    // --- BULK SCHEDULER LOGIC (UPDATED WITH WHOLE MONTH + SMART JOIN DATE) ---
+    // --- BULK SCHEDULER LOGIC ---
     window.toggleDateMode = () => {
         const rangeInputs = document.getElementById('rangeInputs');
         const monthInputs = document.getElementById('monthInputs');
@@ -667,7 +657,6 @@
 
     window.runBulkSchedule = async () => {
         const staffSelect = document.getElementById('bulkStaffSelect');
-        // Get FULL staff objects (including joinDate) from allStaff array
         const selectedIds = Array.from(staffSelect.selectedOptions).map(o => o.value);
         const selectedStaff = allStaff.filter(s => selectedIds.includes(s.id));
 
@@ -691,7 +680,6 @@
         if (selectedStaff.length === 0) return alert("Select at least one staff.");
 
         const batch = writeBatch(db);
-        const skippedLog = [];
         let successCount = 0;
         
         let rules = {}; 
@@ -709,18 +697,14 @@
             if(Object.keys(rules).length === 0) return alert("Select at least one day.");
         }
 
-        // Loop through each staff to apply SMART START DATE
         selectedStaff.forEach(u => {
             const cleanId = String(u.id).trim();
-            
-            // 🟢 SMART LOGIC: Determine actual start date for this user
             let userStartDateStr = sDateStr;
             if (u.joinDate && u.joinDate > sDateStr) {
-                userStartDateStr = u.joinDate; // Use Join Date if later than selected start
+                userStartDateStr = u.joinDate; 
             }
-            if (userStartDateStr > eDateStr) return; // Skip if joined after end date
+            if (userStartDateStr > eDateStr) return; 
 
-            // Date Iteration
             const sParts = userStartDateStr.split('-').map(Number);
             const eParts = eDateStr.split('-').map(Number);
             let current = new Date(Date.UTC(sParts[0], sParts[1] - 1, sParts[2], 12, 0, 0));
@@ -728,7 +712,7 @@
             
             while (current <= end) {
                 const dateStr = current.toISOString().split('T')[0];
-                const dayOfWeek = String(current.getUTCDay()); // 0=Sun
+                const dayOfWeek = String(current.getUTCDay()); 
                 const dayRule = rules[dayOfWeek];
                 
                 if (dayRule && dayRule.active && dayRule.start && dayRule.end && !holidayCache[dateStr]) {
@@ -736,12 +720,7 @@
                     const endDT = new Date(`${dateStr}T${dayRule.end}`);
                     const key = `${cleanId}_${dateStr}`;
 
-                    // Conflict Check
-                    if (leaveCache[key]) { 
-                        // Optional: Log leave conflict silently
-                    } else if (rawSchedules.some(s => String(s.userId).trim() === cleanId && s.date === dateStr)) { 
-                        // Optional: Log existing schedule conflict
-                    } else {
+                    if (!leaveCache[key] && !rawSchedules.some(s => String(s.userId).trim() === cleanId && s.date === dateStr)) {
                         const ref = doc(collection(db, "schedules"));
                         batch.set(ref, { 
                             userId: u.id, 
@@ -771,7 +750,6 @@
     window.openBulkModal = () => { 
         document.getElementById('bulkForm').reset(); 
         window.handleBulkPresetChange(""); 
-        // Default to current month for convenience
         document.getElementById('bulkMonthPicker').value = getTodayStr().substring(0, 7);
         bulkModal.show(); 
     }
@@ -791,7 +769,12 @@
             }
         }
     }
-    window.filterBulkStaff = function() { const term=document.getElementById('bulkStaffSearch').value.toLowerCase(); const s=document.getElementById('bulkStaffSelect'); for(let i=0;i<s.options.length;i++) s.options[i].style.display=s.options[i].text.toLowerCase().includes(term)?"":"none"; }
+    
+    window.filterBulkStaff = function() { 
+        const term=document.getElementById('bulkStaffSearch').value.toLowerCase(); 
+        const s=document.getElementById('bulkStaffSelect'); 
+        for(let i=0;i<s.options.length;i++) s.options[i].style.display=s.options[i].text.toLowerCase().includes(term)?"":"none"; 
+    }
     
     // Calendar Event Mapping
     function updateCalendarEvents() {
@@ -809,17 +792,21 @@
             const timeText = `${formatTime(g.start)} - ${formatTime(g.end)}`;
             const title = `${timeText} (${g.count})`;
             const className = g.type === 'Morning' ? 'agg-morning' : 'agg-evening';
-            return { id: g.id, title: title, start: g.start, end: g.end, allDay: false, classNames: [className], extendedProps: { dateStr: g.date, filterIds: g.ids, preFillStart: formatTime24(g.start), preFillEnd: formatTime24(g.end) }, borderColor: '#ffffff' };
+            // Pre-format times for Day Manager modal
+            const startStr = g.start.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
+            const endStr = g.end.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
+            return { id: g.id, title: title, start: g.start, end: g.end, allDay: false, classNames: [className], extendedProps: { dateStr: g.date, filterIds: g.ids, preFillStart: startStr, preFillEnd: endStr }, borderColor: '#ffffff' };
         });
         calendar.addEventSource(shiftEvents);
     }
-    function formatTime24(date) { return date.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}); }
+
     function initCalendar() {
         var el = document.getElementById('calendar');
         calendar = new FullCalendar.Calendar(el, {
             initialView: 'dayGridMonth', height: 'auto', aspectRatio: 1.5,
             headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek' },
             eventTimeFormat: { hour: 'numeric', minute: '2-digit', meridiem: 'short' },
+            displayEventTime: false,
             selectable: true, slotEventOverlap: false, eventOrder: 'start,duration',
             dateClick: (info) => openDayManager(info.dateStr),
             eventClick: (info) => { if(info.event.display === 'background') return; const props = info.event.extendedProps; openDayManager(props.dateStr, props.filterIds, props.preFillStart, props.preFillEnd); }
@@ -950,8 +937,15 @@
         } 
     }
 
-    function formatTime(d) { return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
-    window.switchView = (v) => { const c=document.getElementById('calendar'), l=document.getElementById('listView'), bc=document.getElementById('btnCalendarView'), bl=document.getElementById('btnListView'); if(v==='calendar'){ c.classList.remove('d-none'); l.classList.add('d-none'); bc.classList.add('active'); bl.classList.remove('active'); calendar.render(); } else{ c.classList.add('d-none'); l.classList.remove('d-none'); bc.classList.remove('active'); bl.classList.add('active'); } }
+    window.switchView = (v) => { 
+        const c=document.getElementById('calendar'), l=document.getElementById('listView'), bc=document.getElementById('btnCalendarView'), bl=document.getElementById('btnListView'); 
+        if(v==='calendar'){ 
+            c.classList.remove('d-none'); l.classList.add('d-none'); bc.classList.add('active'); bl.classList.remove('active'); 
+            if(calendar) calendar.render(); 
+        } else { 
+            c.classList.add('d-none'); l.classList.remove('d-none'); bc.classList.remove('active'); bl.classList.add('active'); 
+        } 
+    }
     
     function renderListView(data) { 
         const t=document.getElementById('scheduleTableBody'); t.innerHTML=''; listSelectedIds.clear(); updateListBulkUI(); 
@@ -961,6 +955,7 @@
             const tr=document.createElement('tr'); 
             const statusIcon = i.clockIn ? `<span class="badge bg-success bg-opacity-10 text-success border border-success px-1 ms-1">IN</span>` : '';
             const actionBtn = i.clockIn ? `<button class="btn btn-xs text-secondary border-0" disabled><i data-lucide="lock" class="size-4"></i></button>` : `<button class="btn btn-xs text-danger border-0" onclick="removeShift('${i.id}')"><i data-lucide="trash-2" class="size-4"></i></button>`;
+            // 🟢 Using imported formatTime
             tr.innerHTML=`<td><input type="checkbox" class="form-check-input list-check" value="${i.id}" onchange="toggleListSelection('${i.id}')"></td><td>${i.date}</td><td class="fw-bold">${i.empName} ${statusIcon}</td><td>${formatTime(i.start)}-${formatTime(i.end)}</td><td>${i.breakMins}m</td><td>${i.shiftType}</td><td class="text-muted small">${i.notes||'-'}</td><td class="text-end">${actionBtn}</td>`; 
             t.appendChild(tr); 
         }); 
@@ -972,7 +967,21 @@
     function updateListBulkUI() { const b=document.getElementById('bulkActionBar'); if(listSelectedIds.size>0){b.classList.remove('d-none');document.getElementById('listSelectedCount').innerText=listSelectedIds.size;}else{b.classList.add('d-none');} }
     
     window.openListBulkEditModal = () => { document.getElementById('listEditCount').innerText=listSelectedIds.size; document.getElementById('leStart').value=""; document.getElementById('leEnd').value=""; listEditModal.show(); }
-    window.submitListEdit = async () => { const s=document.getElementById('leStart').value, e=document.getElementById('leEnd').value; if(!s||!e) return alert("Enter time"); const b=writeBatch(db); listSelectedIds.forEach(id=>{ const sh=rawSchedules.find(x=>x.id===id); if(sh){ const st=new Date(`${sh.date}T${s}`), et=new Date(`${sh.date}T${e}`); b.update(doc(db,"schedules",id),{start:Timestamp.fromDate(st),end:Timestamp.fromDate(et)}); } }); await b.commit(); listEditModal.hide(); }
+    window.submitListEdit = async () => { 
+        const s=document.getElementById('leStart').value, e=document.getElementById('leEnd').value; 
+        if(!s||!e) return alert("Enter time"); 
+        const b=writeBatch(db); 
+        listSelectedIds.forEach(id=>{ 
+            const sh=rawSchedules.find(x=>x.id===id); 
+            if(sh){ 
+                const st=new Date(`${sh.date}T${s}`), et=new Date(`${sh.date}T${e}`); 
+                b.update(doc(db,"schedules",id),{start:Timestamp.fromDate(st),end:Timestamp.fromDate(et)}); 
+            } 
+        }); 
+        await b.commit(); 
+        listEditModal.hide(); 
+    }
+    
     window.filterTable = () => { const t=document.getElementById('searchInput').value.toLowerCase(), d=document.getElementById('searchDate').value; renderListView(rawSchedules.filter(i=>i.empName.toLowerCase().includes(t)&&(d?i.date===d:true))); }
     window.clearFilters = () => { document.getElementById('searchInput').value=''; document.getElementById('searchDate').value=''; renderListView(rawSchedules); }
 
@@ -1011,12 +1020,15 @@
         document.getElementById('analyticsName').innerText = data.name; document.getElementById('analyticsPeriod').innerText = "Selected Period";
         const t = document.getElementById('staffShiftsBody'); t.innerHTML = '';
         data.shifts.sort((a,b) => new Date(a.date) - new Date(b.date));
-        data.shifts.forEach(s => { const d = new Date(s.date).toLocaleDateString('en-US', {weekday: 'short'}); t.innerHTML += `<tr><td class="ps-3">${s.date}</td><td><span class="badge bg-light text-dark border">${d}</span></td><td>${formatTime(s.start)} - ${formatTime(s.end)}</td><td class="text-end pe-3 fw-bold text-primary">${s.hours.toFixed(1)}</td></tr>`; });
+        data.shifts.forEach(s => { 
+            const d = new Date(s.date).toLocaleDateString('en-US', {weekday: 'short'}); 
+            // 🟢 Using imported formatTime
+            t.innerHTML += `<tr><td class="ps-3">${s.date}</td><td><span class="badge bg-light text-dark border">${d}</span></td><td>${formatTime(s.start)} - ${formatTime(s.end)}</td><td class="text-end pe-3 fw-bold text-primary">${s.hours.toFixed(1)}</td></tr>`; 
+        });
         document.getElementById('modalTotalShifts').innerText = data.shifts.length; document.getElementById('modalTotalHours').innerText = data.totalHours.toFixed(1);
         staffAnalyticsModal.show();
     }
 
-    lucide.createIcons();
 </script>
 </body>
 </html>

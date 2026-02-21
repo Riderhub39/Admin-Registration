@@ -45,136 +45,149 @@
             padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0;
             border-radius: 6px; margin-bottom: 5px;
         }
+        /* 🟢 Added Loading Overlay Style */
+        #loadingOverlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(255, 255, 255, 0.95); z-index: 9999; 
+            display: flex; flex-direction: column; justify-content: center; align-items: center; 
+        }
     </style>
 </head>
 <body>
 
-<div id="header-placeholder"></div>
+<div id="loadingOverlay">
+    <div class="spinner-border text-primary mb-3" role="status"></div>
+    <h5 class="fw-bold text-dark" id="loadingText">Loading Dashboard...</h5>
+</div>
 
-<div class="container py-4">
-    <div class="row g-3 mb-4 justify-content-center">
-        <div class="col-6 col-md-2">
-            <a href="manage_staff.html" class="quick-action-btn">
-                <div class="bg-primary bg-opacity-10 p-2 rounded-circle mb-2 text-primary"><i data-lucide="user" class="size-5"></i></div>
-                <div class="fw-bold small">Onboard Staff</div>
-            </a>
-        </div>  
-        
-        <div class="col-6 col-md-2">
-            <a href="payroll.html" class="quick-action-btn">
-                <div class="bg-danger bg-opacity-10 p-2 rounded-circle mb-2 text-danger"><i data-lucide="dollar-sign" class="size-5"></i></div>
-                <div class="fw-bold small">Payroll</div>
-            </a>
-        </div>
-        <div class="col-6 col-md-2">
-            <button onclick="openAnnouncementModal()" class="quick-action-btn w-100 border-0 shadow-sm">
-                <div class="bg-warning bg-opacity-10 p-2 rounded-circle mb-2 text-warning"><i data-lucide="megaphone" class="size-5"></i></div>
-                <div class="fw-bold small">Announcement</div>
-            </button>
-        </div>
-        <div class="col-6 col-md-2">
-            <a href="schedule_planner.html" class="quick-action-btn">
-                <div class="bg-info bg-opacity-10 p-2 rounded-circle mb-2 text-info"><i data-lucide="calendar-days" class="size-5"></i></div>
-                <div class="fw-bold small">Roster Plan</div>
-            </a>
-        </div>
-        <div class="col-6 col-md-2">
-            <a href="evidence_gallery.html" class="quick-action-btn">
-                <div class="bg-dark bg-opacity-10 p-2 rounded-circle mb-2 text-dark">
-                    <i data-lucide="images" class="size-5"></i>
-                </div>
-                <div class="fw-bold small">Cases Photos</div>
-            </a>
-        </div>
-        <div class="col-6 col-md-2">
-            <button onclick="openOfficeSettingsModal()" class="quick-action-btn w-100 border-0 shadow-sm">
-                <div class="bg-secondary bg-opacity-10 p-2 rounded-circle mb-2 text-secondary"><i data-lucide="settings" class="size-5"></i></div>
-                <div class="fw-bold small">Office Setup</div>
-            </button>
-        </div>
-        <div class="col-6 col-md-2">
-            <button onclick="openDriverSetupModal()" class="quick-action-btn w-100 border-0 shadow-sm">
-                <div class="bg-success bg-opacity-10 p-2 rounded-circle mb-2 text-success"><i data-lucide="truck" class="size-5"></i></div>
-                <div class="fw-bold small">Driver Setup</div>
-            </button>
-        </div>
-    </div>
+<div id="mainContainer" class="d-none">
+    <div id="header-placeholder"></div>
 
-    <div class="row g-4">
-        <div class="col-lg-4 col-md-6">
-            <div class="stat-card position-relative">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h6 class="fw-bold m-0 text-dark"><i data-lucide="clock" class="size-4 me-2 text-primary"></i>Today's Attendance</h6>
-                    <span class="badge bg-light text-dark border" id="attDate">-</span>
-                </div>
-                <div class="row align-items-center mt-4">
-                    <div class="col-6 position-relative">
-                        <canvas id="attChart" style="max-height: 130px;"></canvas>
-                        <div class="position-absolute top-50 start-50 translate-middle text-center" style="margin-top: 5px;">
-                            <div class="h4 fw-bold m-0" id="attPercent">0%</div>
-                        </div>
+    <div class="container py-4">
+        <div class="row g-3 mb-4 justify-content-center">
+            <div class="col-6 col-md-2">
+                <a href="manage_staff.html" class="quick-action-btn">
+                    <div class="bg-primary bg-opacity-10 p-2 rounded-circle mb-2 text-primary"><i data-lucide="user" class="size-5"></i></div>
+                    <div class="fw-bold small">Onboard Staff</div>
+                </a>
+            </div>  
+            
+            <div class="col-6 col-md-2">
+                <a href="payroll.html" class="quick-action-btn">
+                    <div class="bg-danger bg-opacity-10 p-2 rounded-circle mb-2 text-danger"><i data-lucide="dollar-sign" class="size-5"></i></div>
+                    <div class="fw-bold small">Payroll</div>
+                </a>
+            </div>
+            <div class="col-6 col-md-2">
+                <button onclick="openAnnouncementModal()" class="quick-action-btn w-100 border-0 shadow-sm">
+                    <div class="bg-warning bg-opacity-10 p-2 rounded-circle mb-2 text-warning"><i data-lucide="megaphone" class="size-5"></i></div>
+                    <div class="fw-bold small">Announcement</div>
+                </button>
+            </div>
+            <div class="col-6 col-md-2">
+                <a href="schedule_planner.html" class="quick-action-btn">
+                    <div class="bg-info bg-opacity-10 p-2 rounded-circle mb-2 text-info"><i data-lucide="calendar-days" class="size-5"></i></div>
+                    <div class="fw-bold small">Roster Plan</div>
+                </a>
+            </div>
+            <div class="col-6 col-md-2">
+                <a href="evidence_gallery.html" class="quick-action-btn">
+                    <div class="bg-dark bg-opacity-10 p-2 rounded-circle mb-2 text-dark">
+                        <i data-lucide="images" class="size-5"></i>
                     </div>
-                    <div class="col-6">
-                        <div class="mb-3 cursor-pointer" onclick="goToAttendance('present')">
-                            <div class="d-flex align-items-center gap-2"><div class="dot bg-success"></div><span class="text-muted small">Present</span></div>
-                            <div class="h5 fw-bold m-0" id="countPresent">0</div>
+                    <div class="fw-bold small">Cases Photos</div>
+                </a>
+            </div>
+            <div class="col-6 col-md-2">
+                <button onclick="openOfficeSettingsModal()" class="quick-action-btn w-100 border-0 shadow-sm">
+                    <div class="bg-secondary bg-opacity-10 p-2 rounded-circle mb-2 text-secondary"><i data-lucide="settings" class="size-5"></i></div>
+                    <div class="fw-bold small">Office Setup</div>
+                </button>
+            </div>
+            <div class="col-6 col-md-2">
+                <button onclick="openDriverSetupModal()" class="quick-action-btn w-100 border-0 shadow-sm">
+                    <div class="bg-success bg-opacity-10 p-2 rounded-circle mb-2 text-success"><i data-lucide="truck" class="size-5"></i></div>
+                    <div class="fw-bold small">Driver Setup</div>
+                </button>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-4 col-md-6">
+                <div class="stat-card position-relative">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold m-0 text-dark"><i data-lucide="clock" class="size-4 me-2 text-primary"></i>Today's Attendance</h6>
+                        <span class="badge bg-light text-dark border" id="attDate">-</span>
+                    </div>
+                    <div class="row align-items-center mt-4">
+                        <div class="col-6 position-relative">
+                            <canvas id="attChart" style="max-height: 130px;"></canvas>
+                            <div class="position-absolute top-50 start-50 translate-middle text-center" style="margin-top: 5px;">
+                                <div class="h4 fw-bold m-0" id="attPercent">0%</div>
+                            </div>
                         </div>
-                        <div class="mb-3 cursor-pointer" onclick="goToAttendance('late')">
-                            <div class="d-flex align-items-center gap-2"><div class="dot bg-warning" style="background-color: #f59e0b;"></div><span class="text-muted small">Late</span></div>
-                            <div class="h5 fw-bold m-0 text-warning" id="countLate">0</div>
-                        </div>
-                        <div class="cursor-pointer" onclick="goToAttendance('absent')">
-                            <div class="d-flex align-items-center gap-2"><div class="dot bg-danger"></div><span class="text-muted small">Absent</span></div>
-                            <div class="h5 fw-bold m-0 text-danger" id="countAbsent">0</div>
+                        <div class="col-6">
+                            <div class="mb-3 cursor-pointer" onclick="goToAttendance('present')">
+                                <div class="d-flex align-items-center gap-2"><div class="dot bg-success"></div><span class="text-muted small">Present</span></div>
+                                <div class="h5 fw-bold m-0" id="countPresent">0</div>
+                            </div>
+                            <div class="mb-3 cursor-pointer" onclick="goToAttendance('late')">
+                                <div class="d-flex align-items-center gap-2"><div class="dot bg-warning" style="background-color: #f59e0b;"></div><span class="text-muted small">Late</span></div>
+                                <div class="h5 fw-bold m-0 text-warning" id="countLate">0</div>
+                            </div>
+                            <div class="cursor-pointer" onclick="goToAttendance('absent')">
+                                <div class="d-flex align-items-center gap-2"><div class="dot bg-danger"></div><span class="text-muted small">Absent</span></div>
+                                <div class="h5 fw-bold m-0 text-danger" id="countAbsent">0</div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <div class="col-lg-4 col-md-6">
-            <div class="stat-card">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h6 class="fw-bold m-0 text-dark"><i data-lucide="alert-circle" class="size-4 me-2 text-danger"></i>Action Required</h6>
-                </div>
-                <div class="d-flex flex-column gap-3 mt-2">
-                    <a href="leave_approval.html" class="task-row d-flex align-items-center justify-content-between p-3 rounded">
-                        <div class="d-flex align-items-center gap-3">
-                            <div class="bg-success bg-opacity-10 text-success p-2 rounded"><i data-lucide="calendar-check" class="size-6"></i></div>
-                            <div><div class="fw-bold text-dark small">Leave Requests</div><div class="text-muted small">Awaiting approval</div></div>
-                        </div>
-                        <span class="badge bg-danger rounded-pill" id="badge-leave" style="display:none;"><span id="count-leave">0</span></span>
-                    </a>
-                    <a href="attendance.html" class="task-row d-flex align-items-center justify-content-between p-3 rounded">
-                        <div class="d-flex align-items-center gap-3">
-                            <div class="bg-primary bg-opacity-10 text-primary p-2 rounded"><i data-lucide="fingerprint" class="size-6"></i></div>
-                            <div><div class="fw-bold text-dark small">Attendance Fixes</div><div class="text-muted small">Manual corrections</div></div>
-                        </div>
-                        <span class="badge bg-danger rounded-pill" id="badge-att" style="display:none;"><span id="count-att">0</span></span>
-                    </a>
-                    <a href="manage_staff.html" class="task-row d-flex align-items-center justify-content-between p-3 rounded">
-                        <div class="d-flex align-items-center gap-3">
-                            <div class="bg-warning bg-opacity-10 text-warning p-2 rounded"><i data-lucide="user-cog" class="size-6"></i></div>
-                            <div><div class="fw-bold text-dark small">Profile Updates</div><div class="text-muted small">Staff modifications</div></div>
-                        </div>
-                        <span class="badge bg-danger rounded-pill" id="badge-edit" style="display:none;"><span id="count-edit">0</span></span>
-                    </a>
+            <div class="col-lg-4 col-md-6">
+                <div class="stat-card">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold m-0 text-dark"><i data-lucide="alert-circle" class="size-4 me-2 text-danger"></i>Action Required</h6>
+                    </div>
+                    <div class="d-flex flex-column gap-3 mt-2">
+                        <a href="leave_approval.html" class="task-row d-flex align-items-center justify-content-between p-3 rounded">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="bg-success bg-opacity-10 text-success p-2 rounded"><i data-lucide="calendar-check" class="size-6"></i></div>
+                                <div><div class="fw-bold text-dark small">Leave Requests</div><div class="text-muted small">Awaiting approval</div></div>
+                            </div>
+                            <span class="badge bg-danger rounded-pill" id="badge-leave" style="display:none;"><span id="count-leave">0</span></span>
+                        </a>
+                        <a href="attendance.html" class="task-row d-flex align-items-center justify-content-between p-3 rounded">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="bg-primary bg-opacity-10 text-primary p-2 rounded"><i data-lucide="fingerprint" class="size-6"></i></div>
+                                <div><div class="fw-bold text-dark small">Attendance Fixes</div><div class="text-muted small">Manual corrections</div></div>
+                            </div>
+                            <span class="badge bg-danger rounded-pill" id="badge-att" style="display:none;"><span id="count-att">0</span></span>
+                        </a>
+                        <a href="manage_staff.html" class="task-row d-flex align-items-center justify-content-between p-3 rounded">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="bg-warning bg-opacity-10 text-warning p-2 rounded"><i data-lucide="user-cog" class="size-6"></i></div>
+                                <div><div class="fw-bold text-dark small">Profile Updates</div><div class="text-muted small">Staff modifications</div></div>
+                            </div>
+                            <span class="badge bg-danger rounded-pill" id="badge-edit" style="display:none;"><span id="count-edit">0</span></span>
+                        </a>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <div class="col-lg-4 col-md-12">
-            <div class="stat-card bg-light border-0 d-flex flex-column" style="background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);">
-                <div class="d-flex justify-content-between align-items-center mb-4">
-                    <h6 class="fw-bold m-0 text-dark"><i data-lucide="map-pin" class="size-4 me-2 text-info"></i>Fleet GPS Status</h6>
-                    <div class="spinner-grow text-primary" style="width: 8px; height: 8px;" role="status"></div>
+            <div class="col-lg-4 col-md-12">
+                <div class="stat-card bg-light border-0 d-flex flex-column" style="background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h6 class="fw-bold m-0 text-dark"><i data-lucide="map-pin" class="size-4 me-2 text-info"></i>Fleet GPS Status</h6>
+                        <div class="spinner-grow text-primary" style="width: 8px; height: 8px;" role="status"></div>
+                    </div>
+                    <div class="d-flex justify-content-around text-center mb-auto mt-2">
+                        <div><div class="stat-value text-primary" id="trackOnline">0</div><div class="stat-label text-primary opacity-75"><span class="dot bg-online"></span>Active Now</div></div>
+                        <div class="border-end"></div>
+                        <div><div class="stat-value text-muted" id="trackOffline">0</div><div class="stat-label"><span class="dot bg-offline"></span>Offline</div></div>
+                    </div>
+                    <a href="live_tracking.html" class="btn btn-white border w-100 fw-bold shadow-sm text-primary mt-4">Open Live Map</a>
                 </div>
-                <div class="d-flex justify-content-around text-center mb-auto mt-2">
-                    <div><div class="stat-value text-primary" id="trackOnline">0</div><div class="stat-label text-primary opacity-75"><span class="dot bg-online"></span>Active Now</div></div>
-                    <div class="border-end"></div>
-                    <div><div class="stat-value text-muted" id="trackOffline">0</div><div class="stat-label"><span class="dot bg-offline"></span>Offline</div></div>
-                </div>
-                <a href="live_tracking.html" class="btn btn-white border w-100 fw-bold shadow-sm text-primary mt-4">Open Live Map</a>
             </div>
         </div>
     </div>
@@ -275,35 +288,29 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-    import { 
-        getFirestore, collection, query, where, getDocs, onSnapshot, 
-        addDoc, serverTimestamp, doc, getDoc, setDoc, updateDoc, deleteDoc, orderBy 
-    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, collection, query, where, getDocs, onSnapshot, addDoc, serverTimestamp, doc, getDoc, setDoc, updateDoc, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    
+    // 导入工具和权限验证
     import { firebaseConfig } from "./firebase-config.js";
-    import { initUnifiedHeader } from "./header-app.js";
+    import { requireAdmin } from "./auth-guard.js";
+    import { normalizeDate } from "./utils.js"; // 使用 utils 里的日期格式化
 
-    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
     const db = getFirestore(app);
-
-    // Initialize Global Header
-    initUnifiedHeader(auth, db);
+    const auth = getAuth(app); // 用于发表公告时获取当前管理员邮箱
 
     let attChartInstance = null;
-    const announceModal = new bootstrap.Modal(document.getElementById('announceModal'));
-    const officeModal = new bootstrap.Modal(document.getElementById('officeSettingsModal'));
-    // 🟢 Driver Modal Instance
-    const driverModal = new bootstrap.Modal(document.getElementById('driverSetupModal'));
+    let announceModal, officeModal, driverModal;
 
-    /**
-     * Auth Observer
-     */
-    onAuthStateChanged(auth, (user) => { 
-        if (user) {
-            initDashboard(); 
-        }
+    // 🟢 使用 auth-guard.js，自动处理权限验证和加载状态
+    requireAdmin(app, db, async (user) => {
+        announceModal = new bootstrap.Modal(document.getElementById('announceModal'));
+        officeModal = new bootstrap.Modal(document.getElementById('officeSettingsModal'));
+        driverModal = new bootstrap.Modal(document.getElementById('driverSetupModal'));
+
+        initDashboard(); 
+        lucide.createIcons();
     });
 
     function initDashboard() {
@@ -315,10 +322,8 @@
 
     function getLocalDateStr() {
         const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
+        // 🟢 使用 utils.js 里的 normalizeDate 确保格式
+        return normalizeDate(`${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`);
     }
 
     /**
@@ -672,17 +677,13 @@
                 isDriver: isDriver,
                 updatedAt: serverTimestamp()
             });
-            // Update local cache
             const staff = allStaffCache.find(s => s.id === uid);
             if(staff) staff.isDriver = isDriver;
-            // Optional: Add small toast or color change for feedback
         } catch(e) {
             alert("Failed to update driver status: " + e.message);
-            // In a real app, you might want to revert the checkbox UI here
         }
     };
 
-    // Driver Search Listener
     document.getElementById('driverSetupSearch').addEventListener('keyup', (e) => {
         const term = e.target.value.toLowerCase();
         const filtered = allStaffCache.filter(s => 
@@ -692,8 +693,6 @@
         renderDriverSetupList(filtered);
     });
 
-    // Initialize Icons
-    lucide.createIcons();
 </script>
 </body>
 </html>

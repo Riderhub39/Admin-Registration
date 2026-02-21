@@ -11,9 +11,9 @@
     
     <style>
         #loadingOverlay { 
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(255, 255, 255, 0.95); z-index: 9999; 
-            flex-direction: column; justify-content: center; align-items: center; 
+            display: flex; flex-direction: column; justify-content: center; align-items: center; 
         }
         @media print {
             body * { visibility: hidden; }
@@ -46,77 +46,71 @@
         .stats-val { font-weight: bold; color: #0f172a; font-size: 1.1rem; }
     </style>
 </head>
-<body>
+<body class="bg-light">
 
     <div id="loadingOverlay">
         <div class="spinner-border text-primary mb-3" role="status"></div>
-        <h5 class="fw-light" id="loadingText">Processing Data...</h5>
+        <h5 class="fw-light" id="loadingText">Authenticating & Processing Data...</h5>
     </div>
 
-    <div class="d-flex" id="wrapper">
-        <div id="sidebar-placeholder" style="width: 250px;" class="d-none d-md-block bg-white border-end"></div>
+    <div id="header-placeholder"></div>
 
-        <div id="page-content-wrapper" class="w-100 bg-light">
-            <div id="header-placeholder"></div>
+    <div class="container-fluid px-4 py-4 w-100">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h3 class="fw-bold text-dark mb-0">Payroll Center</h3>
+                <p class="text-muted small">Auto-calculation with strict Attendance & Advance checks</p>
+            </div>
+            <div class="d-flex gap-2">
+                <button onclick="openAdvancesModal()" class="btn btn-outline-danger position-relative d-flex align-items-center gap-2">
+                    <i data-lucide="hand-coins" class="size-4"></i> Advances
+                    <span id="advanceBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none">0</span>
+                </button>
+                <button onclick="openSettingsModal()" class="btn btn-outline-dark d-flex align-items-center gap-2">
+                    <i data-lucide="settings" class="size-4"></i> Settings
+                </button>
 
-            <div class="container-fluid px-4 py-4">
-                <div class="d-flex justify-content-between align-items-center mb-4">
-                    <div>
-                        <h3 class="fw-bold text-dark mb-0">Payroll Center</h3>
-                        <p class="text-muted small">Auto-calculation with strict Attendance & Advance checks</p>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <button onclick="openAdvancesModal()" class="btn btn-outline-danger position-relative d-flex align-items-center gap-2">
-                            <i data-lucide="hand-coins" class="size-4"></i> Advances
-                            <span id="advanceBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none">0</span>
-                        </button>
-                        <button onclick="openSettingsModal()" class="btn btn-outline-dark d-flex align-items-center gap-2">
-                            <i data-lucide="settings" class="size-4"></i> Settings
-                        </button>
+                <input id="globalMonthPicker" class="form-control fw-bold text-primary border-primary" style="width: 150px; cursor: pointer; background: #eff6ff;" type="month" onchange="loadPayroll()">
+                <button onclick="openCreateModal()" class="btn btn-primary d-flex align-items-center gap-2">
+                    <i data-lucide="plus-circle" class="size-4"></i> Create Payslip
+                </button>
+            </div>
+        </div>
 
-                        <input id="globalMonthPicker" class="form-control" style="width: 150px; cursor: pointer;" type="month" onchange="loadPayroll()">
-                        <button onclick="openCreateModal()" class="btn btn-primary d-flex align-items-center gap-2">
-                            <i data-lucide="plus-circle" class="size-4"></i> Create Payslip
-                        </button>
-                    </div>
-                </div>
-
-                <div class="row g-3 mb-4">
-                    <div class="col-md-4">
-                        <div class="card p-3 border-0 shadow-sm">
-                            <small class="text-muted text-uppercase fw-bold">Total Payout (Net)</small>
-                            <h3 class="fw-bold text-primary mt-1" id="statTotal">RM 0.00</h3>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card p-3 border-0 shadow-sm">
-                            <small class="text-muted text-uppercase fw-bold">Total Employer EPF</small>
-                            <h3 class="fw-bold text-dark mt-1" id="statEPF">RM 0.00</h3>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card p-3 border-0 shadow-sm d-flex align-items-center justify-content-center bg-success text-white" style="cursor: pointer;" onclick="publishAll()">
-                            <div class="text-center">
-                                <i data-lucide="send" class="mb-1"></i><div class="fw-bold">Publish All Drafts</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card border-0 shadow-sm">
-                    <div class="card-header bg-white py-3">
-                        <div class="row fw-bold text-muted small text-uppercase">
-                            <div class="col-3">Employee</div>
-                            <div class="col-2">Basic (Pro-rated)</div>
-                            <div class="col-2">Deductions</div>
-                            <div class="col-2">Net Pay</div>
-                            <div class="col-1">Status</div>
-                            <div class="col-2 text-end">Action</div>
-                        </div>
-                    </div>
-                    <div class="card-body p-0" id="payrollList"></div>
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="card p-3 border-0 shadow-sm">
+                    <small class="text-muted text-uppercase fw-bold">Total Payout (Net)</small>
+                    <h3 class="fw-bold text-primary mt-1" id="statTotal">RM 0.00</h3>
                 </div>
             </div>
+            <div class="col-md-4">
+                <div class="card p-3 border-0 shadow-sm">
+                    <small class="text-muted text-uppercase fw-bold">Total Employer EPF</small>
+                    <h3 class="fw-bold text-dark mt-1" id="statEPF">RM 0.00</h3>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card p-3 border-0 shadow-sm d-flex align-items-center justify-content-center bg-success text-white" style="cursor: pointer; transition: transform 0.2s;" onclick="publishAll()" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+                    <div class="text-center">
+                        <i data-lucide="send" class="mb-1 size-5"></i><div class="fw-bold">Publish All Drafts</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3 border-bottom-0">
+                <div class="row fw-bold text-muted small text-uppercase">
+                    <div class="col-3">Employee</div>
+                    <div class="col-2">Basic (Pro-rated)</div>
+                    <div class="col-2">Deductions</div>
+                    <div class="col-2">Net Pay</div>
+                    <div class="col-1">Status</div>
+                    <div class="col-2 text-end">Action</div>
+                </div>
+            </div>
+            <div class="card-body p-0" id="payrollList"></div>
         </div>
     </div>
 
@@ -137,12 +131,12 @@
                         
                         <div class="row g-3 mb-4">
                             <div class="col-md-6">
-                                <label class="form-label">Select Staff</label>
-                                <select id="staffSelect" class="form-select" onchange="autoFillStaffData()"></select>
+                                <label class="form-label fw-bold">Select Staff</label>
+                                <select id="staffSelect" class="form-select border-primary" onchange="autoFillStaffData()"></select>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">For Month</label>
-                                <input id="formMonthPicker" class="form-control" type="month" onchange="autoFillStaffData()" required>
+                                <label class="form-label fw-bold">For Month</label>
+                                <input id="formMonthPicker" class="form-control border-primary" type="month" onchange="autoFillStaffData()" required>
                             </div>
                         </div>
 
@@ -197,20 +191,20 @@
                         <div class="row g-3 mb-3">
                             <div class="col-md-2" id="boxStdDays">
                                 <label class="form-label text-muted small fw-bold">Comp. Std Days</label>
-                                <input type="number" id="inpStdDays" class="form-control" value="26" oninput="calcTotals()">
+                                <input type="number" id="inpStdDays" class="form-control" value="26" oninput="calcTotals(true)">
                             </div>
                             <div class="col-md-2 d-none" id="boxHourlyRate">
                                 <label class="form-label text-muted small fw-bold">Hourly Rate</label>
-                                <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpHourlyRate" class="form-control" step="0.01" oninput="calcTotals()"></div>
+                                <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpHourlyRate" class="form-control" step="0.01" oninput="calcTotals(true)"></div>
                             </div>
                             
                             <div class="col-md-4">
                                 <label class="form-label text-muted small">Full Basic Salary (Contract)</label>
-                                <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpBasic" class="form-control bg-light" step="0.01" oninput="recalcStatutoryAndTotals()"></div>
+                                <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpBasic" class="form-control bg-light fw-bold" step="0.01" oninput="calcTotals(true)"></div>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label small fw-bold">Calculated Gross Basic</label>
-                                <div class="input-group"><span class="input-group-text bg-calc">RM</span><input type="text" id="dispGrossBasic" class="form-control bg-calc fw-bold text-primary" readonly></div>
+                                <div class="input-group"><span class="input-group-text bg-calc border-primary text-primary">RM</span><input type="text" id="dispGrossBasic" class="form-control bg-calc fw-bold border-primary text-primary" readonly></div>
                                 <div class="form-text text-danger" id="prorationMsg" style="visibility: hidden; font-size: 0.65rem;">Adjustment Applied</div>
                             </div>
                             
@@ -219,7 +213,7 @@
                                 <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpComm" class="form-control" step="0.01" oninput="calcTotals()"></div>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label text-muted small text-primary fw-bold">Overtime <i data-lucide="info" class="size-3" title="Must be explicitly requested and approved. Auto-calculation ignores unapproved OT."></i></label>
+                                <label class="form-label text-muted small text-primary fw-bold">Overtime <i data-lucide="info" class="size-3" title="Must be explicitly requested and approved."></i></label>
                                 <div class="input-group"><span class="input-group-text border-primary text-primary">RM</span><input type="number" id="inpOT" class="form-control border-primary" step="0.01" oninput="calcTotals()" placeholder="Manual Input Only"></div>
                             </div>
                             <div class="col-md-4">
@@ -228,73 +222,73 @@
                             </div>
                         </div>
 
-                        <div class="form-section-title mt-4 d-flex justify-content-between align-items-end">
-                            <span>Deductions & Advances</span>
-                            <small class="text-info" style="font-size: 0.7rem;"><i data-lucide="zap" class="size-3"></i> Amounts auto-calculated based on Staff Profile settings</small>
+                        <div class="form-section-title mt-4 d-flex justify-content-between align-items-end border-danger">
+                            <span class="text-danger">Deductions & Advances</span>
+                            <small class="text-info" style="font-size: 0.7rem;"><i data-lucide="zap" class="size-3"></i> Amounts auto-calculated based on <b class="text-dark">Gross Basic</b></small>
                         </div>
-                        <div class="row g-3 mb-3">
+                        <div class="row g-3 mb-3 bg-danger bg-opacity-10 p-2 rounded">
                             <div class="col-md-2">
                                 <label class="form-label text-muted small">EPF (Emp) <span id="hintEPF" class="text-primary fw-bold ms-1"></span></label>
-                                <div class="input-group input-group-sm"><span class="input-group-text">RM</span><input type="number" id="inpEPF" class="form-control" step="0.01" oninput="calcTotals()"></div>
+                                <div class="input-group input-group-sm"><span class="input-group-text border-danger-subtle">RM</span><input type="number" id="inpEPF" class="form-control border-danger-subtle" step="0.01" oninput="calcTotals()"></div>
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label text-muted small">SOCSO (Emp) <span id="hintSOCSO" class="text-primary fw-bold ms-1"></span></label>
-                                <div class="input-group input-group-sm"><span class="input-group-text">RM</span><input type="number" id="inpSOCSO" class="form-control" step="0.01" oninput="calcTotals()"></div>
+                                <div class="input-group input-group-sm"><span class="input-group-text border-danger-subtle">RM</span><input type="number" id="inpSOCSO" class="form-control border-danger-subtle" step="0.01" oninput="calcTotals()"></div>
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label text-muted small">EIS (Emp) <span id="hintEIS" class="text-primary fw-bold ms-1"></span></label>
-                                <div class="input-group input-group-sm"><span class="input-group-text">RM</span><input type="number" id="inpEIS" class="form-control" step="0.01" oninput="calcTotals()"></div>
+                                <div class="input-group input-group-sm"><span class="input-group-text border-danger-subtle">RM</span><input type="number" id="inpEIS" class="form-control border-danger-subtle" step="0.01" oninput="calcTotals()"></div>
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label text-muted small">PCB / Tax</label>
-                                <div class="input-group input-group-sm"><span class="input-group-text">RM</span><input type="number" id="inpPCB" class="form-control" step="0.01" oninput="calcTotals()"></div>
+                                <div class="input-group input-group-sm"><span class="input-group-text border-danger-subtle">RM</span><input type="number" id="inpPCB" class="form-control border-danger-subtle" step="0.01" oninput="calcTotals()"></div>
                             </div>
                             
                             <div class="col-md-2">
                                 <label class="form-label text-muted small text-danger fw-bold">Late Penalty</label>
-                                <div class="input-group input-group-sm"><span class="input-group-text text-danger border-danger">RM</span><input type="number" id="inpLateDed" class="form-control border-danger" step="0.01" oninput="calcTotals()"></div>
-                                <div class="form-text text-muted" style="font-size:0.65rem" id="lateFormulaText">Auto Deduct</div>
+                                <div class="input-group input-group-sm"><span class="input-group-text text-danger border-danger fw-bold">RM</span><input type="number" id="inpLateDed" class="form-control border-danger text-danger fw-bold" step="0.01" oninput="calcTotals()"></div>
+                                <div class="form-text text-danger" style="font-size:0.65rem" id="lateFormulaText">Auto Deduct</div>
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label text-muted small text-danger fw-bold">Advance (Auto)</label>
-                                <div class="input-group input-group-sm"><span class="input-group-text text-danger border-danger">RM</span><input type="number" id="inpAdvance" class="form-control fw-bold border-danger" step="0.01" oninput="calcTotals()"></div>
-                                <div class="form-text" style="font-size:0.65rem">From I.O.U</div>
+                                <div class="input-group input-group-sm"><span class="input-group-text text-danger border-danger fw-bold">RM</span><input type="number" id="inpAdvance" class="form-control border-danger text-danger fw-bold" step="0.01" oninput="calcTotals()"></div>
+                                <div class="form-text text-danger" style="font-size:0.65rem">From I.O.U</div>
                             </div>
                         </div>
 
-                        <div class="form-section-title mt-4">Employer Contributions</div>
+                        <div class="form-section-title mt-4">Employer Contributions (Hidden from staff)</div>
                         <div class="row g-3 mb-4 bg-light p-2 rounded">
                             <div class="col-md-4">
                                 <label class="form-label text-muted small">EPF (Employer)</label>
-                                <div class="input-group input-group-sm"><span class="input-group-text">RM</span><input type="number" id="inpEmpEPF" class="form-control form-control-sm" step="0.01" oninput="calcTotals()"></div>
+                                <div class="input-group input-group-sm"><span class="input-group-text">RM</span><input type="number" id="inpEmpEPF" class="form-control form-control-sm" step="0.01"></div>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label text-muted small">SOCSO (Employer)</label>
-                                <div class="input-group input-group-sm"><span class="input-group-text">RM</span><input type="number" id="inpEmpSOCSO" class="form-control form-control-sm" step="0.01" oninput="calcTotals()"></div>
+                                <div class="input-group input-group-sm"><span class="input-group-text">RM</span><input type="number" id="inpEmpSOCSO" class="form-control form-control-sm" step="0.01"></div>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label text-muted small">EIS (Employer)</label>
-                                <div class="input-group input-group-sm"><span class="input-group-text">RM</span><input type="number" id="inpEmpEIS" class="form-control form-control-sm" step="0.01" oninput="calcTotals()"></div>
+                                <div class="input-group input-group-sm"><span class="input-group-text">RM</span><input type="number" id="inpEmpEIS" class="form-control form-control-sm" step="0.01"></div>
                             </div>
                         </div>
 
-                        <div class="d-flex justify-content-between align-items-center border-top pt-3">
+                        <div class="d-flex justify-content-between align-items-center border-top pt-3 mt-4">
                             <div>
-                                <select id="formStatus" class="form-select form-select-sm" style="width: 120px;">
-                                    <option value="Draft">Draft</option>
-                                    <option value="Published">Published</option>
+                                <select id="formStatus" class="form-select form-select-lg fw-bold border-2" style="width: 150px;">
+                                    <option value="Draft" class="text-warning">Draft</option>
+                                    <option value="Published" class="text-success">Published</option>
                                 </select>
                             </div>
-                            <div class="text-end">
-                                <div class="text-muted small">NET PAY</div>
+                            <div class="text-end bg-primary bg-opacity-10 py-2 px-4 rounded-3 border border-primary">
+                                <div class="text-primary small fw-bold mb-1 text-uppercase">Final Net Pay</div>
                                 <h2 class="fw-bold text-primary mb-0" id="dispNet">RM 0.00</h2>
                             </div>
                         </div>
                     </form>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary px-4" onclick="savePayslipForm()">Save Payslip</button>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-outline-secondary fw-bold" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary px-5 fw-bold" onclick="savePayslipForm()">Save Payslip</button>
                 </div>
             </div>
         </div>
@@ -304,13 +298,13 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header bg-light">
-                    <h5 class="modal-title"><i data-lucide="settings" class="size-4 me-2"></i>Payroll Settings</h5>
+                    <h5 class="modal-title fw-bold"><i data-lucide="settings" class="size-4 me-2"></i>Payroll Settings</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-4">
                         <label class="form-label fw-bold text-primary">1. Salary Calculation Mode</label>
-                        <select id="configCalcMode" class="form-select" onchange="toggleSettingsView()">
+                        <select id="configCalcMode" class="form-select border-primary" onchange="toggleSettingsView()">
                             <option value="daily">Daily Rate (Based on Std Days & Paid Leaves)</option>
                             <option value="hourly">Hourly Rate (Strictly hours worked)</option>
                         </select>
@@ -319,7 +313,7 @@
 
                     <div class="mb-4" id="satConfigBox">
                         <label class="form-label fw-bold text-primary">2. Saturday Attendance Multiplier</label>
-                        <select id="configSatMulti" class="form-select mb-2">
+                        <select id="configSatMulti" class="form-select border-primary mb-2">
                             <option value="1">1.0 (Counts as 1 Full Day)</option>
                             <option value="0.5">0.5 (Counts as Half Day)</option>
                             <option value="0">0.0 (Exclude from day count)</option>
@@ -329,18 +323,18 @@
 
                     <div class="mb-3 border-top pt-3">
                         <label class="form-label fw-bold text-danger">3. Late Penalty Rule</label>
-                        <select id="configLateMode" class="form-select mb-2" onchange="toggleLateSettings()">
+                        <select id="configLateMode" class="form-select border-danger mb-2" onchange="toggleLateSettings()">
                             <option value="minutes">By Exact Minutes (Pro-rated from Basic)</option>
                             <option value="times">By Occurrences (Fixed fine per late)</option>
                         </select>
-                        <div id="lateFixedAmountBox" class="d-none mt-2 p-2 bg-danger bg-opacity-10 rounded">
+                        <div id="lateFixedAmountBox" class="d-none mt-2 p-3 bg-danger bg-opacity-10 rounded border border-danger">
                             <label class="small fw-bold text-danger mb-1">Fine amount per late occurrence (RM)</label>
-                            <input type="number" id="configLateAmount" class="form-control form-control-sm" step="0.5" value="10">
+                            <input type="number" id="configLateAmount" class="form-control fw-bold text-danger" step="0.5" value="10">
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-dark" onclick="saveSettings()">Save Settings</button>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-dark px-4 fw-bold" onclick="saveSettings()">Save Configuration</button>
                 </div>
             </div>
         </div>
@@ -350,18 +344,18 @@
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header bg-danger text-white">
-                    <h5 class="modal-title"><i data-lucide="hand-coins" class="size-5 me-2"></i>Salary Advances</h5>
+                    <h5 class="modal-title fw-bold"><i data-lucide="hand-coins" class="size-5 me-2"></i>Salary Advances</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-0">
-                    <table class="table table-hover mb-0">
-                        <thead class="table-light">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light text-secondary small text-uppercase">
                             <tr>
-                                <th>Staff</th>
+                                <th class="ps-4">Staff</th>
                                 <th>Amount</th>
                                 <th>Reason</th>
                                 <th>Status</th>
-                                <th>Action</th>
+                                <th class="text-end pe-4">Action</th>
                             </tr>
                         </thead>
                         <tbody id="advancesList"></tbody>
@@ -374,17 +368,17 @@
     <div class="modal fade" id="printModal" tabindex="-1">
         <div class="modal-dialog modal-lg" style="max-width: 900px;">
             <div class="modal-content">
-                <div class="modal-header no-print">
-                    <h5 class="modal-title">Payslip Preview</h5>
+                <div class="modal-header no-print bg-light">
+                    <h5 class="modal-title fw-bold"><i data-lucide="file-text" class="size-5 me-2"></i>Payslip Preview</h5>
                     <div>
-                        <button type="button" class="btn btn-outline-dark btn-sm me-2" onclick="window.print()">
+                        <button type="button" class="btn btn-dark btn-sm me-2 fw-bold" onclick="window.print()">
                             <i data-lucide="printer" class="size-4 me-1"></i> Print
                         </button>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                 </div>
-                <div class="modal-body bg-light overflow-auto">
-                    <div id="printArea"></div>
+                <div class="modal-body bg-secondary bg-opacity-10 overflow-auto py-4">
+                    <div id="printArea" class="shadow-sm"></div>
                 </div>
             </div>
         </div>
@@ -393,43 +387,30 @@
     <script type="module">
         import { firebaseConfig } from './firebase-config.js';
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, collection, query, where, getDocs, doc, setDoc, updateDoc, writeBatch, serverTimestamp, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { initUnifiedHeader } from "./header-app.js";
+        import { getFirestore, collection, query, where, getDocs, doc, setDoc, updateDoc, writeBatch, serverTimestamp, getDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        
+        import { formatMoney, formatTime, calculateStatutoryAmount, msToHM } from './utils.js';
+        import { requireAdmin } from './auth-guard.js';
+
+        window.formatMoney = formatMoney;
+        window.showLoading = (show) => { document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none'; };
+        window.onerror = function(msg) {
+            const loadingText = document.getElementById('loadingText');
+            if(loadingText) { loadingText.innerText = "Error: " + msg; loadingText.classList.add('text-danger'); }
+        };
 
         const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
         const db = getFirestore(app);
 
         let currentPayrollData = [];
         let staffMap = {}; 
         let formModal, printModal, advancesModal, settingsModal;
-        
-        let globalSettings = { 
-            calcMode: 'daily', 
-            satMultiplier: 1.0,
-            lateMode: 'minutes',
-            lateFixedAmount: 10
-        }; 
+        let globalSettings = { calcMode: 'daily', satMultiplier: 1.0, lateMode: 'minutes', lateFixedAmount: 10 }; 
 
-        window.formatMoney = (amount) => (amount || 0).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        window.showLoading = (show) => document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
-
-        // 🟢 智能解析百分比或固定金额的函数
-        function calculateStatutoryAmount(rawVal, basicAmt, defaultIsPct = false) {
-            if (!rawVal) return 0;
-            const str = String(rawVal).trim();
-            // 如果字符串包含 %，或者 defaultIsPct 为 true 且值不为空，则按百分比计算
-            let isPct = str.includes('%') || defaultIsPct;
-            const num = parseFloat(str.replace('%', ''));
-            if (isNaN(num)) return 0;
-            return isPct ? (basicAmt * (num / 100)) : num;
-        }
-
-        document.addEventListener("DOMContentLoaded", async () => {
+        // 🟢 Execute Admin Verification
+        requireAdmin(app, db, async (user) => {
             try {
-                showLoading(true);
-                initUnifiedHeader(auth, db);
+                window.showLoading(true);
                 
                 formModal = new bootstrap.Modal(document.getElementById('payslipFormModal'));
                 printModal = new bootstrap.Modal(document.getElementById('printModal'));
@@ -437,10 +418,9 @@
                 settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'));
 
                 const now = new Date();
-                const year = now.getFullYear();
-                const month = String(now.getMonth() + 1).padStart(2, '0');
-                document.getElementById('globalMonthPicker').value = `${year}-${month}`;
-                document.getElementById('formMonthPicker').value = `${year}-${month}`;
+                const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                document.getElementById('globalMonthPicker').value = monthStr;
+                document.getElementById('formMonthPicker').value = monthStr;
 
                 await loadSettings();
                 await loadStaffData(); 
@@ -449,18 +429,21 @@
 
             } catch (e) {
                 console.error("Init Error:", e);
+                alert("Failed to initialize Payroll system.");
             } finally {
-                showLoading(false);
+                window.showLoading(false);
+                lucide.createIcons();
             }
         });
 
-        // --- SETTINGS ---
+        // ==========================================
+        // 1. SETTINGS MANAGEMENT
+        // ==========================================
         async function loadSettings() {
             try {
                 const snap = await getDoc(doc(db, "settings", "payroll_config"));
-                if (snap.exists()) {
-                    globalSettings = { ...globalSettings, ...snap.data() };
-                }
+                if (snap.exists()) globalSettings = { ...globalSettings, ...snap.data() };
+                
                 document.getElementById('configCalcMode').value = globalSettings.calcMode;
                 document.getElementById('configSatMulti').value = globalSettings.satMultiplier;
                 document.getElementById('configLateMode').value = globalSettings.lateMode || 'minutes';
@@ -475,7 +458,6 @@
             const mode = document.getElementById('configCalcMode').value;
             const hint = document.getElementById('calcModeHint');
             const satBox = document.getElementById('satConfigBox');
-            
             if (mode === 'hourly') {
                 hint.innerText = "Pays based on strictly total hours worked.";
                 satBox.classList.add('d-none');
@@ -488,83 +470,77 @@
         window.toggleLateSettings = () => {
             const mode = document.getElementById('configLateMode').value;
             const amountBox = document.getElementById('lateFixedAmountBox');
-            if(mode === 'times') amountBox.classList.remove('d-none');
-            else amountBox.classList.add('d-none');
+            mode === 'times' ? amountBox.classList.remove('d-none') : amountBox.classList.add('d-none');
         };
 
         window.saveSettings = async () => {
-            const mode = document.getElementById('configCalcMode').value;
-            const satM = parseFloat(document.getElementById('configSatMulti').value);
-            const lateM = document.getElementById('configLateMode').value;
-            const lateAmt = parseFloat(document.getElementById('configLateAmount').value) || 0;
-
+            const newConfig = { 
+                calcMode: document.getElementById('configCalcMode').value, 
+                satMultiplier: parseFloat(document.getElementById('configSatMulti').value), 
+                lateMode: document.getElementById('configLateMode').value, 
+                lateFixedAmount: parseFloat(document.getElementById('configLateAmount').value) || 0 
+            };
             try {
-                const newConfig = { calcMode: mode, satMultiplier: satM, lateMode: lateM, lateFixedAmount: lateAmt };
                 await setDoc(doc(db, "settings", "payroll_config"), newConfig, { merge: true });
                 globalSettings = { ...globalSettings, ...newConfig };
                 settingsModal.hide();
-                alert("Settings Saved!");
+                alert("Settings Saved! \n\nPlease re-save any Draft payslips to apply the new rules.");
             } catch (e) { alert("Error saving settings: " + e.message); }
         };
 
         window.openSettingsModal = () => settingsModal.show();
 
-        // --- SALARY ADVANCES ---
+        // ==========================================
+        // 2. SALARY ADVANCES
+        // ==========================================
         function listenToAdvances() {
-            const q = query(collection(db, "salary_advances"), where("status", "==", "Pending"));
-            onSnapshot(q, (snap) => {
+            onSnapshot(query(collection(db, "salary_advances"), where("status", "==", "Pending")), (snap) => {
                 const badge = document.getElementById('advanceBadge');
-                if (snap.empty) {
-                    badge.classList.add('d-none');
-                } else {
-                    badge.classList.remove('d-none');
-                    badge.innerText = snap.docs.length;
-                }
+                if (snap.empty) badge.classList.add('d-none');
+                else { badge.classList.remove('d-none'); badge.innerText = snap.size; }
             });
         }
 
         window.openAdvancesModal = async () => {
             const listDiv = document.getElementById('advancesList');
-            listDiv.innerHTML = '<tr><td colspan="5" class="text-center">Loading...</td></tr>';
+            listDiv.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">Loading...</td></tr>';
             advancesModal.show();
 
             try {
-                const q = query(collection(db, "salary_advances"));
-                const snap = await getDocs(q);
-                let html = "";
-                let count = 0;
+                const snap = await getDocs(query(collection(db, "salary_advances")));
+                let html = ""; let count = 0;
 
                 snap.forEach(d => {
                     const data = d.data();
-                    if(data.isDeducted) return; 
-                    if(data.status === 'Rejected') return; 
+                    if(data.isDeducted || data.status === 'Rejected') return; 
 
                     count++;
                     let actionHtml = "";
-                    let statusBadge = `<span class="badge bg-warning text-dark">Pending</span>`;
+                    let statusBadge = `<span class="badge bg-warning text-dark px-2 py-1">Pending</span>`;
 
                     if (data.status === 'Pending') {
                         actionHtml = `
-                            <button class="btn btn-sm btn-success py-0" onclick="updateAdvanceStatus('${d.id}', 'Approved')">Approve</button>
-                            <button class="btn btn-sm btn-outline-danger py-0" onclick="updateAdvanceStatus('${d.id}', 'Rejected')">Reject</button>
+                            <button class="btn btn-sm btn-success fw-bold px-3 py-1 me-1 shadow-sm" onclick="updateAdvanceStatus('${d.id}', 'Approved')">Approve</button>
+                            <button class="btn btn-sm btn-outline-danger fw-bold px-3 py-1" onclick="updateAdvanceStatus('${d.id}', 'Rejected')">Reject</button>
                         `;
                     } else if (data.status === 'Approved') {
-                        statusBadge = `<span class="badge bg-success">Approved (Wait Deduct)</span>`;
-                        actionHtml = `<button class="btn btn-sm btn-outline-secondary py-0" onclick="updateAdvanceStatus('${d.id}', 'Rejected')">Revoke</button>`;
+                        statusBadge = `<span class="badge bg-success px-2 py-1"><i data-lucide="check" class="size-3 me-1"></i> Approved</span>`;
+                        actionHtml = `<button class="btn btn-sm btn-light border text-muted py-1" onclick="updateAdvanceStatus('${d.id}', 'Rejected')">Revoke</button>`;
                     }
 
                     html += `
-                        <tr>
-                            <td><div class="fw-bold">${data.empName || '-'}</div></td>
-                            <td class="text-danger fw-bold">RM ${formatMoney(data.amount)}</td>
-                            <td>${data.reason || '-'}</td>
+                        <tr class="align-middle">
+                            <td class="ps-4"><div class="fw-bold text-dark">${data.empName || '-'}</div><small class="text-muted">${data.empCode || ''}</small></td>
+                            <td class="text-danger fw-bold fs-6">RM ${formatMoney(data.amount)}</td>
+                            <td class="text-secondary">${data.reason || '-'}</td>
                             <td>${statusBadge}</td>
-                            <td>${actionHtml}</td>
+                            <td class="text-end pe-4">${actionHtml}</td>
                         </tr>
                     `;
                 });
                 
-                listDiv.innerHTML = count > 0 ? html : '<tr><td colspan="5" class="text-center text-muted">No pending requests.</td></tr>';
+                listDiv.innerHTML = count > 0 ? html : '<tr><td colspan="5" class="text-center py-5 text-muted fw-bold">No pending requests found.</td></tr>';
+                lucide.createIcons();
             } catch (e) { console.error(e); }
         };
 
@@ -575,7 +551,9 @@
             } catch (e) { alert("Error: " + e.message); }
         };
 
-        // --- STAFF & ATTENDANCE ---
+        // ==========================================
+        // 3. CORE PAYROLL LOGIC
+        // ==========================================
         async function loadStaffData() {
             const snap = await getDocs(query(collection(db, "users")));
             staffMap = {}; 
@@ -584,6 +562,8 @@
 
             snap.forEach(doc => {
                 const s = doc.data();
+                if (s.status === 'disabled' || s.role === 'admin') return;
+                
                 const personal = s.personal || {}; 
                 const displayName = personal.name || s.name || 'Unknown Staff';
                 
@@ -592,10 +572,7 @@
                     displayName: displayName, 
                     displayId: personal.empCode || s.staffId || '--'
                 };
-
-                if (s.status === 'active' || s.status === 'editable') {
-                    select.innerHTML += `<option value="${doc.id}">${displayName}</option>`;
-                }
+                select.innerHTML += `<option value="${doc.id}">${displayName} (${personal.empCode || 'No ID'})</option>`;
             });
         }
 
@@ -606,78 +583,59 @@
 
             const staff = staffMap[uid]; 
             
-            document.getElementById('calcModeBadge').innerText = `Mode: ${globalSettings.calcMode === 'hourly' ? 'Hourly Rate' : 'Daily Rate'}`;
-            document.getElementById('calcModeBadge').className = globalSettings.calcMode === 'hourly' ? 'badge bg-primary me-2' : 'badge bg-success me-2';
-            
-            if (globalSettings.calcMode === 'hourly') {
-                document.getElementById('boxStdDays').classList.add('d-none');
-                document.getElementById('boxHourlyRate').classList.remove('d-none');
-            } else {
-                document.getElementById('boxStdDays').classList.remove('d-none');
-                document.getElementById('boxHourlyRate').classList.add('d-none');
-            }
+            const isHourly = globalSettings.calcMode === 'hourly';
+            document.getElementById('calcModeBadge').innerText = isHourly ? 'Mode: Hourly Rate' : 'Mode: Daily Rate';
+            document.getElementById('calcModeBadge').className = isHourly ? 'badge bg-primary me-2' : 'badge bg-success me-2';
+            document.getElementById('boxStdDays').classList.toggle('d-none', isHourly);
+            document.getElementById('boxHourlyRate').classList.toggle('d-none', !isHourly);
 
-            // 🟢 设置基础工资并自动联动计算法定扣除额 (Statutory)
+            let totalAdv = 0; let advIds = [];
             if(staff) {
-                const basicSalary = parseFloat(staff.payroll?.basic) || 0;
-                if(!document.getElementById('inpBasic').value) {
-                    document.getElementById('inpBasic').value = basicSalary;
-                }
-                
-                // 触发重新计算 EPF 和 EIS (提取并写入金额)
-                recalcStatutoryAndTotals();
+                try {
+                    const targetIds = [String(uid)];
+                    if (staff.authUid) targetIds.push(String(staff.authUid));
+                    
+                    const advSnap = await getDocs(query(collection(db, "salary_advances"), where("uid", "in", targetIds), where("status", "==", "Approved")));
+                    advSnap.forEach(d => {
+                        const adv = d.data();
+                        if (!adv.isDeducted) { totalAdv += adv.amount; advIds.push(d.id); }
+                    });
+                } catch (e) { console.error("Error fetching advances", e); }
             }
 
-            showLoading(true);
-            await calculateAttendanceStats(uid, monthStr);
-            
-            try {
-                const targetIds = [String(uid)];
-                if (staff.authUid) targetIds.push(String(staff.authUid));
-                
-                const advSnap = await getDocs(query(collection(db, "salary_advances"), where("uid", "in", targetIds), where("status", "==", "Approved")));
-                
-                let totalAdv = 0; let advIds = [];
-                advSnap.forEach(d => {
-                    const adv = d.data();
-                    if (adv.isDeducted !== true) { totalAdv += adv.amount; advIds.push(d.id); }
-                });
+            if(staff) {
+                document.getElementById('inpBasic').value = staff.payroll?.basic || 0;
                 document.getElementById('inpAdvance').value = totalAdv;
                 document.getElementById('pendingAdvanceIds').value = JSON.stringify(advIds);
-                
-            } catch (e) { console.error("Error fetching advances", e); }
+                recalcStatutoryAndTotals(); 
+            }
 
-            calcTotals(); // 最终运算全部数值
-            showLoading(false);
+            window.showLoading(true);
+            await calculateAttendanceStats(uid, monthStr);
+            calcTotals(true); 
+            window.showLoading(false);
         };
 
-        // 🟢 新增联动函数：当 Basic Salary 改变时，重新计算扣除款
         window.recalcStatutoryAndTotals = () => {
             const uid = document.getElementById('staffSelect').value;
             const staff = staffMap[uid]; 
             const basicSalary = parseFloat(document.getElementById('inpBasic').value) || 0;
 
             if (staff && staff.statutory) {
-                // 获取原字符串（如 '11' 或 '11%'）
                 const epfRaw = staff.statutory.epf?.contrib || '';
                 const eisRaw = staff.statutory.eis || '';
 
-                // 在 Label 旁边显示百分比提示 (Hint)
                 document.getElementById('hintEPF').innerText = epfRaw ? `(${epfRaw}${epfRaw.toString().includes('%') ? '' : '%'})` : '';
                 document.getElementById('hintEIS').innerText = eisRaw ? `(${eisRaw}${eisRaw.toString().includes('%') ? '' : '%'})` : '';
 
-                // 将百分比转换为实际的 RM 金额填入 Input 中
-                const epfAmt = calculateStatutoryAmount(epfRaw, basicSalary, true); // EPF 默认视为百分比
-                const eisAmt = calculateStatutoryAmount(eisRaw, basicSalary, true); // EIS 默认视为百分比
+                const epfAmt = calculateStatutoryAmount(epfRaw, basicSalary, true); 
+                const eisAmt = calculateStatutoryAmount(eisRaw, basicSalary, true); 
 
                 if (epfAmt > 0) document.getElementById('inpEPF').value = epfAmt.toFixed(2);
                 if (eisAmt > 0) document.getElementById('inpEIS').value = eisAmt.toFixed(2);
             } else {
-                document.getElementById('hintEPF').innerText = '';
-                document.getElementById('hintEIS').innerText = '';
+                document.getElementById('hintEPF').innerText = ''; document.getElementById('hintEIS').innerText = '';
             }
-
-            // 更新完数值后，重新计算 Net Pay
             calcTotals();
         };
 
@@ -692,19 +650,14 @@
             const targetIds = [String(uid)];
             if (staff.authUid) targetIds.push(String(staff.authUid));
 
-            const allSchedSnap = await getDocs(query(collection(db, "schedules"), where("date", ">=", startDate), where("date", "<=", endDate)));
-            const myLeavesSnap = await getDocs(query(collection(db, "leaves"), where("uid", "in", targetIds), where("status", "==", "Approved")));
-            const myAttSnap = await getDocs(query(collection(db, "attendance"), where("uid", "in", targetIds), where("date", ">=", startDate), where("date", "<=", endDate)));
+            const [allSchedSnap, myLeavesSnap, myAttSnap] = await Promise.all([
+                getDocs(query(collection(db, "schedules"), where("date", ">=", startDate), where("date", "<=", endDate))),
+                getDocs(query(collection(db, "leaves"), where("uid", "in", targetIds), where("status", "==", "Approved"))),
+                getDocs(query(collection(db, "attendance"), where("uid", "in", targetIds), where("date", ">=", startDate), where("date", "<=", endDate)))
+            ]);
 
-            const mySchedules = {};
-            let mySchedCount = 0;
-            allSchedSnap.forEach(d => { 
-                const s = d.data();
-                if(targetIds.includes(s.userId)) {
-                    mySchedules[s.date] = s;
-                    mySchedCount++;
-                }
-            });
+            const mySchedules = {}; let mySchedCount = 0;
+            allSchedSnap.forEach(d => { const s = d.data(); if(targetIds.includes(s.userId)){ mySchedules[s.date] = s; mySchedCount++; } });
 
             const attMap = {};
             myAttSnap.forEach(d => {
@@ -716,10 +669,7 @@
                 }
             });
 
-            let actWorkedDays = 0;
-            let totalWorkMs = 0;
-            let totalLateMs = 0;
-            let lateCount = 0; 
+            let actWorkedDays = 0, totalWorkMs = 0, totalLateMs = 0, lateCount = 0; 
             const satMulti = parseFloat(globalSettings.satMultiplier || 1.0);
 
             const toDateObj = (t, dateStr) => {
@@ -731,24 +681,17 @@
 
             for (const [dateStr, records] of Object.entries(attMap)) {
                 if (records.in) {
-                    const dateObj = new Date(dateStr);
-                    if (dateObj.getDay() === 6) actWorkedDays += satMulti;
-                    else actWorkedDays += 1;
+                    const isSat = new Date(dateStr).getDay() === 6;
+                    actWorkedDays += isSat ? satMulti : 1;
 
                     const sched = mySchedules[dateStr];
-                    if (sched && sched.start && records.in) {
+                    if (sched && sched.start) {
                         const inTime = toDateObj(records.in, dateStr);
                         const schedStart = toDateObj(sched.start, dateStr);
-                        
-                        if (inTime > schedStart) {
-                            totalLateMs += (inTime - schedStart);
-                            lateCount++;
-                        }
-
+                        if (inTime > schedStart) { totalLateMs += (inTime - schedStart); lateCount++; }
                         if (records.out) {
                             const outTime = toDateObj(records.out, dateStr);
-                            const effectiveStart = inTime < schedStart ? schedStart : inTime;
-                            let workMs = outTime - effectiveStart;
+                            let workMs = outTime - (inTime < schedStart ? schedStart : inTime);
                             workMs -= ((sched.breakMins || 60) * 60000); 
                             if(workMs > 0) totalWorkMs += workMs;
                         }
@@ -759,19 +702,16 @@
             let paidLeaveCount = 0;
             myLeavesSnap.forEach(d => {
                 const l = d.data();
-                let curr = new Date(l.startDate);
-                let end = new Date(l.endDate);
-                
+                let curr = new Date(l.startDate); let end = new Date(l.endDate);
                 while(curr <= end) {
                     const dStr = curr.toISOString().split('T')[0];
-                    if(dStr >= startDate && dStr <= endDate && l.type !== 'Unpaid Leave') {
-                        if(!attMap[dStr]?.in) paidLeaveCount++; 
-                    }
+                    if(dStr >= startDate && dStr <= endDate && l.type !== 'Unpaid Leave' && !attMap[dStr]?.in) paidLeaveCount++; 
                     curr.setDate(curr.getDate() + 1);
                 }
             });
 
-            const totalHrs = (totalWorkMs / 3600000).toFixed(1);
+            const totalDecimalHrs = (totalWorkMs / 3600000).toFixed(2);
+            const formattedTotalHrs = msToHM(totalWorkMs);
             const totalLateMins = Math.floor(totalLateMs / 60000);
 
             const userSchedCounts = {}; 
@@ -785,76 +725,74 @@
             document.getElementById('dispActDays').innerHTML = `${actWorkedDays} <span style="font-size:0.6rem">Days</span>`;
             document.getElementById('dispPaidLeave').innerHTML = `${paidLeaveCount} <span style="font-size:0.6rem">Days</span>`;
             document.getElementById('dispPayableDays').innerHTML = `${actWorkedDays + paidLeaveCount} <span style="font-size:0.6rem">Days</span>`;
-            document.getElementById('dispTotalHrs').innerHTML = `${totalHrs} <span style="font-size:0.6rem">hrs</span>`;
+            document.getElementById('dispTotalHrs').innerHTML = `${formattedTotalHrs}`;
             document.getElementById('dispLateStats').innerHTML = `${lateCount} <span style="font-size:0.6rem">times (${totalLateMins}m)</span>`;
 
-            document.getElementById('metaDaysSch').value = mySchedCount;
-            document.getElementById('metaDaysAct').value = actWorkedDays;
-            document.getElementById('metaPaidLeave').value = paidLeaveCount;
-            document.getElementById('metaTotalHrs').value = totalHrs;
-            document.getElementById('metaLateMins').value = totalLateMins;
-            document.getElementById('metaLateCount').value = lateCount; 
+            ['metaDaysSch', 'metaDaysAct', 'metaPaidLeave', 'metaTotalHrs', 'metaLateMins', 'metaLateCount'].forEach((id, i) => {
+                document.getElementById(id).value = [mySchedCount, actWorkedDays, paidLeaveCount, totalDecimalHrs, totalLateMins, lateCount][i];
+            });
         }
 
-        window.calcTotals = () => {
+        window.calcTotals = (autoUpdateStatutory = false) => {
             const getVal = (id) => parseFloat(document.getElementById(id)?.value) || 0;
             const fullBasic = getVal('inpBasic');
-            let grossBasic = 0;
-            let autoLateDeduct = 0;
-
+            let grossBasic = 0, autoLateDeduct = 0;
             const lateMins = parseFloat(document.getElementById('metaLateMins').value) || 0;
             const lateCount = parseInt(document.getElementById('metaLateCount').value) || 0;
 
             if (globalSettings.calcMode === 'hourly') {
-                const hrRate = getVal('inpHourlyRate');
-                const totalHrs = parseFloat(document.getElementById('metaTotalHrs').value) || 0;
-                grossBasic = hrRate * totalHrs;
-                document.getElementById('dispGrossBasic').value = formatMoney(grossBasic);
+                grossBasic = getVal('inpHourlyRate') * (parseFloat(document.getElementById('metaTotalHrs').value) || 0);
                 document.getElementById('prorationMsg').style.visibility = 'hidden';
 
                 if (globalSettings.lateMode === 'times') {
                     autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
                     document.getElementById('lateFormulaText').innerText = `Fine: ${lateCount} times x RM${globalSettings.lateFixedAmount}`;
-                } else {
-                    autoLateDeduct = 0; 
-                    document.getElementById('lateFormulaText').innerText = "Unpaid by default in Hourly mode.";
-                }
-
+                } else document.getElementById('lateFormulaText').innerText = "Unpaid by default in Hourly mode.";
             } else {
                 const stdDays = getVal('inpStdDays') || 26; 
-                const workedDays = parseFloat(document.getElementById('metaDaysAct').value) || 0;
-                const paidLeaveDays = parseFloat(document.getElementById('metaPaidLeave').value) || 0;
-                const totalPayableDays = workedDays + paidLeaveDays;
-
+                const totalPayableDays = (parseFloat(document.getElementById('metaDaysAct').value) || 0) + (parseFloat(document.getElementById('metaPaidLeave').value) || 0);
                 const dailyRate = fullBasic / stdDays;
-                grossBasic = dailyRate * totalPayableDays;
-                if(grossBasic > fullBasic) grossBasic = fullBasic;
+                grossBasic = Math.min(dailyRate * totalPayableDays, fullBasic);
 
-                document.getElementById('dispGrossBasic').value = formatMoney(grossBasic);
                 const msg = document.getElementById('prorationMsg');
-                if (totalPayableDays < stdDays) {
-                    msg.style.visibility = 'visible';
-                    msg.innerText = `Pro-rated: ${totalPayableDays} / ${stdDays} days`;
-                } else msg.style.visibility = 'hidden';
+                if (totalPayableDays < stdDays) { msg.style.visibility = 'visible'; msg.innerText = `Pro-rated: ${totalPayableDays} / ${stdDays} days`; } 
+                else msg.style.visibility = 'hidden';
 
                 if (globalSettings.lateMode === 'times') {
                     autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
                     document.getElementById('lateFormulaText').innerText = `Fine: ${lateCount} times x RM${globalSettings.lateFixedAmount}`;
                 } else {
-                    const minRate = (dailyRate / 8) / 60; 
-                    autoLateDeduct = minRate * lateMins;
+                    autoLateDeduct = ((dailyRate / 8) / 60) * lateMins;
                     document.getElementById('lateFormulaText').innerText = `Auto deduct: ${lateMins} mins`;
                 }
             }
             
-            const currentLateInput = document.getElementById('inpLateDed').value;
-            if(!currentLateInput && autoLateDeduct > 0) {
-                document.getElementById('inpLateDed').value = autoLateDeduct.toFixed(2);
+            document.getElementById('dispGrossBasic').value = formatMoney(grossBasic);
+            if(!document.getElementById('inpLateDed').value && autoLateDeduct > 0) document.getElementById('inpLateDed').value = autoLateDeduct.toFixed(2);
+
+            if (autoUpdateStatutory) {
+                const uid = document.getElementById('staffSelect').value;
+                const staff = staffMap[uid]; 
+                
+                if (staff && staff.statutory) {
+                    const epfRaw = staff.statutory.epf?.contrib || '';
+                    const eisRaw = staff.statutory.eis || '';
+
+                    document.getElementById('hintEPF').innerText = epfRaw ? `(${epfRaw}${epfRaw.toString().includes('%') ? '' : '%'})` : '';
+                    document.getElementById('hintEIS').innerText = eisRaw ? `(${eisRaw}${eisRaw.toString().includes('%') ? '' : '%'})` : '';
+
+                    const epfAmt = calculateStatutoryAmount(epfRaw, grossBasic, true); 
+                    const eisAmt = calculateStatutoryAmount(eisRaw, grossBasic, true); 
+
+                    if (epfAmt > 0) document.getElementById('inpEPF').value = epfAmt.toFixed(2);
+                    if (eisAmt > 0) document.getElementById('inpEIS').value = eisAmt.toFixed(2);
+                } else {
+                    document.getElementById('hintEPF').innerText = ''; document.getElementById('hintEIS').innerText = '';
+                }
             }
 
             const grossTotal = grossBasic + getVal('inpComm') + getVal('inpOT') + getVal('inpAllowance');
             const totalDed = getVal('inpEPF') + getVal('inpSOCSO') + getVal('inpEIS') + getVal('inpPCB') + getVal('inpLateDed') + getVal('inpAdvance'); 
-
             document.getElementById('dispNet').innerText = "RM " + formatMoney(grossTotal - totalDed);
         };
 
@@ -863,7 +801,7 @@
             const month = document.getElementById('formMonthPicker').value;
             if(!uid || !month) return alert("Select staff and month");
 
-            showLoading(true);
+            window.showLoading(true);
             const staff = staffMap[uid];
             const getVal = (id) => parseFloat(document.getElementById(id).value) || 0;
             const status = document.getElementById('formStatus').value;
@@ -881,18 +819,17 @@
                 epfNo: staff?.statutory?.epf?.no || '-',
                 socsoNo: staff?.statutory?.socso?.no || '-',
                 department: staff?.employment?.dept || '-',
+                bankAcc: staff?.payroll?.bank1?.acc || '-',
+                bankName: staff?.payroll?.bank1?.name || '-',
                 basic: getVal('inpBasic'),
                 final_basic: grossBasic, 
                 earnings: { commission: getVal('inpComm'), ot: getVal('inpOT'), allowance: getVal('inpAllowance'), total: grossTotal },
                 deductions: { epf: getVal('inpEPF'), socso: getVal('inpSOCSO'), eis: getVal('inpEIS'), tax: getVal('inpPCB'), late: getVal('inpLateDed'), advance: getVal('inpAdvance'), total: totalDed },
                 employer_epf: getVal('inpEmpEPF'), employer_socso: getVal('inpEmpSOCSO'), employer_eis: getVal('inpEmpEIS'),
                 attendanceStats: {
-                    stdDays: getVal('inpStdDays'),
-                    actDays: document.getElementById('metaDaysAct').value,
-                    paidLeave: document.getElementById('metaPaidLeave').value,
-                    totalHrs: document.getElementById('metaTotalHrs').value,
-                    lateMins: document.getElementById('metaLateMins').value,
-                    lateCount: document.getElementById('metaLateCount').value, 
+                    stdDays: getVal('inpStdDays'), actDays: document.getElementById('metaDaysAct').value,
+                    paidLeave: document.getElementById('metaPaidLeave').value, totalHrs: document.getElementById('metaTotalHrs').value,
+                    lateMins: document.getElementById('metaLateMins').value, lateCount: document.getElementById('metaLateCount').value, 
                     mode: globalSettings.calcMode
                 },
                 gross: grossTotal, net: net, status: status,
@@ -910,7 +847,7 @@
                         const advIds = JSON.parse(rawIds);
                         const batch = writeBatch(db);
                         advIds.forEach(advId => {
-                            batch.update(doc(db, "salary_advances", advId), { isDeducted: true, deductedInMonth: month });
+                            batch.update(doc(db, "salary_advances", advId), { isDeducted: true, deductedInMonth: month, deductedAt: serverTimestamp() });
                         });
                         await batch.commit();
                     }
@@ -919,13 +856,13 @@
                 formModal.hide();
                 loadPayroll();
             } catch(e) { alert("Save error: "+e.message); }
-            finally { showLoading(false); }
+            finally { window.showLoading(false); }
         };
 
         window.loadPayroll = async () => {
             const month = document.getElementById('globalMonthPicker').value;
             if(!month) return;
-            showLoading(true);
+            window.showLoading(true);
             const listDiv = document.getElementById('payrollList');
             listDiv.innerHTML = '';
             
@@ -936,33 +873,33 @@
                 let totalNet = 0; let totalEmpEPF = 0;
 
                 if (snap.empty) {
-                    listDiv.innerHTML = `<div class="text-center py-5 text-muted">No records for ${month}.</div>`;
-                    document.getElementById('statTotal').innerText = "RM 0.00";
-                    document.getElementById('statEPF').innerText = "RM 0.00";
+                    listDiv.innerHTML = `<div class="text-center py-5 text-muted fw-bold">No payslips found for ${month}.</div>`;
+                    document.getElementById('statTotal').innerText = "RM 0.00"; document.getElementById('statEPF').innerText = "RM 0.00";
                     return; 
                 }
 
                 snap.forEach(doc => {
-                    const d = doc.data();
-                    d.id = doc.id;
+                    const d = doc.data(); d.id = doc.id;
                     currentPayrollData.push(d);
                     totalNet += (d.net || 0); totalEmpEPF += (d.employer_epf || 0);
 
                     const displayName = staffMap[d.uid] ? staffMap[d.uid].displayName : d.staffName;
+                    const modeText = d.attendanceStats?.mode === 'hourly' ? '⌚ Hourly' : '📅 Daily';
+                    
                     const row = document.createElement('div');
-                    row.className = `row align-items-center py-3 border-bottom px-3 bg-white status-${d.status}`;
+                    row.className = `row align-items-center py-3 border-bottom px-3 bg-white status-${d.status} hover-bg-light`;
                     row.innerHTML = `
                         <div class="col-3">
-                            <div class="fw-bold text-primary">${displayName}</div>
-                            <small class="text-muted">${d.attendanceStats?.mode === 'hourly' ? '⌚ Hourly Rate' : '📅 Daily Rate'}</small>
+                            <div class="fw-bold text-primary" style="cursor:pointer" onclick="openEditModal('${d.id}')">${displayName}</div>
+                            <small class="text-muted">${modeText}</small>
                         </div>
-                        <div class="col-2 text-primary">RM ${formatMoney(d.final_basic || d.basic)}</div>
+                        <div class="col-2 text-primary fw-bold">RM ${formatMoney(d.final_basic || d.basic)}</div>
                         <div class="col-2 text-danger">RM ${formatMoney(d.deductions?.total || 0)}</div>
-                        <div class="col-2 fw-bold">RM ${formatMoney(d.net)}</div>
-                        <div class="col-1"><span class="badge ${d.status === 'Published' ? 'bg-success' : 'bg-warning text-dark'}">${d.status}</span></div>
+                        <div class="col-2 fw-bold fs-5">RM ${formatMoney(d.net)}</div>
+                        <div class="col-1"><span class="badge ${d.status === 'Published' ? 'bg-success' : 'bg-warning text-dark'} px-2 py-1">${d.status}</span></div>
                         <div class="col-2 text-end">
-                            <button class="btn btn-sm btn-light border" onclick="openEditModal('${d.id}')"><i data-lucide="edit-2" class="size-4"></i></button>
-                            <button class="btn btn-sm btn-light border" onclick="viewPayslip('${d.id}')"><i data-lucide="printer" class="size-4"></i></button>
+                            <button class="btn btn-sm btn-light border me-1" onclick="openEditModal('${d.id}')" title="Edit"><i data-lucide="edit-2" class="size-4"></i></button>
+                            <button class="btn btn-sm btn-outline-dark" onclick="viewPayslip('${d.id}')" title="Print/View"><i data-lucide="printer" class="size-4"></i></button>
                         </div>
                     `;
                     listDiv.appendChild(row);
@@ -972,7 +909,7 @@
                 document.getElementById('statEPF').innerText = "RM " + formatMoney(totalEmpEPF);
                 lucide.createIcons();
             } catch (e) { console.error(e); } 
-            finally { showLoading(false); }
+            finally { window.showLoading(false); }
         };
 
         window.openCreateModal = () => {
@@ -1022,7 +959,6 @@
 
             document.getElementById('formStatus').value = d.status || 'Draft';
             
-            // 恢复 Hint 显示
             const staff = staffMap[d.uid];
             if (staff && staff.statutory) {
                 const epfRaw = staff.statutory.epf?.contrib || '';
@@ -1035,17 +971,22 @@
                 document.getElementById('inpStdDays').value = d.attendanceStats.stdDays || 26;
                 document.getElementById('metaDaysAct').value = d.attendanceStats.actDays || 0;
                 document.getElementById('metaPaidLeave').value = d.attendanceStats.paidLeave || 0;
-                document.getElementById('metaTotalHrs').value = d.attendanceStats.totalHrs || 0;
+                document.getElementById('metaTotalHrs').value = d.attendanceStats.totalHrs || 0; // Using raw decimal for calculations
                 document.getElementById('metaLateMins').value = d.attendanceStats.lateMins || 0;
                 document.getElementById('metaLateCount').value = d.attendanceStats.lateCount || 0;
                 
                 document.getElementById('dispActDays').innerHTML = `${d.attendanceStats.actDays} <span style="font-size:0.6rem">Days</span>`;
                 document.getElementById('dispPaidLeave').innerHTML = `${d.attendanceStats.paidLeave} <span style="font-size:0.6rem">Days</span>`;
                 document.getElementById('dispPayableDays').innerHTML = `${parseFloat(d.attendanceStats.actDays) + parseFloat(d.attendanceStats.paidLeave)} <span style="font-size:0.6rem">Days</span>`;
-                document.getElementById('dispTotalHrs').innerHTML = `${d.attendanceStats.totalHrs || 0} <span style="font-size:0.6rem">hrs</span>`;
+                
+                const savedTotalHrs = parseFloat(d.attendanceStats.totalHrs) || 0;
+                const hrPart = Math.floor(savedTotalHrs);
+                const minPart = Math.round((savedTotalHrs - hrPart) * 60);
+                document.getElementById('dispTotalHrs').innerHTML = `${hrPart}h ${minPart}m`;
+                
                 document.getElementById('dispLateStats').innerHTML = `${d.attendanceStats.lateCount || 0} <span style="font-size:0.6rem">times (${d.attendanceStats.lateMins || 0}m)</span>`;
                 
-                calcTotals();
+                calcTotals(false);
             }
             formModal.show();
         };
@@ -1055,12 +996,11 @@
             if(!d) return;
             const usedBasic = d.final_basic || d.basic; 
 
-            let extraEarnRows = "";
+            let extraEarnRows = "", extraDedRows = "";
             if(d.earnings.commission > 0) extraEarnRows += `<tr><td>COMMISSION</td><td style="text-align: right;">${formatMoney(d.earnings.commission)}</td><td></td><td></td></tr>`;
             if(d.earnings.ot > 0) extraEarnRows += `<tr><td>OVERTIME</td><td style="text-align: right;">${formatMoney(d.earnings.ot)}</td><td></td><td></td></tr>`;
             if(d.earnings.allowance > 0) extraEarnRows += `<tr><td>ALLOWANCE</td><td style="text-align: right;">${formatMoney(d.earnings.allowance)}</td><td></td><td></td></tr>`;
 
-            let extraDedRows = "";
             if(d.deductions.eis > 0) extraDedRows += `<tr><td></td><td></td><td style="padding-left: 20px;">EIS (Employee)</td><td style="text-align: right;">${formatMoney(d.deductions.eis)}</td></tr>`;
             if(d.deductions.tax > 0) extraDedRows += `<tr><td></td><td></td><td style="padding-left: 20px;">PCB / TAX</td><td style="text-align: right;">${formatMoney(d.deductions.tax)}</td></tr>`;
             if(d.deductions.late > 0) extraDedRows += `<tr><td></td><td></td><td style="padding-left: 20px; color:red;">LATE DEDUCTION</td><td style="text-align: right; color:red;">${formatMoney(d.deductions.late)}</td></tr>`;
@@ -1068,27 +1008,31 @@
 
             const stats = d.attendanceStats || { actDays:0, schDays:0, paidLeave:0 };
             const html = `
-                <div class="payslip-preview">
-                    <div class="payslip-header">
-                        <div class="company-name">RH RIDER HUB MOTOR (M) SDN. BHD.</div>
-                        <div class="company-address">NO.26&28, JALAN MERU IMPIAN B3, CASA KAYANGAN @ PUSAT PERNIAGAAN MERU IMPIAN,<br>BANDAR MERU RAYA, 30020 IPOH, Perak</div>
+                <div class="payslip-preview bg-white shadow-sm border rounded">
+                    <div class="payslip-header border-bottom border-dark pb-3 mb-3">
+                        <div class="company-name fs-4">RH RIDER HUB MOTOR (M) SDN. BHD.</div>
+                        <div class="company-address text-secondary mt-1">NO.26&28, JALAN MERU IMPIAN B3, CASA KAYANGAN @ PUSAT PERNIAGAAN MERU IMPIAN,<br>BANDAR MERU RAYA, 30020 IPOH, Perak</div>
                     </div>
 
-                    <div class="info-grid">
+                    <div class="info-grid bg-light p-3 rounded mb-3 border">
                         <div>
-                            <div class="info-row"><span>Employee Name</span> <span>: ${d.staffName}</span></div>
+                            <div class="info-row"><span>Employee Name</span> <span class="fw-bold">: ${d.staffName}</span></div>
                             <div class="info-row"><span>Department</span> <span>: ${d.department}</span></div>
                             <div class="info-row"><span>Employee Code</span> <span>: ${d.staffCode}</span></div>
+                            <div class="info-row mt-1 pt-1 border-top border-secondary border-opacity-25"><span>Bank Acc</span> <span class="fw-bold">: ${d.bankAcc || '-'} (${d.bankName || '-'})</span></div>
                         </div>
                         <div>
                             <div class="info-row"><span>IC Number</span> <span>: ${d.icNo}</span></div>
                             <div class="info-row"><span>EPF Number</span> <span>: ${d.epfNo}</span></div>
-                            <div class="info-row"><span>Pay Period</span> <span>: ${d.month}</span></div>
+                            <div class="info-row"><span>SOCSO Number</span> <span>: ${d.socsoNo}</span></div>
+                            <div class="info-row mt-1 pt-1 border-top border-secondary border-opacity-25 text-primary fw-bold"><span>Pay Period</span> <span>: ${d.month}</span></div>
                         </div>
                     </div>
 
                     <table class="finance-table">
-                        <thead><tr><th style="width:35%">EARNINGS</th><th style="text-align:right">AMOUNT</th><th style="width:35%; padding-left:20px;">DEDUCTIONS</th><th style="text-align:right">AMOUNT</th></tr></thead>
+                        <thead class="bg-light">
+                            <tr><th style="width:35%">EARNINGS</th><th style="text-align:right">AMOUNT</th><th style="width:35%; padding-left:20px;">DEDUCTIONS</th><th style="text-align:right">AMOUNT</th></tr>
+                        </thead>
                         <tbody>
                             <tr>
                                 <td>BASIC PAY</td><td style="text-align:right">${formatMoney(usedBasic)}</td>
@@ -1100,22 +1044,25 @@
                             </tr>
                             ${extraEarnRows}
                             ${extraDedRows}
-                            <tr>
-                                <td style="font-weight:bold; padding-top:10px;">Total Earnings</td><td style="text-align:right; font-weight:bold; padding-top:10px;">${formatMoney(d.gross)}</td>
-                                <td style="padding-left:20px; font-weight:bold; padding-top:10px;">Total Deductions</td><td style="text-align:right; font-weight:bold; padding-top:10px;">${formatMoney(d.deductions.total)}</td>
+                            <tr class="border-top border-dark">
+                                <td style="font-weight:bold; padding-top:10px;">Total Earnings</td><td style="text-align:right; font-weight:bold; padding-top:10px; color:#2563eb;">${formatMoney(d.gross)}</td>
+                                <td style="padding-left:20px; font-weight:bold; padding-top:10px;">Total Deductions</td><td style="text-align:right; font-weight:bold; padding-top:10px; color:#dc2626;">${formatMoney(d.deductions.total)}</td>
                             </tr>
                         </tbody>
                     </table>
 
-                    <div class="total-section d-flex justify-content-between">
-                        <div>
-                            <div>Employer EPF: ${formatMoney(d.employer_epf)}</div>
-                            <div>Employer SOCSO: ${formatMoney(d.employer_socso)}</div>
+                    <div class="total-section d-flex justify-content-between align-items-center mt-4 bg-light p-3 rounded border">
+                        <div class="small text-muted">
+                            <div>Employer EPF: <b>RM ${formatMoney(d.employer_epf)}</b></div>
+                            <div>Employer SOCSO: <b>RM ${formatMoney(d.employer_socso)}</b></div>
                         </div>
-                        <div style="font-size:1.3rem; font-weight:bold;">NET PAY : RM ${formatMoney(d.net)}</div>
+                        <div class="text-end">
+                            <div class="text-muted text-uppercase fw-bold" style="font-size:0.7rem; letter-spacing:1px;">Net Pay</div>
+                            <div class="text-dark" style="font-size:1.6rem; font-weight:900;">RM ${formatMoney(d.net)}</div>
+                        </div>
                     </div>
                     
-                    <div style="margin-top:15px; font-size:0.8rem; border:1px solid #ccc; padding:8px;">
+                    <div style="margin-top:20px; font-size:0.75rem; border:1px dashed #ccc; padding:10px; border-radius:6px; color:#64748b;">
                         <b>Attendance Stats:</b> Payable Days: ${parseFloat(stats.actDays) + parseFloat(stats.paidLeave)} / ${stats.stdDays} (Worked: ${stats.actDays}, Leave: ${stats.paidLeave})
                         <br><b>Late Stats:</b> ${stats.lateCount || 0} times (${stats.lateMins || 0} minutes)
                     </div>
@@ -1126,37 +1073,50 @@
         };
 
         window.publishAll = async () => {
-            if(!confirm("Publish all draft payslips? This will make them visible to staff and permanently deduct advances.")) return;
-            showLoading(true);
+            const drafts = currentPayrollData.filter(d => d.status === 'Draft');
+            if(drafts.length === 0) return alert("No draft payslips found to publish.");
+            
+            if(!confirm(`Are you sure you want to officially publish ${drafts.length} payslip(s)?\n\nThis will make them visible to staff and PERMANENTLY deduct their approved Salary Advances.`)) return;
+            
+            window.showLoading(true);
+            const month = document.getElementById('globalMonthPicker').value;
+
             try {
-                const batch = writeBatch(db);
-                let count = 0;
-                
-                for (const d of currentPayrollData) {
-                    if (d.status === 'Draft') {
-                        batch.update(doc(db, "payslips", d.id), { status: 'Published' });
-                        
+                await runTransaction(db, async (transaction) => {
+                    const advanceRefsToUpdate = [];
+                    for (const d of drafts) {
                         if (d.deductions?.advance > 0) {
-                            const advSnap = await getDocs(query(collection(db, "salary_advances"), where("uid", "==", d.uid), where("status", "==", "Approved")));
+                            const targetIds = [d.uid];
+                            if(staffMap[d.uid]?.authUid) targetIds.push(staffMap[d.uid].authUid);
+                            
+                            const advSnap = await getDocs(query(collection(db, "salary_advances"), where("uid", "in", targetIds), where("status", "==", "Approved")));
                             advSnap.forEach(advDoc => {
                                 if (!advDoc.data().isDeducted) {
-                                    batch.update(advDoc.ref, { isDeducted: true, deductedInMonth: document.getElementById('globalMonthPicker').value });
+                                    advanceRefsToUpdate.push(advDoc.ref);
                                 }
                             });
                         }
-                        count++;
                     }
-                }
-                
-                if (count > 0) {
-                    await batch.commit();
-                    alert(`Successfully published ${count} payslips.`);
-                    loadPayroll();
-                } else {
-                    alert("No drafts found to publish.");
-                }
-            } catch (e) { alert("Error: " + e.message); }
-            finally { showLoading(false); }
+
+                    drafts.forEach(d => {
+                        const psRef = doc(db, "payslips", d.id);
+                        transaction.update(psRef, { status: 'Published', publishedAt: serverTimestamp() });
+                    });
+
+                    advanceRefsToUpdate.forEach(ref => {
+                        transaction.update(ref, { isDeducted: true, deductedInMonth: month, deductedAt: serverTimestamp() });
+                    });
+                });
+
+                alert(`Successfully published ${drafts.length} payslips!`);
+                loadPayroll();
+
+            } catch (e) { 
+                console.error(e);
+                alert("Transaction Failed: " + e.message); 
+            } finally { 
+                window.showLoading(false); 
+            }
         };
     </script>
 </body>

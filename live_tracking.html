@@ -10,7 +10,6 @@
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
-        /* Loading Overlay Styling */
         #loadingOverlay { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(255, 255, 255, 0.95); z-index: 9999; 
@@ -45,12 +44,12 @@
 </head>
 <body>
 
-<div id="header-placeholder"></div>
-
 <div id="loadingOverlay">
     <div class="spinner-border text-primary mb-3" role="status"></div>
     <h5 class="fw-bold text-dark" id="loadingText">Verifying Access...</h5>
 </div>
+
+<div id="header-placeholder"></div>
 
 <div id="mainContainer" class="d-none w-100 flex-grow-1 d-flex">
     
@@ -104,10 +103,10 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, collection, query, where, onSnapshot, orderBy, getDocs, getDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
     import { firebaseConfig } from "./firebase-config.js";
-    import { initUnifiedHeader } from "./header-app.js";
+    import { requireAdmin } from "./auth-guard.js";
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
@@ -119,43 +118,31 @@
     let map, currentMarker, storeCircle;
     let directionsService, directionsRenderer; 
 
-    // Store all staff's latest positions
     let activeStaffMap = {}; 
     let usersMap = {}; 
     
     let lastKnownPosition = null;
     let unsubscribeLastLoc = null;
 
-    onAuthStateChanged(auth, async (user) => {
-        if (!user) {
-            window.location.href = "index.html";
-            return;
-        }
-        try {
-            const adminDoc = await getDoc(doc(db, "users", user.uid));
-            if (adminDoc.exists() && adminDoc.data().role === 'admin') {
-                initUnifiedHeader(auth, db);
-                document.getElementById('loadingText').innerText = "Initializing Map...";
-                await startApp(); 
-                document.getElementById('loadingOverlay').classList.add('d-none');
-                document.getElementById('mainContainer').classList.remove('d-none');
-            } else {
-                alert("Unauthorized Access. Admins only.");
-                await signOut(auth);
-                window.location.href = "index.html";
-            }
-        } catch (e) {
-            console.error(e);
-            alert("Auth Error: " + e.message);
-            window.location.href = "index.html";
-        }
-    });
+    // We must expose initMap to the window object so the Google Maps script can call it
+    // But we don't do anything here, we wait for Firebase Auth to finish.
+    window.initMap = function() {}; 
 
-    window.initMap = function() {};
+    // 🟢 使用 requireAdmin
+    requireAdmin(app, db, async (user) => {
+        document.getElementById('loadingText').innerText = "Initializing Map...";
+        await startApp(); 
+    });
 
     async function startApp() {
         await fetchUsers(); 
         
+        // Ensure Google Maps is loaded
+        if(typeof google === 'undefined' || !google.maps) {
+            alert("Google Maps failed to load. Please check your internet connection.");
+            return;
+        }
+
         map = new google.maps.Map(document.getElementById("map"), {
             center: STORE_LOCATION,
             zoom: 12,

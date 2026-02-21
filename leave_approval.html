@@ -38,12 +38,12 @@
 </head>
 <body>
 
-<div id="header-placeholder"></div>
-
 <div id="loadingOverlay">
     <div class="spinner-border text-primary mb-3" role="status"></div>
     <h5 class="fw-bold text-dark" id="loadingText">Verifying Access...</h5>
 </div>
+
+<div id="header-placeholder"></div>
 
 <div id="mainContainer" class="container py-4 d-none">
     
@@ -203,7 +203,7 @@
             <div class="modal-body">
                 <div class="alert alert-warning small">
                     <i data-lucide="alert-triangle" class="size-4 me-1"></i>
-                    <strong>Warning:</strong> Changing status may affect the employee's Annual Leave Balance.
+                    <strong>Warning:</strong> Changing status will automatically recalculate the employee's Leave Balance.
                 </div>
                 <div class="mb-3">
                     <label class="form-label small fw-bold text-muted">Current Status</label>
@@ -223,8 +223,6 @@
                 </div>
                 
                 <input type="hidden" id="editLeaveId">
-                <input type="hidden" id="editLeaveDays">
-                <input type="hidden" id="editLeaveType">
                 <input type="hidden" id="editAuthUid">
             </div>
             <div class="modal-footer">
@@ -239,13 +237,13 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, query, where, onSnapshot, doc, runTransaction, updateDoc, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, collection, query, where, onSnapshot, doc, runTransaction, updateDoc, serverTimestamp, limit } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
     import { firebaseConfig } from "./firebase-config.js";
-    import { initUnifiedHeader } from "./header-app.js";
+    import { requireAdmin } from "./auth-guard.js";
+    import { normalizeDate } from "./utils.js"; 
 
-    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const auth = getAuth(app);
@@ -253,45 +251,21 @@
     let fullHistoryList = [];
     let attachmentModal, rejectModal, editStatusModal;
 
-    // Initialize Modals
-    try {
+    document.getElementById('todayDate').innerText = new Date().toLocaleDateString();
+
+    requireAdmin(app, db, async (user) => {
+        document.getElementById('loadingText').innerText = "Loading Requests...";
+        
         attachmentModal = new bootstrap.Modal(document.getElementById('attachmentModal'));
         rejectModal = new bootstrap.Modal(document.getElementById('rejectModal'));
         editStatusModal = new bootstrap.Modal(document.getElementById('editStatusModal'));
-    } catch (e) {}
 
-    document.getElementById('todayDate').innerText = new Date().toLocaleDateString();
-
-    // --- Authentication & Access Control ---
-    onAuthStateChanged(auth, async (user) => {
-        if (!user) {
-            window.location.href = "index.html";
-            return;
-        }
-
-        try {
-            const adminDoc = await getDoc(doc(db, "users", user.uid));
-            if (adminDoc.exists() && adminDoc.data().role === 'admin') {
-                initUnifiedHeader(auth, db);
-                document.getElementById('loadingText').innerText = "Loading Requests...";
-                initListeners();
-                document.getElementById('loadingOverlay').classList.add('d-none');
-                document.getElementById('mainContainer').classList.remove('d-none');
-            } else {
-                alert("Unauthorized Access. Admins only.");
-                await signOut(auth);
-                window.location.href = "index.html";
-            }
-        } catch (e) {
-            console.error(e);
-            alert("Auth Error: " + e.message);
-            window.location.href = "index.html";
-        }
+        initListeners();
+        lucide.createIcons();
     });
 
-    // --- Data Listeners ---
     function initListeners() {
-        // Listener 1: Pending Requests
+        // Pending Requests Listener
         const qPending = query(collection(db, "leaves"), where("status", "==", "Pending"));
         onSnapshot(qPending, (snapshot) => {
             const list = [];
@@ -301,8 +275,8 @@
             updateBadge(list.length);
         });
 
-        // Listener 2: History (Approved/Rejected)
-        const qHistory = query(collection(db, "leaves"), where("status", "in", ["Approved", "Rejected"]));
+        // 🟢 P4 Fix: Limit History Read to 200 records to prevent massive billing spikes
+        const qHistory = query(collection(db, "leaves"), where("status", "in", ["Approved", "Rejected"]), limit(200));
         onSnapshot(qHistory, (snapshot) => {
             const list = [];
             snapshot.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
@@ -390,6 +364,8 @@
             const badgeClass = getBadgeClass(item.type);
             const displayName = item.empName || item.email || 'Unknown User';
             const tr = document.createElement('tr');
+            
+            // 🟢 P1 Fix: Removed Days and Type from onClick payload. Transaction handles it.
             tr.innerHTML = `
                 <td class="ps-4">
                     <div class="d-flex align-items-center gap-2">
@@ -412,7 +388,7 @@
                 </td>
                 <td class="text-end pe-4">
                     <button class="btn btn-sm btn-outline-danger me-1" onclick="openRejectModal('${item.id}')">Reject</button>
-                    <button class="btn btn-sm btn-success fw-bold text-white" onclick="handleApprove('${item.id}', '${item.authUid || item.uid}', ${item.days}, '${item.type}')">Approve</button>
+                    <button class="btn btn-sm btn-success fw-bold text-white" onclick="handleApprove('${item.id}', '${item.authUid || item.uid}')">Approve</button>
                 </td>`;
             tbody.appendChild(tr);
         });
@@ -437,9 +413,8 @@
                 ? `<button class="btn btn-xs btn-light border text-primary mt-1" onclick="viewAttachment('${item.attachmentUrl}')"><i data-lucide="paperclip" class="size-3 me-1"></i> Proof</button>` 
                 : '';
 
-            // 🟢 NEW: Edit Button Logic
-            // Pass necessary data for rollback: ID, CurrentStatus, AuthID, Days, Type
-            const editBtn = `<button class="btn btn-xs btn-outline-secondary ms-2" onclick="openEditStatusModal('${item.id}', '${item.status}', '${item.authUid}', ${item.days}, '${item.type}')" title="Edit Status"><i data-lucide="edit-2" class="size-3"></i></button>`;
+            // 🟢 P1 Fix: Removed Days and Type. Safe payload.
+            const editBtn = `<button class="btn btn-xs btn-outline-secondary ms-2" onclick="openEditStatusModal('${item.id}', '${item.status}', '${item.authUid || item.uid}')" title="Edit Status"><i data-lucide="edit-2" class="size-3"></i></button>`;
 
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -466,22 +441,19 @@
         lucide.createIcons();
     }
 
-    // --- NEW: Edit Status Logic ---
-    window.openEditStatusModal = function(id, status, authUid, days, type) {
+    // --- SECURE: Edit Status Logic ---
+    window.openEditStatusModal = function(id, status, authUid) {
         document.getElementById('editLeaveId').value = id;
         document.getElementById('editCurrentStatus').value = status;
         document.getElementById('editAuthUid').value = authUid;
-        document.getElementById('editLeaveDays').value = days;
-        document.getElementById('editLeaveType').value = type;
         
         const sel = document.getElementById('editNewStatus');
-        sel.value = status; // Default to current
+        sel.value = status; 
         
-        // Show/Hide Reason box logic
         sel.onchange = () => {
             document.getElementById('editReasonGroup').classList.toggle('d-none', sel.value !== 'Rejected');
         };
-        sel.onchange(); // Init check
+        sel.onchange(); 
 
         editStatusModal.show();
     }
@@ -491,29 +463,30 @@
         const oldStatus = document.getElementById('editCurrentStatus').value;
         const newStatus = document.getElementById('editNewStatus').value;
         const authUid = document.getElementById('editAuthUid').value;
-        const days = parseInt(document.getElementById('editLeaveDays').value);
-        const type = document.getElementById('editLeaveType').value;
         const reason = document.getElementById('editStatusReason').value;
 
         if (oldStatus === newStatus) {
-            editStatusModal.hide();
-            return;
+            editStatusModal.hide(); return;
         }
-
         if (newStatus === 'Rejected' && !reason.trim()) {
-            alert("Please provide a rejection reason.");
-            return;
+            alert("Please provide a rejection reason."); return;
         }
-
-        if(!confirm(`⚠️ Warning:\nChanging status from ${oldStatus} to ${newStatus}.\n\nThis may update the user's Annual Leave balance.\nContinue?`)) return;
+        if(!confirm(`⚠️ Warning:\nChanging status from ${oldStatus} to ${newStatus}.\n\nThis will auto-calculate the employee's Leave Balance.\nContinue?`)) return;
 
         try {
             await runTransaction(db, async (transaction) => {
-                const userRef = doc(db, "users", authUid);
                 const leaveRef = doc(db, "leaves", id);
-                const userDoc = await transaction.get(userRef);
+                const userRef = doc(db, "users", authUid);
                 
-                if (!userDoc.exists()) throw "User not found for balance update.";
+                // 🟢 P1 Fix: Securely fetch the real days/type from the database
+                const leaveDoc = await transaction.get(leaveRef);
+                if (!leaveDoc.exists()) throw new Error("Leave record not found.");
+                const leaveData = leaveDoc.data();
+                const days = leaveData.days;
+                const type = leaveData.type;
+
+                const userDoc = await transaction.get(userRef);
+                if (!userDoc.exists()) throw new Error("User not found for balance update.");
                 
                 const userData = userDoc.data();
                 const currentBalance = userData.leave_balance?.annual || 0;
@@ -522,15 +495,11 @@
                 const isAnnual = (type === 'Annual Leave');
 
                 // 1. REVERT OLD EFFECT
-                if (oldStatus === 'Approved' && isAnnual) {
-                    // It was deducted, so we add it back
-                    newBalance += days;
-                }
+                if (oldStatus === 'Approved' && isAnnual) newBalance += days;
 
                 // 2. APPLY NEW EFFECT
                 if (newStatus === 'Approved' && isAnnual) {
-                    // Deduct again
-                    if (newBalance < days) throw "Cannot approve: User has insufficient balance after rollback calculation.";
+                    if (newBalance < days) throw new Error("Cannot approve: User has insufficient balance.");
                     newBalance -= days;
                 }
 
@@ -553,14 +522,13 @@
             });
 
             editStatusModal.hide();
-            // Snapshot listener will auto-refresh UI
         } catch (e) {
             console.error(e);
             alert("Update Failed: " + e.message);
         }
     }
 
-    // --- Existing Action Handlers ---
+    // --- SECURE Action Handlers ---
     window.openRejectModal = function(leaveId) {
         document.getElementById('hiddenRejectLeaveId').value = leaveId;
         document.getElementById('rejectReasonInput').value = "";
@@ -588,15 +556,25 @@
         }
     }
 
-    window.handleApprove = async function(leaveId, userId, days, type) {
-        if(!confirm(`Confirm APPROVE ${type} for ${days} days?`)) return;
+    window.handleApprove = async function(leaveId, userId) {
+        if(!confirm(`Confirm APPROVE this leave request?`)) return;
         
         try {
             await runTransaction(db, async (transaction) => {
                 const leaveRef = doc(db, "leaves", leaveId);
                 const userRef = doc(db, "users", userId);
-                const userDoc = await transaction.get(userRef);
                 
+                // 🟢 P1 Fix: Fetch values securely inside transaction
+                const leaveDoc = await transaction.get(leaveRef);
+                if (!leaveDoc.exists()) throw new Error(`Leave request not found.`);
+                
+                const leaveData = leaveDoc.data();
+                if (leaveData.status !== 'Pending') throw new Error(`This request is already ${leaveData.status}.`);
+                
+                const days = leaveData.days;
+                const type = leaveData.type;
+
+                const userDoc = await transaction.get(userRef);
                 if (!userDoc.exists()) throw new Error(`User document ${userId} not found.`);
                 
                 const userData = userDoc.data();
@@ -656,7 +634,6 @@
         return 'badge-leave-annual';
     }
 
-    lucide.createIcons();
 </script>
 </body>
 </html>

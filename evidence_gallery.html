@@ -11,7 +11,12 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
-        /* Section styling for grouping photos by staff */
+        #loadingOverlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(255, 255, 255, 0.95); z-index: 9999; 
+            display: flex; flex-direction: column; justify-content: center; align-items: center; 
+        }
+
         .staff-section {
             background: white;
             border: 1px solid #e2e8f0;
@@ -78,11 +83,16 @@
         }
     </style>
 </head>
-<body>
+<body class="bg-light">
+
+<div id="loadingOverlay">
+    <div class="spinner-border text-primary mb-3" role="status"></div>
+    <h5 class="fw-bold text-dark" id="loadingText">Verifying Access...</h5>
+</div>
 
 <div id="header-placeholder"></div>
 
-<div class="container py-4">
+<div id="mainContainer" class="container py-4 d-none">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
         <div>
             <h4 class="fw-bold m-0"><i data-lucide="image" class="me-2 text-primary"></i>Evidence Gallery</h4>
@@ -138,74 +148,53 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
     import { getFirestore, collection, query, where, getDocs, orderBy, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
     import { firebaseConfig } from "./firebase-config.js";
-    import { initUnifiedHeader } from "./header-app.js";
+    import { requireAdmin } from "./auth-guard.js";
+    import { normalizeDate } from "./utils.js";
 
-    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
     const db = getFirestore(app);
+    const auth = getAuth(app);
 
-    initUnifiedHeader(auth, db);
+    let imageModal;
 
-    const imageModal = new bootstrap.Modal(document.getElementById('imageModal'));
-
-    // Initialize date filter to today
     const dateInput = document.getElementById('dateFilter');
     dateInput.value = new Date().toISOString().split('T')[0];
 
-    /**
-     * Helper to increment/decrement date
-     */
+    // 🟢 使用 requireAdmin 自动验证身份并处理加载状态
+    requireAdmin(app, db, async (user) => {
+        document.getElementById('loadingText').innerText = "Loading Gallery...";
+        imageModal = new bootstrap.Modal(document.getElementById('imageModal'));
+        
+        await loadStaffList();
+        loadEvidenceImpl(); // 执行加载逻辑
+        lucide.createIcons();
+    });
+
     window.changeDate = (days) => {
         const current = new Date(dateInput.value);
         current.setDate(current.getDate() + days);
         dateInput.value = current.toISOString().split('T')[0];
-        loadEvidence(); // Reload data
+        loadEvidenceImpl();
     };
 
-    // Expose load function to global scope for HTML event handlers
-    window.loadEvidence = loadEvidenceImpl; 
+    // 将实现逻辑暴露给全局供 HTML 内部的 onchange 调用
+    window.loadEvidence = loadEvidenceImpl;
 
-    /**
-     * Auth Observer
-     * Checks if user is logged in and is an Admin before loading data.
-     */
-    onAuthStateChanged(auth, async (user) => {
-        if (user) {
-            try {
-                const adminDoc = await getDoc(doc(db, "users", user.uid));
-                if (adminDoc.exists() && adminDoc.data().role === 'admin') {
-                    await loadStaffList();
-                    loadEvidence(); // Initial Load
-                } else {
-                    alert("Unauthorized Access");
-                    window.location.href = "index.html";
-                }
-            } catch (e) {
-                console.error("Auth check failed:", e);
-            }
-        } else {
-            window.location.href = "index.html";
-        }
-    });
-
-    /**
-     * Fetches staff list to populate the filter dropdown
-     */
     async function loadStaffList() {
         const select = document.getElementById('staffFilter');
         try {
             const q = query(collection(db, "users"), where("role", "==", "staff"));
             const snap = await getDocs(q);
             snap.forEach(doc => {
-                const data = doc.data();
-                const name = data.personal?.name || data.name || "Unknown";
+                const d = doc.data();
+                if (d.status === 'disabled') return;
+                const name = d.personal?.name || d.name || "Unknown";
                 const opt = document.createElement('option');
-                opt.value = data.authUid || doc.id; 
+                opt.value = d.authUid || doc.id; 
                 opt.textContent = name;
                 select.appendChild(opt);
             });
@@ -214,24 +203,19 @@
         }
     }
 
-    /**
-     * Main logic to fetch and render evidence photos
-     */
     async function loadEvidenceImpl() {
         const container = document.getElementById('galleryContainer');
         const dateVal = document.getElementById('dateFilter').value;
         const staffVal = document.getElementById('staffFilter').value;
 
-        // Show loading state
         container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>';
 
         try {
-            // Define time range for the selected date (Start of day to End of day)
             const startDate = new Date(dateVal);
+            startDate.setHours(0,0,0,0);
             const endDate = new Date(dateVal);
             endDate.setHours(23, 59, 59, 999);
 
-            // Query Firestore for evidence logs
             let q = query(
                 collection(db, "evidence_logs"),
                 where("capturedAt", ">=", startDate),
@@ -247,12 +231,9 @@
                 return;
             }
 
-            // Group results by Staff Name
             const grouped = {};
             snap.forEach(doc => {
                 const d = doc.data();
-                
-                // Client-side filtering for specific staff selection
                 if (staffVal !== 'all' && d.uid !== staffVal) return;
 
                 const sName = d.staffName || "Unknown Staff";
@@ -260,13 +241,11 @@
                 grouped[sName].push({ id: doc.id, ...d });
             });
 
-            // Handle empty state after client-side filtering
             if (Object.keys(grouped).length === 0) {
                 container.innerHTML = `<div class="text-center py-5 text-muted"><p>No photos found for selected staff.</p></div>`;
                 return;
             }
 
-            // Render gallery
             container.innerHTML = '';
             Object.keys(grouped).forEach(staffName => {
                 const photos = grouped[staffName];
@@ -276,7 +255,6 @@
                 let photosHtml = '';
                 photos.forEach(p => {
                     const timeStr = p.localTime ? p.localTime.split(' ')[1] : "Unknown"; 
-                    // Escape data for secure injection
                     const safeData = JSON.stringify(p).replace(/"/g, '&quot;');
                     
                     photosHtml += `
@@ -314,9 +292,6 @@
         }
     }
 
-    /**
-     * Opens the full-size image modal
-     */
     window.openPhoto = (data) => {
         document.getElementById('modalFullImage').src = data.photoUrl;
         document.getElementById('modalStaffName').innerText = data.staffName;
@@ -324,8 +299,6 @@
         document.getElementById('modalLocation').innerText = data.location;
         imageModal.show();
     }
-
-    lucide.createIcons();
 </script>
 </body>
 </html>

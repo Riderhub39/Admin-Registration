@@ -9,7 +9,6 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
     <style>
-        /* Page Specific Styles & Loading Overlay */
         #loadingOverlay { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(255, 255, 255, 0.95); z-index: 9999; 
@@ -20,18 +19,17 @@
         .nav-tabs .nav-link.active { color: var(--primary); border-bottom: 3px solid var(--primary); font-weight: 600; }
         .bg-readonly { background-color: #f1f5f9 !important; cursor: not-allowed; color: #64748b; }
         
-        /* Error Highlighting for Validation */
         .form-control.is-invalid { border-color: #dc3545; background-color: #fff8f8; }
     </style>
 </head>
-<body>
-
-<div id="header-placeholder"></div>
+<body class="bg-light">
 
 <div id="loadingOverlay">
     <div class="spinner-border text-primary mb-3" role="status"></div>
     <h5 class="fw-bold text-dark" id="loadingText">Verifying Access...</h5>
 </div>
+
+<div id="header-placeholder"></div>
 
 <div class="container-fluid py-3 d-none" id="mainContainer">
     <div class="d-flex justify-content-between align-items-center mb-3 mx-2">
@@ -197,7 +195,7 @@
                             <div class="col-md-1"><label class="form-label">Pay %</label><input type="text" id="pct_1" class="form-control"></div>
                             <div class="col-md-1"><label class="form-label">Chq %</label><input type="text" id="chq_pct_1" class="form-control"></div>
                         </div>
-                        <div class="section-title">Bank Details (GIRO 2)</div>
+                        <div class="section-title text-muted">Bank Details (GIRO 2)</div>
                         <div class="row g-2">
                             <div class="col-md-4"><label class="form-label">Bank Name 2</label><input type="text" id="bank_name_2" class="form-control"></div>
                             <div class="col-md-2"><label class="form-label">Branch ID 2</label><input type="text" id="branch_id_2" class="form-control"></div>
@@ -295,60 +293,34 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs, deleteField } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
-    // Import Configuration and Header Logic
+    
+    // 导入配置文件、工具和权限守卫
     import { firebaseConfig } from "./firebase-config.js";
-    import { initUnifiedHeader } from "./header-app.js";
+    import { requireAdmin } from "./auth-guard.js";
+    import { formatMalaysianPhone, normalizeDate } from "./utils.js"; 
 
-    // --- 1. Initialize EmailJS ---
-    (function(){
-        emailjs.init("yTP2W2IzGSKqHDqWa");
-    })();
+    // 初始化 EmailJS
+    (function(){ emailjs.init("yTP2W2IzGSKqHDqWa"); })();
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const auth = getAuth(app);
     let currentUserData = null; 
 
     const urlParams = new URLSearchParams(window.location.search);
     const uid = urlParams.get('uid');
 
-    // --- Authentication Check & Admin Role Validation ---
-    onAuthStateChanged(auth, async (user) => {
-        if (!user) {
-            window.location.href = "index.html";
-            return;
-        }
-
-        try {
-            // Check if user has Admin privileges
-            const adminDoc = await getDoc(doc(db, "users", user.uid));
-            if (adminDoc.exists() && adminDoc.data().role === 'admin') {
-                // Access granted, initialize UI
-                initUnifiedHeader(auth, db);
-                document.getElementById('loadingText').innerText = "Loading Profile...";
-                document.getElementById('mainContainer').classList.remove('d-none');
-                
-                if(uid) loadUserData(uid);
-                else { alert("No User ID provided"); window.location.href="manage_staff.html"; }
-            } else {
-                // Redirect if not admin
-                alert("Unauthorized Access. Admins only.");
-                await signOut(auth);
-                window.location.href = "index.html";
-            }
-        } catch (e) {
-            console.error(e);
-            window.location.href = "index.html";
-        }
+    // 🟢 使用 auth-guard.js 进行页面保护和初始化
+    requireAdmin(app, db, async (user) => {
+        document.getElementById('loadingText').innerText = "Loading Profile...";
+        if(uid) loadUserData(uid);
+        else { alert("No User ID provided"); window.location.href="manage_staff.html"; }
     });
 
     const setVal = (id, val) => {
         const el = document.getElementById(id);
         if(!el) return;
         if(el.type === 'checkbox') el.checked = (val === true || val === 'YES');
-        else if(el.type === 'date' && val) el.value = val; 
+        else if(el.type === 'date' && val) el.value = normalizeDate(val); // 使用工具格式化日期
         else el.value = val || '';
     };
 
@@ -359,12 +331,11 @@
         return el.value;
     };
 
-    // Helper: Create a new row for children table
     window.createChildRow = function(name, dob, gender, cert, isMy, taxCat, taxPct) {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><input type="text" class="form-control form-control-sm" value="${name || ''}"></td>
-            <td><input type="date" class="form-control form-control-sm" value="${dob || ''}"></td>
+            <td><input type="date" class="form-control form-control-sm" value="${normalizeDate(dob) || ''}"></td>
             <td><select class="form-select form-select-sm"><option value="MALE" ${gender==='MALE'?'selected':''}>Male</option><option value="FEMALE" ${gender==='FEMALE'?'selected':''}>Female</option></select></td>
             <td><input type="text" class="form-control form-control-sm" value="${cert || ''}"></td>
             <td class="text-center"><input type="checkbox" class="form-check-input" ${isMy?'checked':''}></td>
@@ -400,7 +371,6 @@
         return children;
     };
 
-    // Toggle Form Editability based on User Status
     const toggleFormState = (status) => {
         const isEditable = (status === 'editable');
         const form = document.getElementById('masterForm');
@@ -422,47 +392,30 @@
         
         let borderClass = '';
         let textClass = '';
-        if (status === 'editable') {
-            borderClass = 'border-warning';
-            textClass = 'text-warning';
-        } else if (status === 'disabled') {
-            borderClass = 'border-danger';
-            textClass = 'text-danger';
-        } else {
-            borderClass = 'border-success';
-            textClass = 'text-success';
-        }
+        if (status === 'editable') { borderClass = 'border-warning'; textClass = 'text-warning'; } 
+        else if (status === 'disabled') { borderClass = 'border-danger'; textClass = 'text-danger'; } 
+        else { borderClass = 'border-success'; textClass = 'text-success'; }
         
         select.className = `form-select form-select-sm border-2 fw-bold ${borderClass} ${textClass}`;
     };
 
-    // Helper: Calculate Leave Entitlement based on tenure
     async function calculateAnnualEntitlement(joinDateStr) {
         if (!joinDateStr) return 0;
-
         let rules = { t1: {min:1, days:8}, t2: {min:2, days:12}, t3: {min:5, days:16} }; 
         try {
             const snap = await getDoc(doc(db, "settings", "leave_rules"));
-            if(snap.exists()) rules = snap.data();
-        } catch(e) { console.error("Could not load leave rules, using default.", e); }
-
-        const joinDate = new Date(joinDateStr);
-        const today = new Date();
-        const diffTime = Math.abs(today - joinDate);
-        const yearsService = diffTime / (1000 * 60 * 60 * 24 * 365.25);
-
-        let entitlement = 0;
-        if (yearsService >= rules.t3.min) {
-            entitlement = rules.t3.days;
-        } else if (yearsService >= rules.t2.min) {
-            entitlement = rules.t2.days;
-        } else if (yearsService >= rules.t1.min) { 
-            entitlement = rules.t1.days;
-        }
-        return entitlement;
+            if(snap.exists() && snap.data().annual) {
+                const annualRules = snap.data().annual;
+                const joinDate = new Date(joinDateStr);
+                const diffTime = Math.abs(new Date() - joinDate);
+                const yearsService = diffTime / (1000 * 60 * 60 * 24 * 365.25);
+                const matchedRule = annualRules.find(r => yearsService >= r.min && yearsService < r.max);
+                return matchedRule ? matchedRule.days : 0;
+            }
+        } catch(e) { console.error("Rule load error", e); }
+        return 0; // Fallback
     }
 
-    // Logic: Load User Data from Firestore
     async function loadUserData(userId) {
         try {
             const docRef = doc(db, "users", userId);
@@ -472,7 +425,6 @@
                 const data = docSnap.data();
                 currentUserData = data; 
 
-                // Check for auto-lock expiry
                 if (data.status === 'editable' && data.unlockExpiresAt) {
                     const now = new Date();
                     const expiry = data.unlockExpiresAt.toDate(); 
@@ -515,7 +467,6 @@
                     setVal('Issue Date', data.foreign.issue);
                 }
 
-                // ... (Populate other sections: Employment, Statutory, Payroll, Address, Family)
                 if(data.employment) {
                     setVal('Join Date', data.employment.joinDate);
                     setVal('Probation (Months)', data.employment.probation);
@@ -620,6 +571,7 @@
 
                 toggleFormState(data.status || 'editable');
                 document.getElementById('loadingOverlay').style.display = 'none';
+                document.getElementById('mainContainer').classList.remove('d-none');
                 lucide.createIcons();
 
             } else {
@@ -632,7 +584,6 @@
         }
     }
 
-    // Logic: Update Account Status (Editable/Active/Disabled)
     document.getElementById('btnUpdateStatus').addEventListener('click', async () => {
         const newStatus = document.getElementById('statusSelect').value;
         const btn = document.getElementById('btnUpdateStatus');
@@ -662,18 +613,14 @@
         }
     });
 
-    // --- Save Changes Logic with Duplicate Check & Phone Formatting ---
     document.getElementById('btnSaveChanges').addEventListener('click', async () => {
         const overlay = document.getElementById('loadingOverlay');
         const loadingText = document.getElementById('loadingText');
         
-        // 1. Capture and format input values
         const newEmail = getVal('Email Address').trim();
-        const rawNewPhone = getVal('Mobile Number');
-        const newPhone = formatMalaysianPhone(rawNewPhone);
+        // 🟢 使用 utils 中的电话格式化
+        const newPhone = formatMalaysianPhone(getVal('Mobile Number'));
         
-        // --- Duplicate Detection Strategy ---
-        // Verify unique identifiers across the database to prevent conflicts
         const foreignId = getVal('Foreign ID No');
         const passport = getVal('Passport No');
         const icNo = getVal('MYKAD/IC (Malaysian or PR)');
@@ -691,20 +638,18 @@
 
         try {
             for (const check of checks) {
-                if (!check.val) continue; // Skip empty fields
+                if (!check.val) continue; 
                 
-                // Search Firestore for existing records
                 const q = query(collection(db, "users"), where(check.field, "==", check.val));
                 const snap = await getDocs(q);
                 
-                // Ensure the duplicate isn't the current user's own record
                 const duplicateDoc = snap.docs.find(d => d.id !== uid);
                 
                 if (duplicateDoc) {
                     overlay.style.display = 'none';
                     const duplicatesName = duplicateDoc.data().personal?.name || "another user";
                     alert(`Save Failed: Duplicate Data Found!\n\nThe ${check.label} '${check.val}' is already assigned to ${duplicatesName}.`);
-                    return; // Stop execution if duplicates found
+                    return; 
                 }
             }
         } catch (e) {
@@ -714,7 +659,6 @@
             return;
         }
 
-        // --- Proceed to Save ---
         loadingText.innerText = 'Calculating & Saving...';
 
         const oldEmail = currentUserData?.personal?.email || '';
@@ -722,7 +666,6 @@
         const empName = currentUserData?.personal?.name || 'Staff';
         const isActivated = !!currentUserData?.authUid; 
 
-        // Detect critical credential changes (Email/Phone)
         let requiresReset = false;
         if (isActivated && (newEmail !== oldEmail || newPhone !== oldPhone)) {
             const confirmReset = confirm(
@@ -933,16 +876,6 @@
         }
     });
 
-    // Helper: Format phone numbers to E.164 standard (+60)
-    window.formatMalaysianPhone = function(input) {
-        if (!input) return "";
-        let cleaned = input.toString().replace(/\D/g, '');
-        if (cleaned.startsWith('60')) return "+" + cleaned;
-        else if (cleaned.startsWith('0')) return "+60" + cleaned.substring(1);
-        else return "+60" + cleaned;
-    };
-
-    lucide.createIcons();
 </script>
 </body>
 </html>

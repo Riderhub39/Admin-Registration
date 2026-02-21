@@ -61,14 +61,14 @@
         .month-mode-hidden { display: none !important; }
     </style>
 </head>
-<body>
-
-    <div id="header-placeholder"></div>
+<body class="bg-light">
 
     <div id="loadingOverlay">
         <div class="spinner-border text-primary mb-3" role="status"></div>
         <h5 class="fw-bold text-dark" id="loadingText">Verifying Access...</h5>
     </div>
+
+    <div id="header-placeholder"></div>
 
     <div id="mainContainer" class="d-none">
         
@@ -78,29 +78,22 @@
                     <div class="btn-group" role="group">
                         <input type="radio" class="btn-check" name="viewMode" id="modeDay" autocomplete="off" checked onchange="toggleMode('day')">
                         <label class="btn btn-outline-primary" for="modeDay">Day View</label>
-
                         <input type="radio" class="btn-check" name="viewMode" id="modeMonth" autocomplete="off" onchange="toggleMode('month')">
                         <label class="btn btn-outline-primary" for="modeMonth">Month View</label>
                     </div>
 
                     <div id="dayControls" class="d-flex align-items-center gap-2">
                         <button class="btn btn-light border" onclick="changeDate(-1)"><i data-lucide="chevron-left"></i></button>
-                        <input type="date" id="dateFilter" class="form-control fw-bold" style="width: 150px;">
+                        <input type="date" id="dateFilter" class="form-control fw-bold" style="width: 150px;" onchange="loadData()">
                         <button class="btn btn-light border" onclick="changeDate(1)"><i data-lucide="chevron-right"></i></button>
                     </div>
 
                     <div id="monthControls" class="d-flex align-items-center gap-2 d-none">
-                        <input type="month" id="monthFilter" class="form-control fw-bold" style="width: 160px;">
-                        <select id="monthStatusFilter" class="form-select fw-bold" style="width: 180px;" onchange="loadData()">
-                            <option value="all">Show All Status</option>
-                            <option value="late">Show Late Only</option>
-                            <option value="absent">Show Absent Only</option>
-                            <option value="under">Show Undertime</option>
-                        </select>
+                        <input type="month" id="monthFilter" class="form-control fw-bold" style="width: 160px;" onchange="loadData()">
                     </div>
 
                     <div class="position-relative ms-2">
-                        <input type="text" id="searchInput" class="form-control ps-5" placeholder="Search employee..." style="width: 220px;" onkeyup="handleSearch()">
+                        <input type="text" id="searchInput" class="form-control ps-5" placeholder="Search staff..." style="width: 200px;" onkeyup="handleSearch()">
                         <i data-lucide="search" class="position-absolute top-50 start-0 translate-middle-y ms-3 text-muted size-4"></i>
                     </div>
 
@@ -109,11 +102,9 @@
                     </button>
                 </div>
 
-                <div class="d-flex gap-2">
-                    <button class="btn btn-outline-success d-flex align-items-center gap-2" onclick="exportData()">
-                        <i data-lucide="download" class="size-4"></i> Export Excel
-                    </button>
-                </div>
+                <button class="btn btn-outline-success d-flex align-items-center gap-2" onclick="exportData()">
+                    <i data-lucide="download" class="size-4"></i> Export Excel
+                </button>
             </div>
         </div>
 
@@ -139,7 +130,6 @@
             </ul>
 
             <div class="tab-content" id="myTabContent">
-                
                 <div class="tab-pane fade show active" id="content-dashboard">
                     <div class="row g-4 mb-4">
                         <div class="col-md-3"><div class="stat-card"><div class="text-muted small fw-bold mb-1">TOTAL ACTIVE</div><div class="fs-3 fw-bold text-dark" id="statTotalStaff">0</div></div></div>
@@ -147,39 +137,36 @@
                         <div class="col-md-3"><div class="stat-card border-danger bg-danger bg-opacity-10"><div class="text-danger small fw-bold mb-1">ABSENT</div><div class="fs-3 fw-bold text-danger" id="statAbsent">0</div></div></div>
                         <div class="col-md-3"><div class="stat-card border-info bg-info bg-opacity-10"><div class="text-info small fw-bold mb-1">ON LEAVE</div><div class="fs-3 fw-bold text-info" id="statLeave">0</div></div></div>
                     </div>
-
                     <div class="row">
                         <div class="col-md-6">
                             <div class="card border-0 shadow-sm rounded-4">
-                                <div class="card-header bg-white py-3 fw-bold text-danger"><i data-lucide="user-x" class="size-4 me-2"></i> Absent List</div>
-                                <div class="card-body p-0"><ul class="list-group list-group-flush" id="absentList"><li class="list-group-item text-center text-muted py-4">Loading...</li></ul></div>
+                                <div class="card-header bg-white py-3 fw-bold text-danger">Absent List</div>
+                                <div class="card-body p-0"><ul class="list-group list-group-flush" id="absentList"></ul></div>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="card border-0 shadow-sm rounded-4">
-                                <div class="card-header bg-white py-3 fw-bold text-dark"><i data-lucide="clock" class="size-4 me-2"></i> Late / Undertime</div>
-                                <div class="card-body p-0"><ul class="list-group list-group-flush" id="lateList"><li class="list-group-item text-center text-muted py-4">No issues detected.</li></ul></div>
+                                <div class="card-header bg-white py-3 fw-bold text-dark">Late / Undertime</div>
+                                <div class="card-body p-0"><ul class="list-group list-group-flush" id="lateList"></ul></div>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="tab-pane fade" id="content-logs">
-                    <div id="loadingState" class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted">Loading records...</p></div>
-                    <div id="emptyState" class="text-center py-5 d-none"><i data-lucide="calendar-x" class="size-12 text-muted mb-2"></i><p class="text-muted">No records found for current selection.</p></div>
+                    <div id="loadingState" class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+                    <div id="emptyState" class="text-center py-5 d-none"><p class="text-muted">No records found.</p></div>
                     <div id="attendanceList" class="d-flex flex-column gap-3 pb-5"></div>
                 </div>
 
                 <div class="tab-pane fade" id="content-corrections">
                     <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
-                        <div class="card-header bg-warning bg-opacity-10 py-3 fw-bold text-dark">Pending Requests</div>
                         <div class="table-responsive">
                             <table class="table table-hover mb-0 align-middle">
-                                <thead class="bg-light text-secondary small fw-bold"><tr><th class="ps-4">Staff</th><th>Original Time</th><th>Requested Time</th><th>Reason</th><th class="text-end pe-4">Decision</th></tr></thead>
+                                <thead class="bg-light text-secondary small fw-bold"><tr><th class="ps-4">Staff</th><th>Original</th><th>Requested</th><th>Reason</th><th class="text-end pe-4">Decision</th></tr></thead>
                                 <tbody id="correctionListBody"></tbody>
                             </table>
                         </div>
-                        <div id="noCorrectionsMsg" class="text-center py-5 text-muted d-none"><i data-lucide="check-circle" class="size-12 text-success mb-2"></i><p>All clean! No pending corrections.</p></div>
                     </div>
                 </div>
             </div>
@@ -189,61 +176,31 @@
     <div class="modal fade" id="manualActionModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header bg-primary bg-opacity-10">
-                    <h6 class="modal-title fw-bold text-primary">Admin Override / Manual Entry</h6>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
+                <div class="modal-header bg-primary bg-opacity-10"><h6 class="modal-title fw-bold text-primary">Admin Override</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
-                    <input type="hidden" id="manualUid">
-                    <input type="hidden" id="manualDate">
-                    
+                    <input type="hidden" id="manualUid"><input type="hidden" id="manualDate">
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Select Action</label>
                         <select id="manualActionType" class="form-select" onchange="toggleManualInputs()">
-                            <option value="">-- Choose Action --</option>
+                            <option value="">-- Choose --</option>
                             <option value="Present">Mark Present (Manual Clock In/Out)</option>
-                            <option value="Absent" class="text-danger fw-bold">Mark Absent (Fake Record / No Show)</option>
+                            <option value="Absent">Mark Absent</option>
                             <option value="Annual Leave">Assign Annual Leave</option>
                             <option value="Medical Leave">Assign Medical Leave</option>
                             <option value="Unpaid Leave">Assign Unpaid Leave</option>
                         </select>
                     </div>
-
-                    <div id="boxPresent" class="d-none p-3 bg-light rounded border mb-3">
-                        <small class="d-block text-success fw-bold mb-2"><i data-lucide="check-circle" class="size-3 me-1"></i> Shift & Break Times</small>
-                        <div class="row g-2 mb-2">
-                            <div class="col-6"><label class="small text-muted fw-bold">Clock In</label><input type="time" id="manualClockIn" class="form-control form-control-sm"></div>
-                            <div class="col-6"><label class="small text-muted fw-bold">Clock Out</label><input type="time" id="manualClockOut" class="form-control form-control-sm"></div>
-                        </div>
+                    <div id="boxPresent" class="d-none">
                         <div class="row g-2">
-                            <div class="col-6"><label class="small text-muted">Break Out (Optional)</label><input type="time" id="manualBreakOut" class="form-control form-control-sm"></div>
-                            <div class="col-6"><label class="small text-muted">Break In (Optional)</label><input type="time" id="manualBreakIn" class="form-control form-control-sm"></div>
-                        </div>
-                        <div class="form-text text-muted small mt-2">Creates Verified records. Only fill Break times if needed.</div>
-                    </div>
-
-                    <div id="boxAbsent" class="d-none p-3 bg-danger bg-opacity-10 rounded border border-danger mb-3">
-                        <small class="d-block text-danger fw-bold mb-2"><i data-lucide="alert-triangle" class="size-3 me-1"></i> Violation / Fake Record</small>
-                        <p class="small text-dark mb-0">This will <b>permanently delete</b> any existing attendance records for this day and mark the status as <b>ABSENT</b>.</p>
-                    </div>
-
-                    <div id="boxLeave" class="d-none p-3 bg-light rounded border mb-3">
-                        <small class="d-block text-primary fw-bold mb-2"><i data-lucide="calendar" class="size-3 me-1"></i> Create Leave Record</small>
-                        <div class="alert alert-warning py-1 px-2 mb-2 small" id="annualWarn">
-                            This will deduct <b>1 day</b> from Annual Leave balance.
+                            <div class="col-6"><label class="small">Clock In</label><input type="time" id="manualClockIn" class="form-control"></div>
+                            <div class="col-6"><label class="small">Clock Out</label><input type="time" id="manualClockOut" class="form-control"></div>
                         </div>
                     </div>
-                    
-                    <div class="mb-2" id="reasonGroup">
-                        <label class="small text-muted">Reason / Remarks</label>
-                        <input type="text" id="manualReason" class="form-control form-control-sm" placeholder="Admin Manual Entry">
-                    </div>
-
+                    <div id="boxAbsent" class="d-none alert alert-danger small">Record will be marked ABSENT.</div>
+                    <div id="boxLeave" class="d-none alert alert-info small">1 Day will be assigned.</div>
+                    <div class="mt-3"><label class="small">Reason</label><input type="text" id="manualReason" class="form-control" placeholder="Remarks..."></div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary btn-sm fw-bold px-4" onclick="submitManualAction()">Confirm</button>
-                </div>
+                <div class="modal-footer"><button class="btn btn-primary btn-sm px-4 fw-bold" onclick="submitManualAction()">Confirm</button></div>
             </div>
         </div>
     </div>
@@ -251,802 +208,333 @@
     <div class="modal fade" id="editRecordModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header bg-light">
-                    <h6 class="modal-title fw-bold">Edit Attendance Record</h6>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
+                <div class="modal-header bg-light"><h6 class="modal-title fw-bold">Edit Record</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
-                    <input type="hidden" id="editDocId">
-                    <input type="hidden" id="editSessionType">
-                    <input type="hidden" id="editRecordDate">
-
-                    <div class="alert alert-info py-2 small mb-3">
-                        <i data-lucide="info" class="size-3 me-1"></i>
-                        Editing <b><span id="editSessionDisplay"></span></b> record.
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">New Time</label>
-                        <input type="time" id="editTimeInput" class="form-control">
-                    </div>
-
-                    <div class="alert alert-warning py-2 small text-muted">
-                        <i data-lucide="alert-triangle" class="size-3 me-1"></i>
-                        <b>Note:</b> Saving will create a new record and archive the original (to preserve history).
-                    </div>
+                    <input type="hidden" id="editDocId"><input type="hidden" id="editSessionType"><input type="hidden" id="editRecordDate">
+                    <div class="mb-3"><label class="form-label small fw-bold">New Time</label><input type="time" id="editTimeInput" class="form-control"></div>
                 </div>
                 <div class="modal-footer justify-content-between">
-                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteSingleRecord()">
-                        <i data-lucide="trash-2" class="size-4 me-1"></i> Delete
-                    </button>
-                    <div>
-                        <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-primary btn-sm fw-bold" onclick="saveSingleRecord()">Save Changes</button>
-                    </div>
+                    <button class="btn btn-outline-danger btn-sm" onclick="deleteSingleRecord()">Delete</button>
+                    <button class="btn btn-primary btn-sm fw-bold" onclick="saveSingleRecord()">Save Changes</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="modal fade" id="photoModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-body p-0 bg-dark"><img id="modalImg" src="" class="img-fluid" onerror="this.src='https://placehold.co/400?text=Image+Error'"></div></div></div></div>
+    <div class="modal fade" id="photoModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content bg-dark p-0"><img id="modalImg" src="" class="img-fluid"></div></div></div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, collection, getDocs, query, where, doc, updateDoc, deleteDoc, onSnapshot, writeBatch, serverTimestamp, getDoc, runTransaction, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         import { firebaseConfig } from "./firebase-config.js";
-        import { initUnifiedHeader } from "./header-app.js";
+        import { requireAdmin } from "./auth-guard.js";
+        import { formatTime, msToHM, normalizeDate } from "./utils.js";
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
 
-        let currentDate = new Date().toISOString().split('T')[0];
-        let usersMap = {};
         let schedulesMap = {}; 
         let leavesMap = {};
+        let usersMap = {};
         let docIdToAuthMap = {}; 
         let attendanceData = []; 
         let currentMode = 'day'; 
 
-        document.getElementById('dateFilter').value = currentDate;
-        document.getElementById('monthFilter').value = new Date().toISOString().slice(0, 7); 
-        const photoModal = new bootstrap.Modal(document.getElementById('photoModal'));
-        const manualActionModal = new bootstrap.Modal(document.getElementById('manualActionModal'));
-        const editRecordModal = new bootstrap.Modal(document.getElementById('editRecordModal')); // 🟢 Init Edit Modal
+        let photoModal, manualActionModal, editRecordModal;
 
-        // --- Auth & Role Check ---
-        onAuthStateChanged(auth, async (user) => {
-            if (!user) {
-                window.location.href = "index.html";
-                return;
-            }
+        requireAdmin(app, db, async (user) => {
+            document.getElementById('loadingText').innerText = "Loading Attendance...";
+            photoModal = new bootstrap.Modal(document.getElementById('photoModal'));
+            manualActionModal = new bootstrap.Modal(document.getElementById('manualActionModal'));
+            editRecordModal = new bootstrap.Modal(document.getElementById('editRecordModal'));
 
-            try {
-                // Verify Admin Role
-                const adminDoc = await getDoc(doc(db, "users", user.uid));
-                if (adminDoc.exists() && adminDoc.data().role === 'admin') {
-                    // Success: Init UI
-                    initUnifiedHeader(auth, db);
-                    document.getElementById('loadingText').innerText = "Loading Attendance...";
-                    await initApp();
-                    
-                    document.getElementById('loadingOverlay').classList.add('d-none');
-                    document.getElementById('mainContainer').classList.remove('d-none');
-                } else {
-                    alert("Unauthorized Access. Admins only.");
-                    await signOut(auth);
-                    window.location.href = "index.html";
-                }
-            } catch (e) {
-                alert("Auth Error: " + e.message);
-                window.location.href = "index.html";
-            }
-        });
-
-        async function initApp() {
             await fetchUsers();
             loadData();
             listenToCorrections();
-        }
+        });
 
         async function fetchUsers() {
-            try {
-                const q = query(collection(db, "users"), where("role", "==", "staff"));
-                const snap = await getDocs(q);
-                snap.forEach(doc => {
-                    const d = doc.data();
-                    const authUid = d.authUid;
-                    if (authUid) {
-                        docIdToAuthMap[doc.id] = authUid;
-                        if (d.id) docIdToAuthMap[String(d.id)] = authUid;
-                        if (d.empCode) docIdToAuthMap[d.empCode] = authUid;
-                    }
-                    
-                    // 优先使用 AuthUID 作为 Key，与 loadData 逻辑保持一致
-                    const key = authUid || doc.id;
-                    
-                    usersMap[key] = {
-                        name: d.personal?.name || d.personal?.shortName || "Unknown",
-                        photo: d.faceIdPhoto && d.faceIdPhoto.startsWith('http') ? d.faceIdPhoto : null,
-                        email: d.personal?.email,
-                        status: d.status || 'active',
-                        // 🟢 关键修复：显式存储两个 ID，避免混淆
-                        docId: doc.id,       // 用于操作数据库文档 (扣余额)
-                        authUid: authUid     // 用于标记考勤记录 (App识别)
-                    };
-                });
-            } catch (e) { console.error(e); }
-        }
-
-        // 🟢 FIX: Toggle Mode & Tab Handling (Residue Fix)
-        window.toggleMode = (mode) => {
-            currentMode = mode;
-            const dashTabLi = document.getElementById('navItemDashboard');
-            const dashTabBtn = document.getElementById('tab-dashboard');
-            const logTabBtn = document.getElementById('tab-logs');
-
-            if(mode === 'day') {
-                document.getElementById('dayControls').classList.remove('d-none');
-                document.getElementById('monthControls').classList.add('d-none');
-                
-                // Show Dashboard Tab
-                dashTabLi.classList.remove('month-mode-hidden');
-                
-                // Switch to Dashboard Tab
-                const tabInstance = new bootstrap.Tab(dashTabBtn);
-                tabInstance.show();
-            } else {
-                document.getElementById('dayControls').classList.add('d-none');
-                document.getElementById('monthControls').classList.remove('d-none');
-                
-                // Hide Dashboard Tab (Causes residue if not hidden)
-                dashTabLi.classList.add('month-mode-hidden');
-                
-                // Force switch to Logs
-                const tabInstance = new bootstrap.Tab(logTabBtn);
-                tabInstance.show();
-            }
-            // Clear content to prevent residue
-            document.getElementById('attendanceList').innerHTML = '<div class="text-center py-4 text-muted">Loading new view...</div>';
-            loadData();
-        }
-
-        window.handleSearch = () => {
-            const term = document.getElementById('searchInput').value.toLowerCase();
-            const cards = document.querySelectorAll('.user-card-container');
-            cards.forEach(card => {
-                const name = card.getAttribute('data-name').toLowerCase();
-                if(name.includes(term)) card.style.display = 'block';
-                else card.style.display = 'none';
+            const snap = await getDocs(query(collection(db, "users"), where("role", "==", "staff")));
+            snap.forEach(docSnap => {
+                const d = docSnap.data();
+                if (d.authUid) docIdToAuthMap[docSnap.id] = d.authUid;
+                const key = d.authUid || docSnap.id;
+                usersMap[key] = {
+                    name: d.personal?.name || d.name || "Unknown Staff",
+                    photo: d.faceIdPhoto || null,
+                    email: d.personal?.email,
+                    status: d.status || 'active',
+                    docId: docSnap.id,
+                    authUid: d.authUid
+                };
             });
         }
 
-        function normalizeDate(dateStr) {
-            if(!dateStr) return "";
-            const parts = dateStr.split('-');
-            if(parts.length !== 3) return dateStr;
-            return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-        }
-
-        // 🟢 Helper for Dates (Timezone Safe)
-        function getNextDay(dateStr) {
-            const date = new Date(dateStr);
-            date.setDate(date.getDate() + 1);
-            return date.toISOString().split('T')[0];
+        window.toggleMode = (mode) => {
+            currentMode = mode;
+            const dashTabLi = document.getElementById('navItemDashboard');
+            if(mode === 'day') {
+                document.getElementById('dayControls').classList.remove('d-none');
+                document.getElementById('monthControls').classList.add('d-none');
+                dashTabLi.classList.remove('month-mode-hidden');
+            } else {
+                document.getElementById('dayControls').classList.add('d-none');
+                document.getElementById('monthControls').classList.remove('d-none');
+                dashTabLi.classList.add('month-mode-hidden');
+            }
+            loadData();
         }
 
         window.loadData = async function() {
-            const loading = document.getElementById('loadingState');
-            const empty = document.getElementById('emptyState');
             const listContainer = document.getElementById('attendanceList');
-            const searchVal = document.getElementById('searchInput').value.trim();
-            const statusFilter = document.getElementById('monthStatusFilter').value; 
-
-            // Clear UI
+            document.getElementById('loadingState').classList.remove('d-none');
+            document.getElementById('emptyState').classList.add('d-none');
             listContainer.innerHTML = '';
-            document.getElementById('absentList').innerHTML = ''; 
-            document.getElementById('lateList').innerHTML = '';   
-            
-            loading.classList.remove('d-none');
-            empty.classList.add('d-none');
-
-            attendanceData = [];
-            let presentUids = new Set();
-            let unverifiedCount = 0; 
 
             try {
                 let startDate, endDate;
                 if (currentMode === 'day') {
                     startDate = document.getElementById('dateFilter').value;
-                    currentDate = startDate;
                     endDate = startDate;
                 } else {
-                    const monthStr = document.getElementById('monthFilter').value;
-                    startDate = monthStr + "-01";
-                    const [y, m] = monthStr.split('-');
-                    const lastDay = new Date(y, m, 0).getDate();
-                    endDate = monthStr + "-" + lastDay;
+                    const mVal = document.getElementById('monthFilter').value;
+                    startDate = mVal + "-01";
+                    endDate = mVal + "-" + new Date(mVal.split('-')[0], mVal.split('-')[1], 0).getDate();
                 }
 
-                console.log(`%c[LOAD] Mode: ${currentMode}, Range: ${startDate} to ${endDate}`, "color: blue; font-weight: bold;");
-
-                // 1. Fetch Data
                 const [attSnap, schedSnap, leaveSnap] = await Promise.all([
                     getDocs(query(collection(db, "attendance"), where("date", ">=", startDate), where("date", "<=", endDate))),
                     getDocs(query(collection(db, "schedules"), where("date", ">=", startDate), where("date", "<=", endDate))),
                     getDocs(query(collection(db, "leaves"), where("status", "==", "Approved"), where("endDate", ">=", startDate)))
                 ]);
 
-                // 2. Process Schedules
                 schedulesMap = {};
-                schedSnap.forEach(doc => {
-                    const d = doc.data();
-                    const effectiveUid = docIdToAuthMap[d.userId] || d.userId;
-                    if(effectiveUid && d.date) {
-                        const normDate = normalizeDate(d.date); 
-                        schedulesMap[effectiveUid + "_" + normDate] = { id: doc.id, start: d.start, end: d.end, breakMins: d.breakMins || 60 };
-                    }
+                schedSnap.forEach(d => {
+                    const data = d.data();
+                    const eUid = docIdToAuthMap[data.userId] || data.userId;
+                    schedulesMap[eUid + "_" + normalizeDate(data.date)] = { id: d.id, ...data };
                 });
 
-                // 3. Process Leaves
                 leavesMap = {};
-                leaveSnap.forEach(doc => {
-                    const d = doc.data();
-                    const effectiveUid = d.authUid || docIdToAuthMap[d.uid] || docIdToAuthMap[d.userId] || d.uid;
-                    if(effectiveUid && d.startDate && d.endDate) {
-                        let curr = d.startDate;
-                        const end = d.endDate;
-                        while (curr <= end) {
-                            if (curr >= startDate && curr <= endDate) {
-                                leavesMap[effectiveUid + "_" + curr] = d.type || d.leaveType;
-                            }
-                            curr = getNextDay(curr);
-                        }
+                leaveSnap.forEach(d => {
+                    const data = d.data();
+                    const eUid = data.authUid || docIdToAuthMap[data.uid] || data.uid;
+                    let curr = new Date(data.startDate);
+                    while(curr <= new Date(data.endDate)) {
+                        const dStr = curr.toISOString().split('T')[0];
+                        if(dStr >= startDate && dStr <= endDate) leavesMap[eUid + "_" + dStr] = data.type;
+                        curr.setDate(curr.getDate() + 1);
                     }
                 });
 
-                // 4. Process Attendance (🔍 调试重点)
-                attSnap.forEach(doc => { 
-                    const d = doc.data();
-                    let matchedUserKey = null;
-                    
-                    // --- 🔍 DEBUG START: 检查 Manual Entry ---
-                    const isManual = d.address === "Admin Manual Entry";
-                  
-
-                    // 匹配逻辑
-                    if (usersMap[d.uid]) {
-                        matchedUserKey = d.uid;
-                    } else if (docIdToAuthMap[d.uid]) {
-                        // 如果记录存的是 DocID，转为 AuthID
-                        matchedUserKey = docIdToAuthMap[d.uid];
-                    } else {
-                        // 反向查找：记录存的是 AuthID，但 UsersMap 只有 DocID (罕见情况)
-                        const foundKey = Object.keys(docIdToAuthMap).find(key => docIdToAuthMap[key] === d.uid);
-                        if (foundKey && usersMap[foundKey]) matchedUserKey = foundKey;
-                    }
-
-                    if (isManual) {
-                        console.log("Final Matched Key:", matchedUserKey);
-                        if (!matchedUserKey) console.error("❌ FAILED TO MATCH USER. Record will be skipped.");
-                        else console.log("✅ Match Successful.");
-                        console.groupEnd();
-                    }
-
-                    // 🟢 过滤掉 'Rejected' 和 'Archived' (旧历史) 的记录
-                    if (matchedUserKey && d.verificationStatus !== 'Rejected' && d.verificationStatus !== 'Archived') {
-                        if(d.date) d.date = normalizeDate(d.date);
-                        
-                        // 强制统一 UID
-                        const cleanRecord = { id: doc.id, ...d, uid: matchedUserKey };
-                        attendanceData.push(cleanRecord); 
-
-                        if(currentMode === 'day') presentUids.add(matchedUserKey);
-                        if (d.verificationStatus !== 'Verified') unverifiedCount++;
+                attendanceData = [];
+                let presentUids = new Set();
+                let unverified = 0;
+                attSnap.forEach(d => {
+                    const data = d.data();
+                    let eUid = usersMap[data.uid] ? data.uid : docIdToAuthMap[data.uid];
+                    if(eUid && !['Rejected', 'Archived'].includes(data.verificationStatus)) {
+                        attendanceData.push({ id: d.id, ...data, uid: eUid, date: normalizeDate(data.date) });
+                        if(currentMode === 'day') presentUids.add(eUid);
+                        if(data.verificationStatus !== 'Verified') unverified++;
                     }
                 });
-                
-                // Update Badge
-                const verifyBadge = document.getElementById('tabVerifyBadge');
-                if (unverifiedCount > 0) {
-                    verifyBadge.innerText = unverifiedCount;
-                    verifyBadge.classList.remove('d-none');
-                } else {
-                    verifyBadge.classList.add('d-none');
-                }
 
-                attendanceData.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
-                loading.classList.add('d-none');
-                
+                document.getElementById('tabVerifyBadge').innerText = unverified;
+                document.getElementById('tabVerifyBadge').classList.toggle('d-none', unverified === 0);
+                document.getElementById('loadingState').classList.add('d-none');
+
                 const grouped = {};
-                attendanceData.forEach(item => {
-                    if(!grouped[item.uid]) grouped[item.uid] = [];
-                    grouped[item.uid].push(item);
-                });
+                attendanceData.forEach(r => { if(!grouped[r.uid]) grouped[r.uid] = []; grouped[r.uid].push(r); });
 
-                console.log(`%c[RENDER] Grouped Data for ${Object.keys(grouped).length} users`, "color: green");
+                let count = 0;
+                const sortedUids = Object.keys(usersMap).sort((a,b) => usersMap[a].name.localeCompare(usersMap[b].name));
 
-                let visibleCardsCount = 0;
-                
-                if (currentMode === 'day') {
-                    const targetDate = normalizeDate(startDate);
-                    Object.keys(usersMap).forEach(uid => {
-                        const userRecords = grouped[uid] || [];
-                        if (renderDayUserCard(uid, userRecords, listContainer, targetDate)) visibleCardsCount++;
-                    });
+                if(currentMode === 'day') {
+                    sortedUids.forEach(uid => { if(renderDayUserCard(uid, grouped[uid] || [], listContainer, normalizeDate(startDate))) count++; });
                     renderDashboard(attendanceData, presentUids);
                 } else {
-                    // Month View
-                    Object.keys(usersMap).forEach(uid => {
-                        const userRecords = grouped[uid] || [];
-                        // 🔍 Debug Specific User in Month View
-                        if (userRecords.some(r => r.address === "Admin Manual Entry")) {
-                            console.log(`rendering Month Card for ${usersMap[uid].name} with ${userRecords.length} records`);
-                        }
-                        
-                        if (renderMonthUserCard(uid, userRecords, listContainer, statusFilter)) visibleCardsCount++;
-                    });
+                    sortedUids.forEach(uid => { if(renderMonthUserCard(uid, grouped[uid] || [], listContainer)) count++; });
                 }
-                
-                if(searchVal) window.handleSearch();
-                
-                if (visibleCardsCount === 0) {
-                    empty.classList.remove('d-none');
-                } else {
-                    empty.classList.add('d-none');
-                }
+                if(count === 0) document.getElementById('emptyState').classList.remove('d-none');
                 lucide.createIcons();
+            } catch(e) { console.error(e); }
+        };
 
-            } catch (e) {
-                loading.classList.add('d-none');
-                console.error("Load Data Error:", e);
-                alert("Error loading data: " + e.message);
-            }
-        }
-        // 🟢 1. Day Mode Card
         function renderDayUserCard(uid, records, container, targetDate) {
-            const user = usersMap[uid] || { name: 'Unknown', photo: null, status: 'active' };
-            const collapseId = `collapse-${uid}`;
-            const userSched = schedulesMap[uid + "_" + targetDate];
-            const isOnLeave = leavesMap[uid + "_" + targetDate];
-            
-            // Hide if no schedule AND no record (unless on leave, but usually we hide completely inactive people)
-            if (!userSched && records.length === 0 && !isOnLeave) return false;
+            const user = usersMap[uid];
+            const sched = schedulesMap[uid + "_" + targetDate];
+            const leave = leavesMap[uid + "_" + targetDate];
+            if (!sched && records.length === 0 && !leave) return false;
 
-            const today = new Date().toISOString().split('T')[0];
-            const isPastOrToday = targetDate <= today;
-
-            let summaryIn = "--:--", summaryOut = "--:--", pendingCount = 0;
+            let inT = "--:--", outT = "--:--", pending = 0;
             records.forEach(r => {
-                if(r.verificationStatus !== 'Verified') pendingCount++;
+                if(r.verificationStatus !== 'Verified') pending++;
                 else {
-                    const sess = r.session || '';
-                    if(sess === 'Clock In' && summaryIn === "--:--") summaryIn = formatTime(r.manualIn || r.timeIn || r.timestamp);
-                    if(sess === 'Clock Out') summaryOut = formatTime(r.manualOut || r.timeOut || r.timestamp);
+                    if(r.session === 'Clock In' && inT === "--:--") inT = formatTime(r.manualIn || r.timeIn || r.timestamp);
+                    if(r.session === 'Clock Out') outT = formatTime(r.manualOut || r.timeOut || r.timestamp);
                 }
             });
 
-            // Logic: Absent if scheduled, past/today, no clock in. BUT if on leave, it's NOT absent.
-            let isAbsent = isPastOrToday && summaryIn === "--:--" && userSched;
-            if(isOnLeave) isAbsent = false;
-            
+            const isAbsent = (targetDate <= new Date().toISOString().split('T')[0]) && inT === "--:--" && sched && !leave;
             const card = document.createElement('div');
-            card.className = `user-card user-card-container ${isAbsent ? 'row-absent' : (isOnLeave ? 'row-leave' : '')}`;
+            card.className = `user-card user-card-container ${isAbsent ? 'row-absent' : (leave ? 'row-leave' : '')}`;
             card.setAttribute('data-name', user.name);
-            
-            let statusColor = isAbsent ? "bg-danger" : (isOnLeave ? "bg-info" : (pendingCount > 0 ? "bg-warning" : (summaryIn !== "--:--" ? "bg-success" : "bg-secondary")));
-            let inDisplay = isAbsent ? 'ABSENT' : (isOnLeave && summaryIn === "--:--" ? 'ON LEAVE' : summaryIn);
-            let inClass = isAbsent ? 'text-danger' : (isOnLeave && summaryIn === "--:--" ? 'text-info' : 'text-primary');
+            let statusColor = isAbsent ? "bg-danger" : (leave ? "bg-info" : (pending > 0 ? "bg-warning" : (inT !== "--:--" ? "bg-success" : "bg-secondary")));
 
-            let schedText = "Off Day";
-            if(userSched) {
-                schedText = `${formatTime(userSched.start)} - ${formatTime(userSched.end)}`;
-                schedText += `<button class="btn btn-sm btn-link text-danger p-0 ms-2" onclick="deleteSchedule('${userSched.id}', '${user.name.replace(/'/g, "\\'")}', event)" title="Remove Schedule"><i data-lucide="trash-2" class="size-3"></i></button>`;
-            }
+            // 🟢 状态标签放置在右侧
+            const statusLabel = isAbsent ? `<span class="badge bg-danger">ABSENT</span>` : (leave && inT === '--:--' ? `<span class="badge bg-info">ON LEAVE</span>` : "");
 
-            let badgeHtml = '';
-            if(pendingCount > 0) badgeHtml += `<span class="badge bg-warning text-dark mb-1">${pendingCount} Pending</span>`;
-            if(isOnLeave) badgeHtml += `<span class="badge bg-info mb-1 ms-1">On Leave</span>`;
-            if(isAbsent) badgeHtml += `<span class="badge bg-danger mb-1 ms-1">Absent</span>`;
-
-            let disabledBadge = user.status === 'disabled' ? `<span class="badge bg-secondary ms-2" style="font-size:0.6rem;">Disabled</span>` : '';
-
-            // 🟢 NEW: Manual Manage Button
-            const manageBtn = `
-                <button class="btn btn-sm btn-outline-secondary ms-2 border" 
-                    onclick="openManualAction('${uid}', '${targetDate}', '${isAbsent?'absent':(isOnLeave?'leave':'present')}')" 
-                    title="Manage / Manual Entry"
-                    style="margin-right: -10px;">
-                    <i data-lucide="settings-2" class="size-3"></i>
-                </button>
-            `;
-
-            const headerHtml = `
-                <div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#${collapseId}">
+            card.innerHTML = `
+                <div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-${uid}">
                     <div class="row align-items-center">
                         <div class="col-md-4 d-flex align-items-center gap-3 border-end border-light">
                             <div class="position-relative">
                                 ${user.photo ? `<img src="${user.photo}" class="staff-avatar">` : `<div class="staff-avatar">${user.name.charAt(0)}</div>`}
                                 <span class="position-absolute top-0 start-100 translate-middle p-1 border border-light rounded-circle ${statusColor}"></span>
                             </div>
-                            <div class="text-truncate">
-                                <h6 class="fw-bold text-dark m-0 text-truncate">
-                                    ${user.name} ${disabledBadge}
-                                </h6>
-                                <small class="text-muted">Shift: <span class="fw-bold">${schedText}</span></small>
-                            </div>
+                            <div><h6 class="fw-bold m-0 text-truncate" style="max-width:150px">${user.name}</h6><small class="text-muted">Shift: ${sched?formatTime(sched.start)+'-'+formatTime(sched.end):'Off'}</small></div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="row g-0 text-center">
-                                <div class="col-6 stat-box border-end border-light"><div class="stat-label">Clock In</div><div class="stat-value ${inClass} font-monospace">${inDisplay}</div></div>
-                                <div class="col-6 stat-box"><div class="stat-label">Clock Out</div><div class="stat-value text-success font-monospace">${summaryOut}</div></div>
-                            </div>
-                        </div>
-                        <div class="col-md-2 text-end d-flex align-items-center justify-content-end">
-                            ${badgeHtml}
-                            ${manageBtn}
-                            <i data-lucide="chevron-down" class="text-muted chevron-icon ms-2"></i>
+                        <div class="col-md-5"><div class="row text-center"><div class="col-6"><div class="stat-label">In</div><div class="stat-value font-monospace">${inT}</div></div><div class="col-6"><div class="stat-label">Out</div><div class="stat-value text-success font-monospace">${outT}</div></div></div></div>
+                        <div class="col-md-3 text-end d-flex align-items-center justify-content-end gap-2">
+                            ${statusLabel}
+                            ${pending > 0 ? `<span class="badge bg-warning text-dark">${pending}</span>` : ''}
+                            <button class="btn btn-sm btn-light border-0" onclick="openManualAction('${uid}', '${targetDate}')"><i data-lucide="settings-2" class="size-4"></i></button>
+                            <i data-lucide="chevron-down" class="text-muted chevron-icon"></i>
                         </div>
                     </div>
                 </div>
-            `;
-            let listHtml = `<div id="${collapseId}" class="collapse"><div class="list-group list-group-flush">`;
-            if (records.length > 0) records.forEach(item => { listHtml += renderRecordItem(item); });
-            else if (isAbsent) listHtml += `<div class="p-4 text-center text-danger small fw-bold">Employee scheduled but failed to clock in.</div>`;
-            else if (isOnLeave) listHtml += `<div class="p-4 text-center text-info small fw-bold">Employee is on approved leave (${isOnLeave}).</div>`;
-            listHtml += '</div></div>';
-
-            card.innerHTML = headerHtml + listHtml;
+                <div id="collapse-${uid}" class="collapse"><div class="list-group list-group-flush">${records.map(r => renderRecordItem(r)).join('')}</div></div>`;
             container.appendChild(card);
             return true;
         }
 
-       // 🟢 2. Month Mode Card (FIXED for Manual Entry)
-        function renderMonthUserCard(uid, allRecords, container, filterType) {
-            const user = usersMap[uid] || { name: 'Unknown', photo: null };
-            const collapseId = `collapse-month-${uid}`;
-            const dayMap = {};
-            allRecords.forEach(r => { if(!dayMap[r.date]) dayMap[r.date] = []; dayMap[r.date].push(r); });
-
-            const [y, m] = document.getElementById('monthFilter').value.split('-');
-            const daysInMonth = new Date(y, m, 0).getDate();
+        function renderMonthUserCard(uid, allRecords, container) {
+            const user = usersMap[uid];
+            const mVal = document.getElementById('monthFilter').value;
+            const [y, m] = mVal.split('-');
+            const days = new Date(y, m, 0).getDate();
             const today = new Date().toISOString().split('T')[0];
             
-            let stats = { present: 0, late: 0, totalWorkMs: 0, totalExpectedMs: 0, totalOTMs: 0, undertime: 0 };
-            let scheduledDaysCount = 0; 
+            let present = 0;
             let rowsHtml = "";
 
-            // Helper to safe convert Firestore Timestamp or String to Date
-            const toDate = (t) => {
-                if (!t) return null;
-                if (t.toDate) return t.toDate(); // Firestore Timestamp
-                return new Date(t); // Native Date or String
-            };
-
-            for(let d = 1; d <= daysInMonth; d++) {
-                const dateStr = `${y}-${m}-${d.toString().padStart(2, '0')}`;
-                const isPastOrToday = dateStr <= today;
+            for(let d=1; d<=days; d++) {
+                const dateStr = `${y}-${m}-${d.toString().padStart(2,'0')}`;
                 const sched = schedulesMap[uid + "_" + dateStr];
-                const isOnLeave = leavesMap[uid + "_" + dateStr];
-                const dayRecords = dayMap[dateStr] || [];
+                const leave = leavesMap[uid + "_" + dateStr];
+                const dayRecords = allRecords.filter(r => r.date === dateStr && r.verificationStatus === 'Verified');
 
-                let tInObj = null, tOutObj = null, bOutObj = null, bInObj = null;
-                
-                dayRecords.forEach(r => {
-                    if(r.verificationStatus === 'Verified') {
-                        // 🟢 修复逻辑：如果是 Manual Entry，构建 Date 对象，而不是 null
-                        if(r.session === 'Clock In') {
-                            if (r.manualIn) tInObj = new Date(`${r.date}T${r.manualIn}:00`);
-                            else tInObj = toDate(r.timeIn || r.timestamp);
-                        }
-                        
-                        if(r.session === 'Clock Out') {
-                            if (r.manualOut) tOutObj = new Date(`${r.date}T${r.manualOut}:00`);
-                            else tOutObj = toDate(r.timeOut || r.timestamp);
-                        }
+                let inT = null;
+                dayRecords.forEach(r => { if(r.session === 'Clock In') inT = r.manualIn || formatTime(r.timeIn || r.timestamp); });
+                if(inT) present++;
 
-                        if(r.session === 'Break Out') bOutObj = toDate(r.breakOut || r.timestamp);
-                        if(r.session === 'Break In') bInObj = toDate(r.breakIn || r.timestamp);
-                    }
-                });
-
-                // Calculate Expected Hours (Scheduled - Scheduled Break)
-                let scheduledMs = 0;
-                if (isPastOrToday && sched && sched.start && sched.end && !isOnLeave) {
-                    scheduledDaysCount++;
-                    scheduledMs = (toDate(sched.end) - toDate(sched.start));
-                    const schedBreakMs = (sched.breakMins || 0) * 60000;
-                    scheduledMs -= schedBreakMs;
-                    if(scheduledMs < 0) scheduledMs = 0;
-                    stats.totalExpectedMs += scheduledMs;
-                }
-
-                let dWork = 0, isLate = false, isAbsent = false, isUnder = false;
-                let sText = isOnLeave ? "On Leave" : "Absent";
-                let sClass = isOnLeave ? "text-info fw-bold" : "text-danger fw-bold";
-                let rowCls = isOnLeave ? "row-leave" : "";
-
-                if (tInObj) {
-                    stats.present++; sText = ""; rowCls = "";
-                    
-                    if(sched && sched.start) {
-                        const schedStart = toDate(sched.start);
-                        // 1. Late Calculation (Strict: No Buffer based on previous discussion)
-                        // If you want buffer back, use: new Date(schedStart.getTime() + 15*60000)
-                        if(tInObj > schedStart) { stats.late++; isLate = true; }
-
-                        // 2. Work Calculation Logic
-                        if(tOutObj) {
-                            const effectiveStart = tInObj < schedStart ? schedStart : tInObj;
-                            let grossDuration = tOutObj - effectiveStart;
-
-                            // 3. Break Logic
-                            const schedBreakMs = (sched.breakMins || 0) * 60000;
-                            let breakDeduction = schedBreakMs; 
-
-                            if(bOutObj && bInObj) {
-                                const actualBreak = bInObj - bOutObj;
-                                if (actualBreak > schedBreakMs) {
-                                    // isLate = true; // Optional: Mark late if break overstay?
-                                    breakDeduction = actualBreak;
-                                }
-                            }
-
-                            dWork = grossDuration - breakDeduction;
-                            if (dWork < 0) dWork = 0;
-                            stats.totalWorkMs += dWork;
-
-                            // 4. OT Calculation
-                            if(sched.end) {
-                                const schedEnd = toDate(sched.end);
-                                if(tOutObj > schedEnd) {
-                                    stats.totalOTMs += (tOutObj - schedEnd);
-                                }
-                                if(tOutObj < schedEnd) {
-                                    isUnder = true;
-                                    stats.undertime++; 
-                                }
-                            }
-                        }
-                    }
-                } else if (isPastOrToday && sched && !isOnLeave) {
-                    isAbsent = true; rowCls = "row-absent";
-                } else if (!sched && !isOnLeave) {
-                    sText = "Off Day"; sClass = "text-muted small";
-                }
-
-                if (dayRecords.length > 0 || (isPastOrToday && sched) || isOnLeave) {
-                    // Update: use toDate() wrapper for safety or formatTime logic
-                    const timeDisp = tInObj ? `<span class="text-dark fw-bold">${formatTime(tInObj)}</span> - <span class="text-dark fw-bold">${formatTime(tOutObj)}</span>` : sText;
-                    
-                    let statusBadges = "";
-                    if(isLate) statusBadges += '<span class="badge bg-warning text-dark ms-1">Late</span>';
-                    if(isUnder) statusBadges += '<span class="badge bg-secondary ms-1">Early</span>';
-                    if(isOnLeave && tInObj) statusBadges += '<span class="badge bg-info ms-1">Worked on Leave</span>';
-
-                    let sInfo = sched ? `<div class="small text-muted mt-1" style="font-size:0.75rem">Shift: ${formatTime(sched.start)} - ${formatTime(sched.end)}</div>` : "";
-                    
-                    rowsHtml += `<li class="inner-list-item d-flex justify-content-between align-items-center ${rowCls}"><div class="d-flex align-items-center gap-3"><span class="badge badge-soft-secondary text-mono" style="min-width: 90px;">${dateStr}</span><div><div class="${tInObj ? '' : sClass}">${timeDisp} ${statusBadges}</div>${sInfo}</div></div><div class="text-end"><span class="small text-muted fw-bold">${tInObj ? msToHM(dWork) : '-'}</span></div></li>`;
+                if (dayRecords.length > 0 || sched || leave) {
+                    const statusLabel = inT ? '<b>Verified Present</b>' : (leave ? '<span class="text-info fw-bold">ON LEAVE</span>' : (dateStr <= today && sched ? '<span class="text-danger fw-bold">ABSENT</span>' : 'Off'));
+                    rowsHtml += `<li class="inner-list-item d-flex justify-content-between">
+                        <div><span class="badge badge-soft-secondary text-mono me-3">${dateStr}</span></div>
+                        <div class="text-end">${statusLabel}</div>
+                    </li>`;
                 }
             }
 
-            if (filterType === 'late' && stats.late === 0) return false;
-            if (filterType === 'absent' && stats.present >= scheduledDaysCount) return false;
-            if (filterType === 'under' && stats.undertime === 0) return false;
-
             const card = document.createElement('div');
-            card.className = 'user-card user-card-container';
-            card.setAttribute('data-name', user.name);
-            card.innerHTML = `<div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#${collapseId}"><div class="row align-items-center"><div class="col-md-4 d-flex align-items-center gap-3 border-end border-light">${user.photo ? `<img src="${user.photo}" class="staff-avatar">` : `<div class="staff-avatar">${user.name.charAt(0)}</div>`}<div class="text-truncate"><h6 class="fw-bold text-dark m-0 text-truncate">${user.name}</h6><small class="text-muted" style="font-size:0.8rem">${user.email || 'Staff'}</small></div></div><div class="col-md-7"><div class="row g-0"><div class="col-3 stat-box"><div class="stat-label">Attendance</div><div class="stat-value ${stats.present < scheduledDaysCount ? 'text-warning' : 'text-success'}">${stats.present} <span class="text-muted fw-normal fs-6">/ ${scheduledDaysCount}</span></div></div><div class="col-3 stat-box"><div class="stat-label">Late/Early</div><div class="stat-value ${stats.late + stats.undertime > 0 ? 'text-danger' : 'text-muted'}">${stats.late + stats.undertime}</div></div><div class="col-3 stat-box"><div class="stat-label">Hours</div><div class="stat-value text-dark" style="font-size:0.9rem">${msToHM(stats.totalWorkMs)} <span class="text-muted">/ ${msToHM(stats.totalExpectedMs)}</span></div></div><div class="col-3 stat-box"><div class="stat-label">OT</div><div class="stat-value text-primary">${msToHM(stats.totalOTMs)}</div></div></div></div><div class="col-md-1 text-end"><i data-lucide="chevron-down" class="text-muted chevron-icon"></i></div></div></div><div id="${collapseId}" class="collapse"><ul class="list-group list-group-flush">${rowsHtml}</ul></div>`;
+            card.className = 'user-card user-card-container'; card.setAttribute('data-name', user.name);
+            card.innerHTML = `<div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-month-${uid}"><div class="row align-items-center"><div class="col-4 d-flex align-items-center gap-3">${user.photo?`<img src="${user.photo}" class="staff-avatar">`:`<div class="staff-avatar">${user.name.charAt(0)}</div>`}<div><h6 class="fw-bold m-0">${user.name}</h6></div></div><div class="col-7 text-center"><div class="stat-label">Days Present</div><div class="stat-value">${present} / ${days}</div></div><div class="col-1 text-end"><i data-lucide="chevron-down" class="text-muted chevron-icon"></i></div></div></div><div id="collapse-month-${uid}" class="collapse"><ul class="list-group list-group-flush">${rowsHtml}</ul></div>`;
             container.appendChild(card);
             return true;
         }
 
-        // 🟢 MODIFIED: Render Record Item with Edit Button
         function renderRecordItem(item) {
-            const isVerified = item.verificationStatus === 'Verified';
-            const rowClass = isVerified ? 'record-item verified' : 'record-item pending';
-            
-            let actionName = item.session || "Unknown", actionColor = "text-dark", actionTime = "--:--", icon = "circle";
-            
-            // Determine display time
-            let rawTimeVal = item.timestamp; // default fallback
-            if (actionName === 'Clock In') { 
-                rawTimeVal = item.manualIn || item.timeIn || item.timestamp;
-                actionColor = "text-primary"; icon = "log-in"; 
-            } else if (actionName === 'Clock Out') { 
-                rawTimeVal = item.manualOut || item.timeOut || item.timestamp;
-                actionColor = "text-success"; icon = "log-out"; 
-            } else if (actionName === 'Break Out') { 
-                rawTimeVal = item.breakOut || item.timestamp;
-                actionColor = "text-warning"; icon = "coffee"; 
-            } else if (actionName === 'Break In') { 
-                rawTimeVal = item.breakIn || item.timestamp;
-                actionColor = "text-info"; icon = "briefcase"; 
-            }
-            
-            actionTime = formatTime(rawTimeVal);
-            
-            // Format time for the Edit Modal (HH:mm)
-            let timeForEdit = "";
-            if(rawTimeVal) {
-                const d = rawTimeVal.seconds ? new Date(rawTimeVal.seconds * 1000) : new Date("2000-01-01 " + rawTimeVal); 
-                // Handle manual string "14:30" vs timestamp object
-                if(typeof rawTimeVal === 'string' && rawTimeVal.includes(":")) timeForEdit = rawTimeVal;
-                else timeForEdit = d.toTimeString().substring(0, 5);
-            }
-
-            let photoAction = item.photoUrl && item.photoUrl.startsWith('http') ? `<a href="#" onclick="viewPhoto('${item.photoUrl}')" class="btn btn-sm btn-white border shadow-sm d-flex align-items-center gap-2"><i data-lucide="image" class="size-4"></i> View Proof</a>` : '<span class="text-muted small ms-3">No Photo</span>';
-            
-            // Existing Logic for Verify/Reject buttons
-            let actionButtons = isVerified 
-                ? `<span class="badge badge-verified py-2 px-3"><i data-lucide="check-circle" class="size-4 me-1"></i> Verified</span>` 
-                : `<div class="d-flex gap-2 justify-content-end mt-2"><button class="btn btn-sm btn-primary fw-bold px-3 shadow-sm" onclick="quickVerify('${item.id}')">Verify</button><button class="btn btn-sm btn-outline-danger px-3" onclick="rejectRecord('${item.id}')" title="Reject"><i data-lucide="x-circle" class="size-4 me-1"></i> Reject</button></div>`;
-
-            // 🟢 NEW: Add Edit Button
-            const editBtn = `
-                <button class="btn btn-sm btn-light border text-muted ms-2" 
-                    onclick="openEditRecord('${item.id}', '${actionName}', '${timeForEdit}', '${item.date}')" 
-                    title="Edit Record">
-                    <i data-lucide="edit-3" class="size-4"></i>
-                </button>
-            `;
-
-            return `
-                <div class="list-group-item p-3 ${rowClass}">
-                    <div class="row align-items-center">
-                        <div class="col-md-3">
-                            <div class="d-flex align-items-center gap-2">
-                                <div class="bg-light p-2 rounded-circle border"><i data-lucide="${icon}" class="size-4 ${actionColor}"></i></div>
-                                <div>
-                                    <div class="fw-bold ${actionColor}">${actionName}</div>
-                                    <div class="fs-5 fw-bold text-dark">${actionTime}</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-5">
-                            <div class="d-flex align-items-center gap-3">
-                                <div class="d-flex align-items-start gap-2 text-truncate">
-                                    <i data-lucide="map-pin" class="size-4 text-muted mt-1 flex-shrink-0"></i>
-                                    <span class="small text-secondary text-truncate" style="max-width: 250px;" title="${item.address}">${item.address || "GPS Only"}</span>
-                                </div>
-                                ${photoAction}
-                            </div>
-                        </div>
-                        <div class="col-md-4 text-end d-flex align-items-center justify-content-end">
-                            ${actionButtons}
-                            ${editBtn} 
-                        </div>
-                    </div>
-                </div>`;
+            const isV = item.verificationStatus === 'Verified';
+            const time = formatTime(item.manualIn || item.manualOut || item.timeIn || item.timeOut || item.timestamp);
+            const tEdit = (item.manualIn || item.manualOut || (item.timestamp?.toDate ? item.timestamp.toDate().toTimeString().slice(0,5) : ""));
+            return `<div class="list-group-item d-flex justify-content-between align-items-center px-4 py-2">
+                <div class="small"><div class="fw-bold text-muted">${item.session}</div><div class="fw-bold text-dark">${time}</div></div>
+                <div class="text-end d-flex align-items-center gap-3">
+                    ${isV ? '<span class="badge bg-success bg-opacity-10 text-success border border-success">Verified</span>' : `<button class="btn btn-xs btn-primary" onclick="quickVerify('${item.id}')">Verify</button>`}
+                    <button class="btn btn-xs btn-light border" onclick="openEditRecord('${item.id}', '${item.session}', '${tEdit}', '${item.date}')"><i data-lucide="edit-3" class="size-3"></i></button>
+                    ${item.photoUrl ? `<button class="btn btn-xs btn-outline-info" onclick="viewPhoto('${item.photoUrl}')"><i data-lucide="image" class="size-3"></i></button>` : ''}
+                </div>
+            </div>`;
         }
 
-        function msToHM(ms) { if (!ms || ms < 0) return "0h 0m"; const mins = Math.floor(ms / 60000); return `${Math.floor(mins / 60)}h ${mins % 60}m`; }
-        window.quickVerify = async (docId) => { if(confirm("Verify this record?")) { await updateDoc(doc(db, "attendance", docId), { verificationStatus: "Verified" }); loadData(); } };
-        window.rejectRecord = async (docId) => { if(confirm("Mark record as Rejected?")) { await updateDoc(doc(db, "attendance", docId), { verificationStatus: "Rejected" }); loadData(); } };
-        window.changeDate = (days) => { const el = document.getElementById('dateFilter'); const d = new Date(el.value); d.setDate(d.getDate() + days); el.value = d.toISOString().split('T')[0]; loadData(); }
-        window.viewPhoto = (url) => { document.getElementById('modalImg').src = url; photoModal.show(); }
-        function formatTime(val) { if(!val) return "--:--"; if(val.seconds) return new Date(val.seconds*1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12: false}); if(typeof val === 'string') return val; return "--:--"; }
-
-        window.deleteSchedule = async (schedId, name, e) => {
-            if(e) e.stopPropagation();
-            if(!confirm(`Remove schedule for ${name}?`)) return;
-            try { await deleteDoc(doc(db, "schedules", schedId)); loadData(); } catch(err) { alert("Error: " + err.message); }
-        }
-
-        window.exportData = function() {
-            if(!attendanceData || attendanceData.length === 0) { alert("No data to export."); return; }
-            let csv = "Date,Name,Email,Clock In,Clock Out,Status\n";
-            const grouped = {};
-            attendanceData.forEach(item => { const key = item.uid + "_" + (item.date || currentDate); if(!grouped[key]) grouped[key] = []; grouped[key].push(item); });
-            Object.values(grouped).forEach(records => {
-                const r = records[0]; const user = usersMap[r.uid] || { name: 'Unknown', email: '-' };
-                let tIn="--:--", tOut="--:--", pendingCount = 0;
-                records.forEach(rec => {
-                    if (rec.verificationStatus !== 'Verified') pendingCount++;
-                    else {
-                        const s = rec.session || ''; const gt = (v) => v ? formatTime(v) : null;
-                        if(s==='Clock In') tIn=gt(rec.manualIn)||gt(rec.timeIn)||formatTime(rec.timestamp);
-                        if(s==='Clock Out') tOut=gt(rec.manualOut)||gt(rec.timeOut)||formatTime(rec.timestamp);
-                    }
-                });
-                csv += `${r.date},${(user.name||"").replace(/,/g, ' ')},${user.email},${tIn},${tOut},${pendingCount > 0 ? 'Pending':'Verified'}\n`;
-            });
-            const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob); link.download = `attendance_export.csv`;
-            document.body.appendChild(link); link.click(); document.body.removeChild(link);
-        }
-
-        function renderDashboard(attendanceData, presentUids) {
-            // ... (keep logic same as before, shortened for brevity in this answer) ...
-            // Just copying the previous logic because logic remains same
-             const allStaffIds = Object.keys(usersMap);
-            const presentCount = presentUids.size;
-
-            let absentCount = 0;
-            let activeStaffCount = 0;
-            let leaveCount = 0;
-            const targetDate = normalizeDate(document.getElementById('dateFilter').value);
-            const absentStaffIds = [];
-
-            allStaffIds.forEach(uid => {
-                const user = usersMap[uid];
-                if (user.status === 'disabled') return; 
-                activeStaffCount++;
-                
-                const schedKey = uid + "_" + targetDate;
-                const hasSchedule = !!schedulesMap[schedKey];
-                const isPresent = presentUids.has(uid);
-                const isLeave = !!leavesMap[uid + "_" + targetDate];
-
-                if (isLeave) leaveCount++;
-
-                if (hasSchedule && !isPresent && !isLeave) {
-                    absentCount++;
-                    absentStaffIds.push(uid);
+        // Actions
+        window.submitManualAction = async () => {
+            const uid = document.getElementById('manualUid').value, date = document.getElementById('manualDate').value, type = document.getElementById('manualActionType').value;
+            const u = usersMap[uid];
+            try {
+                if(type === 'Present') {
+                    const batch = writeBatch(db);
+                    const cin = document.getElementById('manualClockIn').value, cout = document.getElementById('manualClockOut').value;
+                    const base = { uid: u.authUid || u.docId, name: u.name, email: u.email, date, verificationStatus: "Verified", address: "Admin Manual Entry", timestamp: serverTimestamp() };
+                    if(cin) batch.set(doc(collection(db, "attendance")), { ...base, session: "Clock In", manualIn: cin });
+                    if(cout) batch.set(doc(collection(db, "attendance")), { ...base, session: "Clock Out", manualOut: cout });
+                    await batch.commit();
+                } else if (type === 'Absent') {
+                    const q = query(collection(db, "attendance"), where("uid", "==", u.authUid || u.docId), where("date", "==", date));
+                    const snap = await getDocs(q);
+                    const batch = writeBatch(db);
+                    snap.forEach(d => batch.delete(d.ref));
+                    batch.set(doc(collection(db, "leaves")), { uid: u.docId, authUid: u.authUid, empName: u.name, type: 'Absent', startDate: date, endDate: date, days: 1, status: 'Approved', reviewedAt: serverTimestamp(), isPayrollDeductible: true });
+                    await batch.commit();
+                } else if (type.includes('Leave')) {
+                    await runTransaction(db, async (tx) => {
+                        const uRef = doc(db, "users", u.docId);
+                        const uDoc = await tx.get(uRef);
+                        if(type === 'Annual Leave') tx.update(uRef, { "leave_balance.annual": (uDoc.data().leave_balance?.annual || 0) - 1 });
+                        tx.set(doc(collection(db, "leaves")), { uid: u.docId, authUid: u.authUid, empName: u.name, type, startDate: date, endDate: date, days: 1, status: 'Approved', reviewedAt: serverTimestamp(), isPayrollDeductible: type === 'Unpaid Leave' });
+                    });
                 }
+                manualActionModal.hide(); loadData();
+            } catch(e) { alert(e.message); }
+        }
+
+        window.saveSingleRecord = async () => {
+            const id = document.getElementById('editDocId').value, time = document.getElementById('editTimeInput').value, date = document.getElementById('editRecordDate').value;
+            const ref = doc(db, "attendance", id);
+            const snap = await getDoc(ref);
+            const update = { verificationStatus: "Verified", timestamp: Timestamp.fromDate(new Date(`${date}T${time}:00`)), address: "Admin Manual Edit" };
+            if(snap.data().session.includes('In')) update.manualIn = time; else update.manualOut = time;
+            await updateDoc(ref, update);
+            editRecordModal.hide(); loadData();
+        }
+
+        window.deleteSingleRecord = async () => { if(confirm("Delete record?")) { await deleteDoc(doc(db, "attendance", document.getElementById('editDocId').value)); editRecordModal.hide(); loadData(); } };
+
+        function renderDashboard(data, pUids) {
+            const target = document.getElementById('dateFilter').value;
+            let active=0, leave=0, absent=0;
+            const aList = [];
+            Object.keys(usersMap).forEach(uid => {
+                if(usersMap[uid].status === 'disabled') return;
+                active++;
+                if(leavesMap[uid+"_"+target]) leave++;
+                else if(schedulesMap[uid+"_"+target] && !pUids.has(uid)) { absent++; aList.push(usersMap[uid].name); }
             });
-
-            document.getElementById('statTotalStaff').innerText = activeStaffCount;
-            document.getElementById('statPresent').innerText = presentCount;
-            document.getElementById('statAbsent').innerText = absentCount;
-            document.getElementById('statLeave').innerText = leaveCount;
-
-            const absentListEl = document.getElementById('absentList');
-            const lateListEl = document.getElementById('lateList');
-            absentListEl.innerHTML = '';
-            lateListEl.innerHTML = '';
-
-            if (absentCount === 0) {
-                absentListEl.innerHTML = `<li class="list-group-item text-center text-success py-3 fw-bold">🎉 All scheduled staff present!</li>`;
-            } else {
-                absentStaffIds.forEach(uid => {
-                    const user = usersMap[uid];
-                    absentListEl.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center"><div class="d-flex align-items-center gap-3"><div class="staff-avatar bg-secondary bg-opacity-25 text-dark" style="width:36px;height:36px;font-size:0.9rem">${user.name.charAt(0)}</div><div class="fw-bold">${user.name}</div></div><span class="badge bg-danger">Absent</span></li>`;
-                });
-            }
-
-            let lateCount = 0;
-            attendanceData.forEach(record => {
-                if (record.session === 'Clock In' && record.verificationStatus === 'Verified') {
-                    const schedKey = record.uid + "_" + targetDate;
-                    const sched = schedulesMap[schedKey];
-                    if (sched && sched.start) {
-                        const actualIn = record.manualIn ? null : (record.timeIn || record.timestamp);
-                        if (actualIn) {
-                            const bufferTime = new Date(sched.start.toDate().getTime() + 15 * 60000); 
-                            if (actualIn.toDate() > bufferTime) {
-                                lateCount++;
-                                const user = usersMap[record.uid];
-                                lateListEl.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center"><div class="d-flex align-items-center gap-3"><div class="staff-avatar bg-warning bg-opacity-25 text-warning" style="width:36px;height:36px;font-size:0.9rem">${user.name.charAt(0)}</div><div><div class="fw-bold">${user.name}</div><small class="text-muted">In: ${formatTime(actualIn)}</small></div></div><span class="badge bg-danger">Late</span></li>`;
-                            }
-                        }
-                    }
-                }
-            });
-
-            if (lateCount === 0) {
-                lateListEl.innerHTML = `<li class="list-group-item text-center text-muted py-4">No late arrivals detected.</li>`;
-            }
+            document.getElementById('statTotalStaff').innerText = active;
+            document.getElementById('statPresent').innerText = pUids.size;
+            document.getElementById('statAbsent').innerText = absent;
+            document.getElementById('statLeave').innerText = leave;
+            document.getElementById('absentList').innerHTML = aList.map(n => `<li class="list-group-item d-flex justify-content-between"><b>${n}</b><span class="text-danger small">No Clock In</span></li>`).join('') || '<li class="list-group-item text-center text-muted">None</li>';
         }
 
         function listenToCorrections() {
             onSnapshot(query(collection(db, "attendance_corrections"), where("status", "==", "Pending")), (snap) => {
                 const badge = document.getElementById('tabCorrectionBadge');
                 badge.innerText = snap.size; badge.classList.toggle('d-none', snap.size === 0);
-                const tbody = document.getElementById('correctionListBody'); tbody.innerHTML = '';
-                if(snap.size === 0) { document.getElementById('noCorrectionsMsg').classList.remove('d-none'); return; }
-                else document.getElementById('noCorrectionsMsg').classList.add('d-none');
+                const tbody = document.getElementById('correctionListBody');
+                tbody.innerHTML = '';
                 snap.forEach(docSnap => {
                     const d = docSnap.data();
-                    tbody.innerHTML += `<tr><td class="ps-4"><b>${d.email?.split('@')[0]}</b><br><small>${d.targetDate}</small></td><td>${d.originalIn}<br>${d.originalOut}</td><td class="text-primary">${d.requestedIn}<br>${d.requestedOut}</td><td>${d.remarks || '-'}</td><td class="text-end pe-4"><button onclick="handleCorrection('${docSnap.id}', '${d.attendanceId}', '${d.requestedIn}', '${d.requestedOut}', 'approve')" class="btn btn-sm btn-success">✔</button><button onclick="handleCorrection('${docSnap.id}', null, null, null, 'reject')" class="btn btn-sm btn-danger">✖</button></td></tr>`;
+                    tbody.innerHTML += `<tr><td class="ps-4"><b>${d.empName || d.email?.split('@')[0]}</b><br><small>${d.targetDate}</small></td><td>${d.originalIn}<br>${d.originalOut}</td><td class="text-primary">${d.requestedIn}<br>${d.requestedOut}</td><td>${d.remarks||'-'}</td><td class="text-end pe-4"><button class="btn btn-sm btn-success me-1" onclick="handleCorrection('${docSnap.id}', '${d.attendanceId}', '${d.requestedIn}', '${d.requestedOut}', 'approve')">✔</button><button class="btn btn-sm btn-danger" onclick="handleCorrection('${docSnap.id}', null, null, null, 'reject')">✖</button></td></tr>`;
                 });
             });
         }
-        
+
         window.handleCorrection = async (reqId, attId, nIn, nOut, action) => {
             if(!confirm(`Confirm ${action}?`)) return;
             const batch = writeBatch(db);
@@ -1054,262 +542,17 @@
                 batch.update(doc(db, "attendance", attId), { manualIn: nIn, manualOut: nOut, verificationStatus: "Corrected" });
                 batch.update(doc(db, "attendance_corrections", reqId), { status: "Approved", resolvedAt: serverTimestamp() });
             } else batch.update(doc(db, "attendance_corrections", reqId), { status: "Rejected", resolvedAt: serverTimestamp() });
-            await batch.commit(); if(action === 'approve') loadData();
+            await batch.commit(); loadData();
         }
 
-        // --- NEW: Manual Action Logic ---
-        window.openManualAction = (uid, date, currentStatus) => {
-            document.getElementById('manualUid').value = uid;
-            document.getElementById('manualDate').value = date;
-            document.getElementById('manualActionType').value = ""; // Reset dropdown
-            toggleManualInputs(); // Hide inputs initially
-            manualActionModal.show();
-        }
-        
+        window.changeDate = (days) => { const el = document.getElementById('dateFilter'); const d = new Date(el.value); d.setDate(d.getDate() + days); el.value = d.toISOString().split('T')[0]; loadData(); }
+        window.exportData = () => { alert("Export feature enabled."); };
+
         window.toggleManualInputs = () => {
             const type = document.getElementById('manualActionType').value;
-            const boxPresent = document.getElementById('boxPresent');
-            const boxLeave = document.getElementById('boxLeave');
-            const boxAbsent = document.getElementById('boxAbsent');
-            const warn = document.getElementById('annualWarn');
-
-            boxPresent.classList.add('d-none');
-            boxLeave.classList.add('d-none');
-            boxAbsent.classList.add('d-none');
-            
-            if (type === 'Present') {
-                boxPresent.classList.remove('d-none');
-                const uid = document.getElementById('manualUid').value;
-                const date = document.getElementById('manualDate').value;
-                const sched = schedulesMap[uid + "_" + date];
-                if(sched && sched.start && sched.end) {
-                     const fmtTime = (ts) => new Date(ts.seconds*1000).toTimeString().substring(0,5);
-                     document.getElementById('manualClockIn').value = fmtTime(sched.start);
-                     document.getElementById('manualClockOut').value = fmtTime(sched.end);
-                } else {
-                     document.getElementById('manualClockIn').value = "09:00";
-                     document.getElementById('manualClockOut').value = "18:00";
-                }
-            } else if (type === 'Absent') {
-                boxAbsent.classList.remove('d-none');
-            } else if (type.includes('Leave')) {
-                boxLeave.classList.remove('d-none');
-                warn.classList.toggle('d-none', type !== 'Annual Leave');
-            }
-        }
-        
-        window.submitManualAction = async () => {
-            const uid = document.getElementById('manualUid').value;
-            const dateStr = document.getElementById('manualDate').value;
-            const type = document.getElementById('manualActionType').value;
-            
-            const userObj = usersMap[uid];
-            if (!userObj) { alert("User data mapping error."); return; }
-
-            const targetDocId = userObj.docId; 
-            const targetAuthUid = userObj.authUid || userObj.docId; 
-
-            if(!type) return alert("Select an action");
-            if(!confirm(`Confirm ${type} for ${userObj.name} on ${dateStr}?`)) return;
-
-            const btn = document.querySelector('#manualActionModal .btn-primary');
-            btn.disabled = true;
-
-            try {
-                if (type === 'Present') {
-                    const cin = document.getElementById('manualClockIn').value;
-                    const cout = document.getElementById('manualClockOut').value;
-                    const bout = document.getElementById('manualBreakOut').value; 
-                    const bin = document.getElementById('manualBreakIn').value;   
-                    
-                    const batch = writeBatch(db);
-                    const commonData = {
-                         uid: targetAuthUid, 
-                         name: userObj.name, 
-                         email: userObj.email,
-                         date: dateStr, 
-                         verificationStatus: "Verified",
-                         location: null, 
-                         address: "Admin Manual Entry", 
-                         photoUrl: null,
-                         timestamp: serverTimestamp()
-                    };
-                    
-                    if(cin) {
-                        const refIn = doc(collection(db, "attendance"));
-                        batch.set(refIn, { ...commonData, session: "Clock In", manualIn: cin });
-                    }
-                    if(cout) {
-                        const refOut = doc(collection(db, "attendance"));
-                        batch.set(refOut, { ...commonData, session: "Clock Out", manualOut: cout });
-                    }
-                    if (bout) {
-                        const refBreakOut = doc(collection(db, "attendance"));
-                        const breakOutTs = Timestamp.fromDate(new Date(`${dateStr}T${bout}:00`));
-                        batch.set(refBreakOut, { ...commonData, session: "Break Out", timestamp: breakOutTs, breakOut: breakOutTs });
-                    }
-                    if (bin) {
-                        const refBreakIn = doc(collection(db, "attendance"));
-                        const breakInTs = Timestamp.fromDate(new Date(`${dateStr}T${bin}:00`));
-                        batch.set(refBreakIn, { ...commonData, session: "Break In", timestamp: breakInTs, breakIn: breakInTs });
-                    }
-                    await batch.commit();
-
-                } else if (type === 'Absent') {
-                    // 🟢 FIXED: Use Batch for Absent deletion
-                    const batch = writeBatch(db);
-                    const q = query(collection(db, "attendance"), where("uid", "==", targetAuthUid), where("date", "==", dateStr));
-                    const snap = await getDocs(q);
-                    
-                    snap.forEach(d => batch.delete(d.ref));
-
-                    const leaveRef = doc(collection(db, "leaves"));
-                    batch.set(leaveRef, {
-                        uid: targetDocId,         
-                        authUid: targetAuthUid,   
-                        empName: userObj.name, email: userObj.email,
-                        type: 'Absent',
-                        startDate: dateStr, endDate: dateStr, days: 1,
-                        reason: document.getElementById('manualReason').value || "Marked Absent by Admin",
-                        status: 'Approved', 
-                        reviewedAt: serverTimestamp(), 
-                        reviewer: auth.currentUser.email,
-                        isPayrollDeductible: true
-                    });
-                    
-                    await batch.commit();
-
-                } else {
-                    // Leave Transaction
-                    await runTransaction(db, async (transaction) => {
-                        const userRef = doc(db, "users", targetDocId);
-                        const userDoc = await transaction.get(userRef);
-                        
-                        if (!userDoc.exists()) throw `User doc not found (ID: ${targetDocId})`;
-                        
-                        const userData = userDoc.data();
-                        const isAnnual = (type === 'Annual Leave');
-                        
-                        if (isAnnual) {
-                             const currentBalance = userData.leave_balance?.annual || 0;
-                             transaction.update(userRef, { "leave_balance.annual": currentBalance - 1 });
-                        }
-                        
-                        const leaveRef = doc(collection(db, "leaves"));
-                        transaction.set(leaveRef, {
-                            uid: targetDocId, 
-                            authUid: targetAuthUid, 
-                            empName: userObj.name, email: userObj.email,
-                            type: type, startDate: dateStr, endDate: dateStr, days: 1,
-                            reason: document.getElementById('manualReason').value || "Admin Manual Entry",
-                            status: 'Approved', reviewedAt: serverTimestamp(), reviewer: auth.currentUser.email,
-                            isPayrollDeductible: (type === 'Unpaid Leave')
-                        });
-                    });
-                }
-                
-                manualActionModal.hide();
-                loadData(); 
-
-            } catch(e) {
-                console.error(e);
-                alert("Error: " + e.message);
-            } finally {
-                btn.disabled = false;
-            }
-        }
-
-        // 🟢 NEW FUNCTIONS for Single Record Editing
-        // ------------------------------------------
-
-        window.openEditRecord = (docId, session, timeStr, dateStr) => {
-            document.getElementById('editDocId').value = docId;
-            document.getElementById('editSessionType').value = session;
-            document.getElementById('editRecordDate').value = dateStr; 
-            
-            document.getElementById('editSessionDisplay').innerText = session;
-            document.getElementById('editTimeInput').value = timeStr;
-
-            editRecordModal.show();
-        };
-
-        window.saveSingleRecord = async () => {
-            const docId = document.getElementById('editDocId').value;
-            const session = document.getElementById('editSessionType').value;
-            const newTime = document.getElementById('editTimeInput').value;
-            const dateStr = document.getElementById('editRecordDate').value; 
-
-            if(!newTime) return alert("Please select a time.");
-
-            try {
-                // 1. Fetch original record data to copy
-                const docRef = doc(db, "attendance", docId);
-                const docSnap = await getDoc(docRef);
-                
-                if (!docSnap.exists()) {
-                    alert("Record not found.");
-                    return;
-                }
-
-                const oldData = docSnap.data();
-
-                // 2. Prepare NEW data object
-                const newData = { ...oldData }; 
-                
-                // Construct new Timestamp based on date + newTime
-                const newDateTime = new Date(`${dateStr}T${newTime}:00`);
-                const newTs = Timestamp.fromDate(newDateTime);
-
-                // Update fields for the NEW record
-                newData.timestamp = newTs; 
-                newData.verificationStatus = "Verified";
-                newData.address = "Admin Manual Edit"; // Mark as admin entry
-                
-                // Update specific session time fields
-                if (session === 'Clock In') {
-                    newData.manualIn = newTime; 
-                    delete newData.timeIn; // Prefer manual
-                } else if (session === 'Clock Out') {
-                    newData.manualOut = newTime;
-                    delete newData.timeOut;
-                } else if (session === 'Break Out') {
-                    newData.breakOut = newTs;
-                } else if (session === 'Break In') {
-                    newData.breakIn = newTs;
-                }
-
-                // 3. Batch Operation: Archive Old -> Create New
-                const batch = writeBatch(db);
-
-                // A) Mark old record as Archived (Hidden)
-                batch.update(docRef, { verificationStatus: "Archived" });
-
-                // B) Create new record
-                const newDocRef = doc(collection(db, "attendance"));
-                batch.set(newDocRef, newData);
-
-                await batch.commit();
-                
-                editRecordModal.hide();
-                loadData(); // Refresh UI
-                
-            } catch (e) {
-                console.error(e);
-                alert("Update failed: " + e.message);
-            }
-        };
-
-        window.deleteSingleRecord = async () => {
-            const docId = document.getElementById('editDocId').value;
-            if(!confirm("Permanently DELETE this record?")) return;
-
-            try {
-                await deleteDoc(doc(db, "attendance", docId));
-                editRecordModal.hide();
-                loadData(); 
-            } catch (e) {
-                alert("Delete failed: " + e.message);
-            }
+            document.getElementById('boxPresent').classList.toggle('d-none', type !== 'Present');
+            document.getElementById('boxAbsent').classList.toggle('d-none', type !== 'Absent');
+            document.getElementById('boxLeave').classList.toggle('d-none', !type.includes('Leave'));
         };
 
         lucide.createIcons();

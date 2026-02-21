@@ -41,12 +41,12 @@
 </head>
 <body>
 
-<div id="header-placeholder"></div>
-
 <div id="loadingOverlay">
     <div class="spinner-border text-primary mb-3" role="status"></div>
     <h5 class="fw-bold text-dark" id="loadingText">Verifying Access...</h5>
 </div>
+
+<div id="header-placeholder"></div>
 
 <div id="mainContainer" class="container py-4 d-none">
     
@@ -84,7 +84,8 @@
                             <th class="ps-4">Emp Code</th>
                             <th>Full Name</th>
                             <th>Department</th>
-                            <th>Leave Balance</th> <th>Status</th>
+                            <th>Leave Balance</th> 
+                            <th>Status</th>
                             <th class="text-end pe-4">Actions</th>
                         </tr>
                     </thead>
@@ -180,14 +181,13 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, collection, query, where, onSnapshot, doc, updateDoc, serverTimestamp, getDoc, setDoc, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
+    
+    // 导入配置文件和刚刚写好的权限守卫
     import { firebaseConfig } from "./firebase-config.js";
-    import { initUnifiedHeader } from "./header-app.js";
+    import { requireAdmin } from "./auth-guard.js";
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const auth = getAuth(app);
     const settingsRef = doc(db, "settings", "leave_rules");
     
     let reviewModal; 
@@ -196,37 +196,17 @@
     let searchTerm = "";      
     let leaveRulesConfig = { annual: [], medical: [] };
 
-    // --- Auth Guard ---
-    onAuthStateChanged(auth, async (user) => {
-        if (!user) {
-            window.location.href = "index.html";
-            return;
-        }
-        try {
-            const adminDoc = await getDoc(doc(db, "users", user.uid));
-            if (adminDoc.exists() && adminDoc.data().role === 'admin') {
-                initUnifiedHeader(auth, db);
-                document.getElementById('loadingText').innerText = "Loading Staff List...";
-                reviewModal = new bootstrap.Modal(document.getElementById('reviewModal'));
-                
-                initData();
-                loadLeaveRules();
-                
-                document.getElementById('loadingOverlay').classList.add('d-none');
-                document.getElementById('mainContainer').classList.remove('d-none');
-            } else {
-                alert("Unauthorized Access. Admins only.");
-                await signOut(auth);
-                window.location.href = "index.html";
-            }
-        } catch (e) {
-            alert("Auth Error: " + e.message);
-            window.location.href = "index.html";
-        }
+    // 🟢 使用 auth-guard.js 进行页面保护和初始化
+    requireAdmin(app, db, async (user) => {
+        document.getElementById('loadingText').innerText = "Loading Staff List...";
+        reviewModal = new bootstrap.Modal(document.getElementById('reviewModal'));
+        
+        initData();
+        loadLeaveRules();
     });
 
     // --- Real-time Listeners ---
-    async function initData() {
+    function initData() {
         const q = query(collection(db, "users"), where("role", "==", "staff"));
         onSnapshot(q, (snapshot) => {
             staffList = [];

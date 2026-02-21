@@ -21,115 +21,90 @@
                 <p class="text-muted">Please sign in to continue</p>
             </div>
             
-            <form id="loginForm" class="needs-validation" novalidate>
+            <div id="errorMessage" class="alert alert-danger d-none text-center" style="font-size: 0.85rem;"></div>
+
+            <form id="loginForm">
                 <div class="mb-3">
-                    <label class="form-label">Email Address</label>
-                    <input type="email" id="email" class="form-control" placeholder="admin@example.com" required>
-                    <div class="invalid-feedback">
-                        Please enter a valid email address.
-                    </div>
+                    <label class="form-label small fw-bold">Email address</label>
+                    <input type="email" class="form-control" id="email" required>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Password</label>
-                    <input type="password" id="password" class="form-control" placeholder="••••••••" required>
-                    <div class="invalid-feedback">
-                        Please enter your password.
-                    </div>
+                <div class="mb-4">
+                    <label class="form-label small fw-bold">Password</label>
+                    <input type="password" class="form-control" id="password" required>
                 </div>
-                
-                <button type="submit" id="submitBtn" class="btn btn-primary w-100 py-2">
+                <button type="submit" class="btn btn-primary w-100 fw-bold" id="submitBtn">
                     <span id="btnText">Sign In</span>
-                    <span id="btnSpinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                    <span id="btnSpinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
                 </button>
             </form>
-
-            <div id="errorMessage" class="alert alert-danger mt-3 d-none" role="alert"></div>
         </div>
     </div>
 
     <script type="module">
-        import { auth } from './firebase-config.js';
-        import { signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        
+        // 统一导入配置文件
+        import { firebaseConfig } from "./firebase-config.js";
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
 
         const loginForm = document.getElementById('loginForm');
-        const errorMessage = document.getElementById('errorMessage');
         const submitBtn = document.getElementById('submitBtn');
         const btnText = document.getElementById('btnText');
         const btnSpinner = document.getElementById('btnSpinner');
+        const errorMessage = document.getElementById('errorMessage');
 
-        /**
-         * Monitor authentication state
-         * Automatically redirects if user is already signed in
-         */
-        onAuthStateChanged(auth, (user) => {
+        // 🟢 逆向守卫：如果用户已经登录，且是管理员，直接跳过登录页进入 home
+        onAuthStateChanged(auth, async (user) => {
             if (user) {
-                window.location.href = 'home.html';
+                try {
+                    const docSnap = await getDoc(doc(db, "users", user.uid));
+                    if (docSnap.exists() && docSnap.data().role === 'admin') {
+                        window.location.replace("home.html");
+                    } else {
+                        await signOut(auth); // 不是管理员，强制登出
+                        showError("Access Denied. Admins only.");
+                    }
+                } catch (e) {
+                    await signOut(auth);
+                    showError("Error verifying permissions.");
+                }
             }
         });
 
-        /**
-         * Handle Login Submission
-         * Includes UI validation and Firebase error handling
-         */
+        // 登录请求
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            e.stopPropagation();
-
-            // 1. Reset error messages
             errorMessage.classList.add('d-none');
-
-            // 2. Perform Bootstrap Form Validation
-            // This checks strictly for valid email format and non-empty fields
-            if (!loginForm.checkValidity()) {
-                loginForm.classList.add('was-validated'); // Triggers the red/green UI cues
-                return; // Stop execution if format is invalid
-            }
-            
-            // If valid, apply class to show valid state
-            loginForm.classList.add('was-validated');
-
-            // 3. UI Loading State (Disable button, show spinner)
             setLoading(true);
 
             const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
+            const pass = document.getElementById('password').value;
 
             try {
-                // Attempt Firebase Sign In
-                await signInWithEmailAndPassword(auth, email, password);
-                // Redirect is handled by onAuthStateChanged observer above
+                await signInWithEmailAndPassword(auth, email, pass);
+                // 成功后，onAuthStateChanged 会自动触发并重定向
             } catch (error) {
-                // 4. Handle Specific Firebase Errors
-                console.error("Login Error:", error.code); // Log code for debugging
-                
-                let msg = "Login failed. Please check your credentials.";
-                
-                // Map Firebase error codes to user-friendly messages
+                let msg = "An error occurred. Please try again.";
                 switch (error.code) {
-                    case 'auth/invalid-email':
-                        msg = "The email address is badly formatted.";
-                        break;
                     case 'auth/user-not-found':
                     case 'auth/wrong-password':
-                    case 'auth/invalid-credential': // New Firebase standardized error
+                    case 'auth/invalid-credential':
                         msg = "Incorrect email or password.";
                         break;
                     case 'auth/too-many-requests':
                         msg = "Too many failed attempts. Access temporarily disabled.";
                         break;
-                    case 'auth/network-request-failed':
-                        msg = "Network error. Please check your internet connection.";
-                        break;
                 }
-
                 showError(msg);
-                setLoading(false); // Re-enable button
+                setLoading(false);
             }
         });
 
-        /**
-         * Helper: Toggle Button Loading State
-         */
         function setLoading(isLoading) {
             submitBtn.disabled = isLoading;
             if (isLoading) {
@@ -141,9 +116,6 @@
             }
         }
 
-        /**
-         * Helper: Display Error Alert
-         */
         function showError(message) {
             errorMessage.textContent = message;
             errorMessage.classList.remove('d-none');
