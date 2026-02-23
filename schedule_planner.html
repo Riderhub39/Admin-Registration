@@ -80,10 +80,10 @@
         <div class="d-flex gap-2">
             <a href="holiday.html" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"><i data-lucide="calendar-off" class="size-3"></i> Holidays</a>
             <div class="btn-group view-toggle">
-                <button class="btn btn-sm active" id="btnCalendarView" onclick="switchView('calendar')"><i data-lucide="calendar" class="size-3 me-1"></i> Calendar</button>
-                <button class="btn btn-sm" id="btnListView" onclick="switchView('list')"><i data-lucide="list" class="size-3 me-1"></i> List</button>
+                <button class="btn btn-sm active" id="btnCalendarView" onclick="window.switchView('calendar')"><i data-lucide="calendar" class="size-3 me-1"></i> Calendar</button>
+                <button class="btn btn-sm" id="btnListView" onclick="window.switchView('list')"><i data-lucide="list" class="size-3 me-1"></i> List</button>
             </div>
-            <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" onclick="openBulkModal()"><i data-lucide="layers" class="size-3"></i> Bulk Schedule</button>
+            <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" onclick="window.openBulkModal()"><i data-lucide="layers" class="size-3"></i> Bulk Schedule</button>
         </div>
     </div>
 
@@ -95,18 +95,18 @@
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h6 class="fw-bold text-muted small m-0">Detailed Shift List</h6>
                     <div class="d-flex gap-2">
-                        <input type="date" id="searchDate" class="form-control form-control-sm" style="width: 150px;" onchange="filterTable()">
-                        <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Search staff..." style="width: 200px;" onkeyup="filterTable()">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="clearFilters()"><i data-lucide="x" class="size-4"></i></button>
+                        <input type="date" id="searchDate" class="form-control form-control-sm" style="width: 150px;" onchange="window.filterTable()">
+                        <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Search staff..." style="width: 200px;" onkeyup="window.filterTable()">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="window.clearFilters()"><i data-lucide="x" class="size-4"></i></button>
                     </div>
                 </div>
                 <div id="bulkActionBar" class="d-none bg-primary bg-opacity-10 p-2 mb-3 rounded d-flex justify-content-between align-items-center">
                     <div class="d-flex align-items-center gap-2"><i data-lucide="check-square" class="size-4 text-primary"></i><span class="text-primary fw-bold small"><span id="listSelectedCount">0</span> Selected</span></div>
-                    <div class="d-flex gap-2"><button class="btn btn-sm btn-light border text-primary fw-bold py-0" onclick="openListBulkEditModal()">Edit Time</button><button class="btn btn-sm btn-light border text-danger fw-bold py-0" onclick="deleteSelectedList()">Delete</button></div>
+                    <div class="d-flex gap-2"><button class="btn btn-sm btn-light border text-primary fw-bold py-0" onclick="window.openListBulkEditModal()">Edit Time</button><button class="btn btn-sm btn-light border text-danger fw-bold py-0" onclick="window.deleteSelectedList()">Delete</button></div>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-hover table-sm align-middle" style="font-size: 0.85rem;">
-                        <thead class="table-light"><tr><th style="width: 30px;"><input type="checkbox" id="selectAllList" class="form-check-input" onchange="toggleListSelectAll()"></th><th>Date</th><th>Staff Name</th><th>Time</th><th>Break</th><th>Type</th><th>Notes</th><th class="text-end">Action</th></tr></thead>
+                        <thead class="table-light"><tr><th style="width: 30px;"><input type="checkbox" id="selectAllList" class="form-check-input" onchange="window.toggleListSelectAll()"></th><th>Date</th><th>Staff Name</th><th>Time</th><th>Break</th><th>Type</th><th>Notes</th><th class="text-end">Action</th></tr></thead>
                         <tbody id="scheduleTableBody"><tr><td colspan="8" class="text-center text-muted">Loading...</td></tr></tbody>
                     </table>
                 </div>
@@ -116,8 +116,8 @@
         <div class="sidebar-card">
             <div class="d-flex align-items-center gap-2 mb-3"><i data-lucide="bar-chart-2" class="size-5 text-primary"></i><h6 class="fw-bold m-0">Workload Analytics</h6></div>
             <div class="filter-section mb-3">
-                <div class="mb-2"><label class="form-label x-small fw-bold text-muted mb-1">FILTER TYPE</label><select class="form-select form-select-sm" id="filterType" onchange="updateFilterUI()"><option value="month" selected>Monthly</option><option value="week">Weekly</option><option value="year">Yearly</option></select></div>
-                <div><label class="form-label x-small fw-bold text-muted mb-1">SELECT PERIOD</label><input type="month" id="filterMonth" class="form-control form-control-sm" onchange="renderAnalytics()"><input type="week" id="filterWeek" class="form-control form-control-sm d-none" onchange="renderAnalytics()"><select id="filterYear" class="form-select form-select-sm d-none" onchange="renderAnalytics()"></select></div>
+                <div class="mb-2"><label class="form-label x-small fw-bold text-muted mb-1">FILTER TYPE</label><select class="form-select form-select-sm" id="filterType" onchange="window.updateFilterUI()"><option value="month" selected>Monthly</option><option value="week">Weekly</option><option value="year">Yearly</option></select></div>
+                <div><label class="form-label x-small fw-bold text-muted mb-1">SELECT PERIOD</label><input type="month" id="filterMonth" class="form-control form-control-sm" onchange="window.renderAnalytics()"><input type="week" id="filterWeek" class="form-control form-control-sm d-none" onchange="window.renderAnalytics()"><select id="filterYear" class="form-select form-select-sm d-none" onchange="window.renderAnalytics()"></select></div>
             </div>
             <div class="d-flex justify-content-between align-items-center mb-2 px-1"><small class="text-muted fw-bold">STAFF LIST (Click to View)</small></div>
             <div id="analyticsList"><div class="text-center text-muted small py-4">Loading stats...</div></div>
@@ -140,7 +140,7 @@
                     </div>
                     <div class="col-md-5 p-3 bg-light">
                         <h6 class="fw-bold text-primary mb-3">Add Staff</h6>
-                        <div class="mb-2"><label class="form-label x-small fw-bold text-muted mb-1">PRESET</label><select id="dmPresetSelect" class="form-select form-select-sm" onchange="applyDMPreset(this.value)"><option value="" selected>Custom</option></select></div>
+                        <div class="mb-2"><label class="form-label x-small fw-bold text-muted mb-1">PRESET</label><select id="dmPresetSelect" class="form-select form-select-sm" onchange="window.applyDMPreset(this.value)"><option value="" selected>Custom</option></select></div>
                         <div class="mb-2"><label class="form-label x-small fw-bold text-muted mb-1">AVAILABLE STAFF</label><select id="dmStaffSelect" class="form-select form-select-sm" multiple size="5"></select></div>
                         <div class="row g-2 mb-2">
                             <div class="col-4"><label class="form-label x-small fw-bold text-muted mb-1">START</label><input type="time" id="dmStartTime" class="form-control form-control-sm"></div>
@@ -148,7 +148,7 @@
                             <div class="col-4"><label class="form-label x-small fw-bold text-muted mb-1">BREAK (MIN)</label><input type="number" id="dmBreak" class="form-control form-control-sm" value="60" min="0"></div>
                         </div>
                         <div class="mb-3"><input type="text" id="dmNotes" class="form-control form-control-sm" placeholder="Notes..."></div>
-                        <button class="btn btn-primary btn-sm w-100 fw-bold" onclick="addShiftToDay()"><i data-lucide="plus" class="size-3 me-1"></i> Add to Roster</button>
+                        <button class="btn btn-primary btn-sm w-100 fw-bold" onclick="window.addShiftToDay()"><i data-lucide="plus" class="size-3 me-1"></i> Add to Roster</button>
                     </div>
                 </div>
             </div>
@@ -168,10 +168,10 @@
                     <div class="mb-3 border-bottom pb-3">
                         <label class="form-label small fw-bold text-muted m-0">STEP 1: SELECT PRESET (OPTIONAL)</label>
                         <div class="d-flex gap-2 mt-1">
-                            <select id="bulkPresetSelect" class="form-select form-select-sm border-primary" onchange="handleBulkPresetChange(this.value)">
+                            <select id="bulkPresetSelect" class="form-select form-select-sm border-primary" onchange="window.handleBulkPresetChange(this.value)">
                                 <option value="" selected>Custom (Use settings below)</option>
                             </select>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openPresetModal()"><i data-lucide="settings" class="size-4"></i></button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.openPresetModal()"><i data-lucide="settings" class="size-4"></i></button>
                         </div>
                         
                         <div id="presetPreviewBox" class="d-none mt-2 p-2 bg-light border rounded">
@@ -188,10 +188,10 @@
                     <div class="mb-3">
                         <label class="form-label small fw-bold mb-1">STEP 2: DATE RANGE</label>
                         <div class="btn-group w-100 mb-2" role="group">
-                            <input type="radio" class="btn-check" name="dateMode" id="modeRange" autocomplete="off" checked onchange="toggleDateMode()">
+                            <input type="radio" class="btn-check" name="dateMode" id="modeRange" autocomplete="off" checked onchange="window.toggleDateMode()">
                             <label class="btn btn-sm btn-outline-primary" for="modeRange">Specific Range</label>
                             
-                            <input type="radio" class="btn-check" name="dateMode" id="modeMonth" autocomplete="off" onchange="toggleDateMode()">
+                            <input type="radio" class="btn-check" name="dateMode" id="modeMonth" autocomplete="off" onchange="window.toggleDateMode()">
                             <label class="btn btn-sm btn-outline-primary" for="modeMonth">Whole Month</label>
                         </div>
                         
@@ -208,7 +208,7 @@
 
                     <div class="mb-3">
                         <label class="form-label small fw-bold mb-1">STEP 3: SELECT STAFF</label>
-                        <input type="text" id="bulkStaffSearch" class="form-control form-control-sm mb-1" placeholder="Filter staff..." onkeyup="filterBulkStaff()">
+                        <input type="text" id="bulkStaffSearch" class="form-control form-control-sm mb-1" placeholder="Filter staff..." onkeyup="window.filterBulkStaff()">
                         <select id="bulkStaffSelect" class="form-select form-select-sm" multiple size="5"></select>
                     </div>
                     
@@ -222,7 +222,7 @@
                     </div>
                 </form>
             </div>
-            <div class="modal-footer bg-light py-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="runBulkSchedule()">Run Bulk Schedule</button></div>
+            <div class="modal-footer bg-light py-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="window.runBulkSchedule()">Run Bulk Schedule</button></div>
         </div>
     </div>
 </div>
@@ -238,7 +238,7 @@
                 <p class="small text-muted mb-2">Updating <b id="listEditCount">0</b> shifts.</p>
                 <div class="row g-2 mb-2"><div class="col-6"><label class="form-label small fw-bold">Start</label><input type="time" id="leStart" class="form-control form-control-sm"></div><div class="col-6"><label class="form-label small fw-bold">End</label><input type="time" id="leEnd" class="form-control form-control-sm"></div></div>
             </div>
-            <div class="modal-footer bg-light py-2"><button class="btn btn-primary btn-sm w-100" onclick="submitListEdit()">Update</button></div>
+            <div class="modal-footer bg-light py-2"><button class="btn btn-primary btn-sm w-100" onclick="window.submitListEdit()">Update</button></div>
         </div>
     </div>
 </div>
@@ -248,7 +248,7 @@
         <div class="modal-content">
             <div class="modal-header py-2 bg-light">
                 <h6 class="modal-title fw-bold">Manage Advanced Presets</h6>
-                <button type="button" class="btn-close small" onclick="closePresetModal()"></button>
+                <button type="button" class="btn-close small" onclick="window.closePresetModal()"></button>
             </div>
             <div class="modal-body p-3">
                 <div class="mb-3 border-bottom pb-3">
@@ -257,8 +257,8 @@
                     
                     <div id="presetDaysContainer"></div>
 
-                    <button id="btnSavePreset" class="btn btn-primary btn-sm w-100 mt-2" onclick="savePreset()">Add Preset</button>
-                    <button id="btnCancelEdit" class="btn btn-secondary btn-sm w-100 mt-1 d-none" onclick="resetPresetForm()">Cancel Edit</button>
+                    <button id="btnSavePreset" class="btn btn-primary btn-sm w-100 mt-2" onclick="window.savePreset()">Add Preset</button>
+                    <button id="btnCancelEdit" class="btn btn-secondary btn-sm w-100 mt-1 d-none" onclick="window.resetPresetForm()">Cancel Edit</button>
                 </div>
                 <h6 class="small fw-bold text-muted">Saved Presets</h6>
                 <div id="presetListContainer" class="d-flex flex-column gap-2" style="max-height: 250px; overflow-y: auto;"></div>
@@ -296,10 +296,9 @@
     import { getFirestore, collection, getDocs, getDoc, setDoc, doc, writeBatch, deleteDoc, updateDoc, onSnapshot, query, where, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-    // 导入配置文件、格式化工具和权限守卫
     import { firebaseConfig } from "./firebase-config.js";
     import { requireAdmin } from "./auth-guard.js";
-    import { formatTime, normalizeDate } from "./utils.js"; 
+    import { formatTime, normalizeDate, logAdminAction } from "./utils.js"; // 🟢 导入 logAdminAction
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
@@ -322,11 +321,9 @@
         return normalizeDate(`${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`);
     }
 
-    // 🟢 使用 requireAdmin 自动处理验证
     requireAdmin(app, db, async (user) => {
         document.getElementById('loadingText').innerText = "Loading Schedule...";
         
-        // Initialize Modals
         dayManagerModal = new bootstrap.Modal(document.getElementById('dayManagerModal'));
         bulkModal = new bootstrap.Modal(document.getElementById('bulkModal'));
         listEditModal = new bootstrap.Modal(document.getElementById('listEditModal'));
@@ -413,9 +410,9 @@
                     });
                 }
             });
-            renderAnalytics(); 
+            window.renderAnalytics(); 
             updateCalendarEvents();
-            filterTable();
+            window.filterTable();
             if(dayManagerModal._element.classList.contains('show') && currentManagerDate) {
                 renderDayRoster(); renderAvailableStaffSelect();
             }
@@ -514,7 +511,7 @@
             if (shifts.length < rawSchedules.filter(s => s.date === currentManagerDate).length) {
                 const resetBtn = document.createElement('div');
                 resetBtn.className = 'd-grid mb-2';
-                resetBtn.innerHTML = `<button class="btn btn-sm btn-outline-secondary" onclick="openDayManager('${currentManagerDate}')">Show All Shifts for Today</button>`;
+                resetBtn.innerHTML = `<button class="btn btn-sm btn-outline-secondary" onclick="window.openDayManager('${currentManagerDate}')">Show All Shifts for Today</button>`;
                 container.appendChild(resetBtn);
             }
         }
@@ -524,8 +521,7 @@
         shifts.forEach(s => {
             const div = document.createElement('div'); div.className = 'roster-item';
             const clockInBadge = s.clockIn ? `<span class="badge bg-success bg-opacity-10 text-success border border-success ms-1" style="font-size:0.6rem;">IN</span>` : '';
-            const actionBtn = s.clockIn ? `<button class="btn btn-xs text-secondary border-0" disabled title="Clocked In"><i data-lucide="lock" class="size-4"></i></button>` : `<button class="btn btn-xs btn-outline-danger border-0" onclick="removeShift('${s.id}')"><i data-lucide="trash-2" class="size-4"></i></button>`;
-            // 🟢 Using imported formatTime
+            const actionBtn = s.clockIn ? `<button class="btn btn-xs text-secondary border-0" disabled title="Clocked In"><i data-lucide="lock" class="size-4"></i></button>` : `<button class="btn btn-xs btn-outline-danger border-0" onclick="window.removeShift('${s.id}')"><i data-lucide="trash-2" class="size-4"></i></button>`;
             div.innerHTML = `<div><div class="fw-bold text-dark small">${s.empName} ${clockInBadge}</div><div class="text-muted" style="font-size:0.75rem;">${formatTime(s.start)} - ${formatTime(s.end)} <span class="ms-1 badge bg-secondary bg-opacity-10 text-secondary border text-xs">-${s.breakMins}m</span> <span class="ms-2 text-info">${s.notes?'('+s.notes+')':''}</span></div></div>${actionBtn}`;
             container.appendChild(div);
         });
@@ -543,16 +539,21 @@
         });
     }
 
+    // 🟢 SECURE: Add Shift to Day (Logged)
     window.addShiftToDay = async function() {
         const select = document.getElementById('dmStaffSelect');
         const selectedOptions = Array.from(select.selectedOptions);
         const start = document.getElementById('dmStartTime').value;
         const end = document.getElementById('dmEndTime').value;
         const breakMins = parseInt(document.getElementById('dmBreak').value) || 0;
+        
         if(selectedOptions.length === 0 || !start || !end) return alert("Select staff and time.");
+        
         const batch = writeBatch(db);
         const startDT = new Date(`${currentManagerDate}T${start}`);
         const endDT = new Date(`${currentManagerDate}T${end}`);
+        const addedStaffIds = [];
+
         selectedOptions.forEach(opt => {
             const ref = doc(collection(db, "schedules"));
             batch.set(ref, { 
@@ -566,20 +567,33 @@
                 createdAt: Timestamp.now(), 
                 createdBy: auth.currentUser.uid 
             });
+            addedStaffIds.push(opt.value);
         });
+        
         await batch.commit();
+
+        // 🟢 Audit Log
+        logAdminAction(db, auth.currentUser, "ADD_SHIFT", "MULTIPLE", null, { date: currentManagerDate, start: start, end: end, count: addedStaffIds.length });
+
         document.getElementById('dmStaffSelect').selectedIndex = -1; 
     }
 
+    // 🟢 SECURE: Remove Shift (Logged)
     window.removeShift = async (id) => {
         const shift = rawSchedules.find(s => s.id === id);
         if (!shift) return;
         if (shift.clockIn) { alert(`🚫 Action Blocked\n\nCannot delete schedule for ${shift.empName}.\nStaff has already clocked in.`); return; }
         if (shift.date < getTodayStr()) { if (prompt(`⚠️ SECURITY WARNING\n\nDeleting PAST schedule for ${shift.empName}.\nType "DELETE" to confirm:`) !== "DELETE") return; }
         else { if(!confirm(`Delete schedule for ${shift.empName}?`)) return; }
-        try { await deleteDoc(doc(db, "schedules", id)); } catch (e) { alert("Failed to delete."); }
+        
+        try { 
+            await deleteDoc(doc(db, "schedules", id)); 
+            // 🟢 Audit Log
+            logAdminAction(db, auth.currentUser, "DELETE_SHIFT", shift.userId, shift, null);
+        } catch (e) { alert("Failed to delete."); }
     }
 
+    // 🟢 SECURE: Delete Selected List (Logged)
     window.deleteSelectedList = async () => {
         if (listSelectedIds.size === 0) return;
         const idsToDelete = Array.from(listSelectedIds);
@@ -587,23 +601,33 @@
         const blockedDeletes = [];
         let hasPastShifts = false;
         const todayStr = getTodayStr();
+        
+        const oldDataCache = []; // For Revert
+
         idsToDelete.forEach(id => {
             const shift = rawSchedules.find(s => s.id === id);
             if (shift) {
                 if (shift.clockIn) blockedDeletes.push(shift.empName);
                 else {
                     validDeletes.push(id);
+                    oldDataCache.push(shift);
                     if (shift.date < todayStr) hasPastShifts = true;
                 }
             }
         });
+
         if (blockedDeletes.length > 0) alert(`⚠️ Skipped clocked-in staff:\n${blockedDeletes.join(', ')}`);
         if (validDeletes.length === 0) return;
         if (hasPastShifts) { if (prompt(`⚠️ Confirm bulk delete (includes PAST dates)? Type "DELETE":`) !== "DELETE") return; }
         else { if (!confirm(`Delete ${validDeletes.length} selected shifts?`)) return; }
+        
         const batch = writeBatch(db);
         validDeletes.forEach(id => batch.delete(doc(db, "schedules", id)));
         await batch.commit();
+
+        // 🟢 Audit Log
+        logAdminAction(db, auth.currentUser, "BULK_DELETE_SHIFTS", "MULTIPLE", { count: validDeletes.length, records: oldDataCache }, null);
+
         listSelectedIds.clear();
         updateListBulkUI();
     }
@@ -641,12 +665,7 @@
                 sortedKeys.forEach(dayKey => {
                     const rule = p.schedule[dayKey];
                     if(rule.active) {
-                        html += `
-                            <tr>
-                                <td><span class="badge bg-light text-dark border">${dayMap[dayKey]}</span></td>
-                                <td class="fw-bold">${rule.start} - ${rule.end}</td>
-                                <td class="text-muted text-end">${rule.break}m</td>
-                            </tr>`;
+                        html += `<tr><td><span class="badge bg-light text-dark border">${dayMap[dayKey]}</span></td><td class="fw-bold">${rule.start} - ${rule.end}</td><td class="text-muted text-end">${rule.break}m</td></tr>`;
                     }
                 });
                 if(html === '') html = '<tr><td colspan="3" class="text-center text-muted small">No active days in this preset.</td></tr>';
@@ -655,6 +674,7 @@
         }
     }
 
+    // 🟢 SECURE: Run Bulk Schedule (Logged)
     window.runBulkSchedule = async () => {
         const staffSelect = document.getElementById('bulkStaffSelect');
         const selectedIds = Array.from(staffSelect.selectedOptions).map(o => o.value);
@@ -740,10 +760,15 @@
             }
         });
         
-        if (successCount > 0) await batch.commit();
+        if (successCount > 0) {
+            await batch.commit();
+            // 🟢 Audit Log
+            logAdminAction(db, auth.currentUser, "BULK_SCHEDULE_CREATED", "MULTIPLE", null, { staffCount: selectedStaff.length, totalShifts: successCount, from: sDateStr, to: eDateStr });
+        }
+        
         bulkModal.hide();
         alert(`✅ Scheduled ${successCount} shifts.\n\nSmart Feature: New joiners were only scheduled from their Join Date.`);
-        if(successCount > 0) filterTable();
+        if(successCount > 0) window.filterTable();
     }
 
     // --- UI HELPERS ---
@@ -792,7 +817,6 @@
             const timeText = `${formatTime(g.start)} - ${formatTime(g.end)}`;
             const title = `${timeText} (${g.count})`;
             const className = g.type === 'Morning' ? 'agg-morning' : 'agg-evening';
-            // Pre-format times for Day Manager modal
             const startStr = g.start.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
             const endStr = g.end.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
             return { id: g.id, title: title, start: g.start, end: g.end, allDay: false, classNames: [className], extendedProps: { dateStr: g.date, filterIds: g.ids, preFillStart: startStr, preFillEnd: endStr }, borderColor: '#ffffff' };
@@ -808,8 +832,8 @@
             eventTimeFormat: { hour: 'numeric', minute: '2-digit', meridiem: 'short' },
             displayEventTime: false,
             selectable: true, slotEventOverlap: false, eventOrder: 'start,duration',
-            dateClick: (info) => openDayManager(info.dateStr),
-            eventClick: (info) => { if(info.event.display === 'background') return; const props = info.event.extendedProps; openDayManager(props.dateStr, props.filterIds, props.preFillStart, props.preFillEnd); }
+            dateClick: (info) => window.openDayManager(info.dateStr),
+            eventClick: (info) => { if(info.event.display === 'background') return; const props = info.event.extendedProps; window.openDayManager(props.dateStr, props.filterIds, props.preFillStart, props.preFillEnd); }
         });
         calendar.render();
     }
@@ -842,8 +866,8 @@
                         <div class="x-small text-muted">Advanced Rule Set</div>
                     </div>
                     <div class="d-flex gap-1">
-                        <button class="btn btn-xs btn-outline-primary" onclick="editPreset(${i})"><i data-lucide="edit-2" class="size-3"></i></button>
-                        <button class="btn btn-xs btn-outline-danger" onclick="deletePreset(${i})"><i data-lucide="trash-2" class="size-3"></i></button>
+                        <button class="btn btn-xs btn-outline-primary" onclick="window.editPreset(${i})"><i data-lucide="edit-2" class="size-3"></i></button>
+                        <button class="btn btn-xs btn-outline-danger" onclick="window.deletePreset(${i})"><i data-lucide="trash-2" class="size-3"></i></button>
                     </div>
                 `;
                 listContainer.appendChild(item);
@@ -852,7 +876,7 @@
         }
     }
     
-    window.openPresetModal = () => { bulkModal.hide(); dayManagerModal.hide(); resetPresetForm(); presetModal.show(); }
+    window.openPresetModal = () => { bulkModal.hide(); dayManagerModal.hide(); window.resetPresetForm(); presetModal.show(); }
     window.closePresetModal = () => { presetModal.hide(); }
 
     window.savePreset = async () => { 
@@ -878,15 +902,12 @@
 
         const newObj = { name, schedule };
 
-        if (idx === "-1") {
-            presetCache.push(newObj);
-        } else {
-            presetCache[idx] = newObj;
-        }
+        if (idx === "-1") presetCache.push(newObj);
+        else presetCache[idx] = newObj;
         
         await setDoc(doc(db, "settings", "shift_presets"), {presets:presetCache}); 
         loadPresets(); 
-        resetPresetForm();
+        window.resetPresetForm();
     }
 
     window.editPreset = (i) => {
@@ -954,9 +975,8 @@
         data.forEach(i=>{ 
             const tr=document.createElement('tr'); 
             const statusIcon = i.clockIn ? `<span class="badge bg-success bg-opacity-10 text-success border border-success px-1 ms-1">IN</span>` : '';
-            const actionBtn = i.clockIn ? `<button class="btn btn-xs text-secondary border-0" disabled><i data-lucide="lock" class="size-4"></i></button>` : `<button class="btn btn-xs text-danger border-0" onclick="removeShift('${i.id}')"><i data-lucide="trash-2" class="size-4"></i></button>`;
-            // 🟢 Using imported formatTime
-            tr.innerHTML=`<td><input type="checkbox" class="form-check-input list-check" value="${i.id}" onchange="toggleListSelection('${i.id}')"></td><td>${i.date}</td><td class="fw-bold">${i.empName} ${statusIcon}</td><td>${formatTime(i.start)}-${formatTime(i.end)}</td><td>${i.breakMins}m</td><td>${i.shiftType}</td><td class="text-muted small">${i.notes||'-'}</td><td class="text-end">${actionBtn}</td>`; 
+            const actionBtn = i.clockIn ? `<button class="btn btn-xs text-secondary border-0" disabled><i data-lucide="lock" class="size-4"></i></button>` : `<button class="btn btn-xs text-danger border-0" onclick="window.removeShift('${i.id}')"><i data-lucide="trash-2" class="size-4"></i></button>`;
+            tr.innerHTML=`<td><input type="checkbox" class="form-check-input list-check" value="${i.id}" onchange="window.toggleListSelection('${i.id}')"></td><td>${i.date}</td><td class="fw-bold">${i.empName} ${statusIcon}</td><td>${formatTime(i.start)}-${formatTime(i.end)}</td><td>${i.breakMins}m</td><td>${i.shiftType}</td><td class="text-muted small">${i.notes||'-'}</td><td class="text-end">${actionBtn}</td>`; 
             t.appendChild(tr); 
         }); 
         lucide.createIcons();
@@ -967,18 +987,31 @@
     function updateListBulkUI() { const b=document.getElementById('bulkActionBar'); if(listSelectedIds.size>0){b.classList.remove('d-none');document.getElementById('listSelectedCount').innerText=listSelectedIds.size;}else{b.classList.add('d-none');} }
     
     window.openListBulkEditModal = () => { document.getElementById('listEditCount').innerText=listSelectedIds.size; document.getElementById('leStart').value=""; document.getElementById('leEnd').value=""; listEditModal.show(); }
+    
+    // 🟢 SECURE: Bulk Edit Time (Logged)
     window.submitListEdit = async () => { 
         const s=document.getElementById('leStart').value, e=document.getElementById('leEnd').value; 
         if(!s||!e) return alert("Enter time"); 
+        
         const b=writeBatch(db); 
+        let editCount = 0;
+        
         listSelectedIds.forEach(id=>{ 
             const sh=rawSchedules.find(x=>x.id===id); 
-            if(sh){ 
+            if(sh && !sh.clockIn){ 
                 const st=new Date(`${sh.date}T${s}`), et=new Date(`${sh.date}T${e}`); 
                 b.update(doc(db,"schedules",id),{start:Timestamp.fromDate(st),end:Timestamp.fromDate(et)}); 
+                editCount++;
             } 
         }); 
+        
         await b.commit(); 
+        
+        // 🟢 Audit Log
+        if (editCount > 0) {
+            logAdminAction(db, auth.currentUser, "BULK_EDIT_SHIFTS", "MULTIPLE", { count: editCount }, { newStart: s, newEnd: e });
+        }
+        
         listEditModal.hide(); 
     }
     
@@ -986,7 +1019,7 @@
     window.clearFilters = () => { document.getElementById('searchInput').value=''; document.getElementById('searchDate').value=''; renderListView(rawSchedules); }
 
     function initFilters() { const t=new Date(); document.getElementById('filterMonth').value=t.toISOString().slice(0,7); const y=document.getElementById('filterYear'); const c=t.getFullYear(); for(let i=c-2;i<=c+2;i++) y.appendChild(new Option(i,i,false,i===c)); }
-    window.updateFilterUI = () => { const t=document.getElementById('filterType').value; ['filterMonth','filterWeek','filterYear'].forEach(i=>document.getElementById(i).classList.add('d-none')); if(t==='month')document.getElementById('filterMonth').classList.remove('d-none'); if(t==='week')document.getElementById('filterWeek').classList.remove('d-none'); if(t==='year')document.getElementById('filterYear').classList.remove('d-none'); renderAnalytics(); }
+    window.updateFilterUI = () => { const t=document.getElementById('filterType').value; ['filterMonth','filterWeek','filterYear'].forEach(i=>document.getElementById(i).classList.add('d-none')); if(t==='month')document.getElementById('filterMonth').classList.remove('d-none'); if(t==='week')document.getElementById('filterWeek').classList.remove('d-none'); if(t==='year')document.getElementById('filterYear').classList.remove('d-none'); window.renderAnalytics(); }
     
     window.renderAnalytics = () => { 
         const c=document.getElementById('analyticsList'), t=document.getElementById('filterType').value; 
@@ -1009,7 +1042,7 @@
         let html=''; 
         Object.keys(stats).sort((a,b)=>stats[b].totalHours-stats[a].totalHours).forEach(uid=>{ 
             const u=stats[uid]; 
-            html+=`<div class="stat-item d-flex justify-content-between align-items-center" onclick="openStaffAnalytics('${uid}')"><div class="d-flex align-items-center gap-2"><div class="bg-primary bg-opacity-10 text-primary rounded-circle d-flex align-items-center justify-content-center fw-bold" style="width:30px; height:30px; font-size:0.75rem;">${u.name.charAt(0)}</div><div><div class="text-dark small fw-bold">${u.name}</div><div class="stat-label">Workload</div></div></div><div class="text-end"><div class="stat-value text-primary">${u.distinctDates.size} <span style="font-size:0.7em; color:#94a3b8;">Days</span></div><div class="stat-value text-secondary" style="font-size:0.85rem;">${u.totalHours.toFixed(1)} <span style="font-size:0.7em; color:#94a3b8;">Hrs</span></div></div></div>`; 
+            html+=`<div class="stat-item d-flex justify-content-between align-items-center" onclick="window.openStaffAnalytics('${uid}')"><div class="d-flex align-items-center gap-2"><div class="bg-primary bg-opacity-10 text-primary rounded-circle d-flex align-items-center justify-content-center fw-bold" style="width:30px; height:30px; font-size:0.75rem;">${u.name.charAt(0)}</div><div><div class="text-dark small fw-bold">${u.name}</div><div class="stat-label">Workload</div></div></div><div class="text-end"><div class="stat-value text-primary">${u.distinctDates.size} <span style="font-size:0.7em; color:#94a3b8;">Days</span></div><div class="stat-value text-secondary" style="font-size:0.85rem;">${u.totalHours.toFixed(1)} <span style="font-size:0.7em; color:#94a3b8;">Hrs</span></div></div></div>`; 
         }); 
         c.innerHTML=html||'<div class="text-center text-muted small py-4">No shifts.</div>'; 
         window.currentStats=stats; 
@@ -1022,7 +1055,6 @@
         data.shifts.sort((a,b) => new Date(a.date) - new Date(b.date));
         data.shifts.forEach(s => { 
             const d = new Date(s.date).toLocaleDateString('en-US', {weekday: 'short'}); 
-            // 🟢 Using imported formatTime
             t.innerHTML += `<tr><td class="ps-3">${s.date}</td><td><span class="badge bg-light text-dark border">${d}</span></td><td>${formatTime(s.start)} - ${formatTime(s.end)}</td><td class="text-end pe-3 fw-bold text-primary">${s.hours.toFixed(1)}</td></tr>`; 
         });
         document.getElementById('modalTotalShifts').innerText = data.shifts.length; document.getElementById('modalTotalHours').innerText = data.totalHours.toFixed(1);

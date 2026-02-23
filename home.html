@@ -340,7 +340,7 @@
     
     import { firebaseConfig } from "./firebase-config.js";
     import { requireAdmin } from "./auth-guard.js";
-    import { normalizeDate } from "./utils.js";
+    import { normalizeDate, logAdminAction } from "./utils.js"; // 🟢 导入 logAdminAction
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
@@ -352,14 +352,12 @@
     const PAGE_SIZE = 20;
 
     requireAdmin(app, db, async (user, userData) => {
-        // 🟢 Bootstrap UI Initialization with Safety Check
         if (typeof bootstrap !== 'undefined') {
             announceModal = new bootstrap.Modal(document.getElementById('announceModal'));
             officeModal = new bootstrap.Modal(document.getElementById('officeSettingsModal'));
             driverModal = new bootstrap.Modal(document.getElementById('driverSetupModal'));
             photoModal = new bootstrap.Modal(document.getElementById('photoModal'));
 
-            // 🟢 Role-Based Feature Toggle
             if (userData.role === 'manager') {
                 document.getElementById('managerAuditAction').classList.remove('d-none');
                 document.getElementById('managerOfficeAction').classList.remove('d-none');
@@ -371,7 +369,7 @@
         lucide.createIcons();
     });
 
-    // --- 🟢 Audit Log Logic ---
+    // --- Audit Log Logic ---
 
     window.openAuditModal = () => {
         auditModal.show();
@@ -517,7 +515,6 @@
         });
     }
 
-    // --- Common Functions ---
     window.goToAttendance = (filter) => window.location.href = `attendance.html?filter=${filter}`;
 
     function loadTrackingStats() {
@@ -543,7 +540,7 @@
         });
     }
 
-    // --- Office Settings ---
+    // --- 🟢 Office Settings (Logged) ---
     let currentWifiList = [];
     window.openOfficeSettingsModal = async () => {
         officeModal.show();
@@ -579,16 +576,23 @@
     window.removeWifi = (i) => { currentWifiList.splice(i, 1); window.renderWifiList(); };
 
     window.saveOfficeSettings = async () => {
-        await setDoc(doc(db, "settings", "office_location"), { 
+        const newData = { 
             latitude: parseFloat(document.getElementById('officeLat').value), 
             longitude: parseFloat(document.getElementById('officeLng').value), 
             radius: parseFloat(document.getElementById('officeRadius').value), 
             allowedWifis: currentWifiList, updatedAt: serverTimestamp() 
-        }, { merge: true });
+        };
+        const oldSnap = await getDoc(doc(db, "settings", "office_location"));
+        
+        await setDoc(doc(db, "settings", "office_location"), newData, { merge: true });
+        
+        // 🟢 Log the setting update
+        await logAdminAction(db, auth.currentUser, "UPDATE_OFFICE_SETTINGS", "GLOBAL", oldSnap.data() || {}, newData);
+        
         officeModal.hide();
     };
 
-    // --- Announcements ---
+    // --- 🟢 Announcements (Logged) ---
     window.openAnnouncementModal = () => { window.resetAnnounceForm(); announceModal.show(); window.loadAnnouncements(); };
     let announceUnsubscribe = null;
     window.loadAnnouncements = () => {
@@ -605,15 +609,28 @@
     window.submitAnnouncement = async () => {
         const text = document.getElementById('announceText').value.trim();
         if (!text) return;
-        await addDoc(collection(db, "announcements"), { message: text, createdAt: serverTimestamp(), author: auth.currentUser.email });
+        
+        const newDocRef = await addDoc(collection(db, "announcements"), { message: text, createdAt: serverTimestamp(), author: auth.currentUser.email });
+        
+        // 🟢 Log the announcement creation
+        await logAdminAction(db, auth.currentUser, "POST_ANNOUNCEMENT", newDocRef.id, null, { message: text });
+        
         window.resetAnnounceForm();
     };
 
     window.resetAnnounceForm = () => { document.getElementById('announceText').value = ""; };
 
-    window.deleteAnnouncement = async (id) => { if (confirm("Delete?")) await deleteDoc(doc(db, "announcements", id)); };
+    window.deleteAnnouncement = async (id) => { 
+        if (confirm("Delete?")) {
+            const oldSnap = await getDoc(doc(db, "announcements", id));
+            await deleteDoc(doc(db, "announcements", id)); 
+            
+            // 🟢 Log the announcement deletion
+            await logAdminAction(db, auth.currentUser, "DELETE_ANNOUNCEMENT", id, oldSnap.data(), null);
+        }
+    };
 
-    // --- Driver Setup ---
+    // --- 🟢 Driver Setup (Logged) ---
     let allStaffCache = [];
     window.openDriverSetupModal = async () => {
         driverModal.show();
@@ -630,7 +647,12 @@
             </div>`).join('');
     };
 
-    window.toggleDriverStatus = async (uid, isDriver) => { await updateDoc(doc(db, "users", uid), { isDriver, updatedAt: serverTimestamp() }); };
+    window.toggleDriverStatus = async (uid, isDriver) => { 
+        await updateDoc(doc(db, "users", uid), { isDriver, updatedAt: serverTimestamp() }); 
+        
+        // 🟢 Log the driver status toggle
+        await logAdminAction(db, auth.currentUser, "TOGGLE_DRIVER_STATUS", uid, { isDriver: !isDriver }, { isDriver: isDriver });
+    };
 
     function initDashboard() {
         document.getElementById('attDate').innerText = new Date().toLocaleDateString('en-GB', { day:'numeric', month:'short' });

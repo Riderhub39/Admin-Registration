@@ -76,22 +76,22 @@
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
                     <div class="btn-group" role="group">
-                        <input type="radio" class="btn-check" name="viewMode" id="modeDay" autocomplete="off" checked onchange="toggleMode('day')">
+                        <input type="radio" class="btn-check" name="viewMode" id="modeDay" autocomplete="off" checked onchange="window.toggleMode('day')">
                         <label class="btn btn-outline-primary" for="modeDay">Day View</label>
 
-                        <input type="radio" class="btn-check" name="viewMode" id="modeMonth" autocomplete="off" onchange="toggleMode('month')">
+                        <input type="radio" class="btn-check" name="viewMode" id="modeMonth" autocomplete="off" onchange="window.toggleMode('month')">
                         <label class="btn btn-outline-primary" for="modeMonth">Month View</label>
                     </div>
 
                     <div id="dayControls" class="d-flex align-items-center gap-2">
-                        <button class="btn btn-light border" onclick="changeDate(-1)"><i data-lucide="chevron-left"></i></button>
-                        <input type="date" id="dateFilter" class="form-control fw-bold" style="width: 150px;" onchange="loadData()">
-                        <button class="btn btn-light border" onclick="changeDate(1)"><i data-lucide="chevron-right"></i></button>
+                        <button class="btn btn-light border" onclick="window.changeDate(-1)"><i data-lucide="chevron-left"></i></button>
+                        <input type="date" id="dateFilter" class="form-control fw-bold" style="width: 150px;" onchange="window.loadData()">
+                        <button class="btn btn-light border" onclick="window.changeDate(1)"><i data-lucide="chevron-right"></i></button>
                     </div>
 
                     <div id="monthControls" class="d-flex align-items-center gap-2 d-none">
-                        <input type="month" id="monthFilter" class="form-control fw-bold" style="width: 160px;" onchange="loadData()">
-                        <select id="monthStatusFilter" class="form-select fw-bold" style="width: 180px;" onchange="loadData()">
+                        <input type="month" id="monthFilter" class="form-control fw-bold" style="width: 160px;" onchange="window.loadData()">
+                        <select id="monthStatusFilter" class="form-select fw-bold" style="width: 180px;" onchange="window.loadData()">
                             <option value="all">Show All Status</option>
                             <option value="late">Show Late Only</option>
                             <option value="absent">Show Absent Only</option>
@@ -100,17 +100,17 @@
                     </div>
 
                     <div class="position-relative ms-2">
-                        <input type="text" id="searchInput" class="form-control ps-5" placeholder="Search staff..." style="width: 200px;" onkeyup="handleSearch()">
+                        <input type="text" id="searchInput" class="form-control ps-5" placeholder="Search staff..." style="width: 200px;" onkeyup="window.handleSearch()">
                         <i data-lucide="search" class="position-absolute top-50 start-0 translate-middle-y ms-3 text-muted size-4"></i>
                     </div>
 
-                    <button class="btn btn-primary ms-2" onclick="loadData()">
+                    <button class="btn btn-primary ms-2" onclick="window.loadData()">
                         <i data-lucide="refresh-cw" class="size-4 me-2"></i> Load
                     </button>
                 </div>
 
                 <div class="d-flex gap-2">
-                    <button class="btn btn-outline-success d-flex align-items-center gap-2" onclick="exportData()">
+                    <button class="btn btn-outline-success d-flex align-items-center gap-2" onclick="window.exportData()">
                         <i data-lucide="download" class="size-4"></i> Export Excel
                     </button>
                 </div>
@@ -191,7 +191,7 @@
                     <input type="hidden" id="manualUid"><input type="hidden" id="manualDate">
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Select Action</label>
-                        <select id="manualActionType" class="form-select" onchange="toggleManualInputs()">
+                        <select id="manualActionType" class="form-select" onchange="window.toggleManualInputs()">
                             <option value="">-- Choose --</option>
                             <option value="Present">Mark Present (Manual Clock In/Out)</option>
                             <option value="Absent">Mark Absent</option>
@@ -210,7 +210,7 @@
                     <div id="boxLeave" class="d-none alert alert-info small">1 Day will be assigned.</div>
                     <div class="mt-3"><label class="small">Reason</label><input type="text" id="manualReason" class="form-control" placeholder="Remarks..."></div>
                 </div>
-                <div class="modal-footer"><button class="btn btn-primary btn-sm px-4 fw-bold" onclick="submitManualAction()">Confirm</button></div>
+                <div class="modal-footer"><button class="btn btn-primary btn-sm px-4 fw-bold" onclick="window.submitManualAction()">Confirm</button></div>
             </div>
         </div>
     </div>
@@ -225,8 +225,8 @@
                     <div class="alert alert-warning small">Saving will archive the original record to preserve evidence.</div>
                 </div>
                 <div class="modal-footer justify-content-between">
-                    <button class="btn btn-outline-danger btn-sm" onclick="deleteSingleRecord()">Delete</button>
-                    <button class="btn btn-primary btn-sm fw-bold" onclick="saveSingleRecord()">Save Changes</button>
+                    <button class="btn btn-outline-danger btn-sm" onclick="window.deleteSingleRecord()">Delete</button>
+                    <button class="btn btn-primary btn-sm fw-bold" onclick="window.saveSingleRecord()">Save Changes</button>
                 </div>
             </div>
         </div>
@@ -241,7 +241,7 @@
 
         import { firebaseConfig } from "./firebase-config.js";
         import { requireAdmin } from "./auth-guard.js";
-        import { formatTime, msToHM, normalizeDate, logAdminAction } from "./utils.js";
+        import { formatTime, msToHM, normalizeDate, logAdminAction } from "./utils.js"; // 🟢 Added logAdminAction
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
@@ -258,12 +258,19 @@
 
         requireAdmin(app, db, async (user) => {
             document.getElementById('loadingText').innerText = "Loading Attendance...";
-            photoModal = new bootstrap.Modal(document.getElementById('photoModal'));
-            manualActionModal = new bootstrap.Modal(document.getElementById('manualActionModal'));
-            editRecordModal = new bootstrap.Modal(document.getElementById('editRecordModal'));
+            
+            if (typeof bootstrap !== 'undefined') {
+                photoModal = new bootstrap.Modal(document.getElementById('photoModal'));
+                manualActionModal = new bootstrap.Modal(document.getElementById('manualActionModal'));
+                editRecordModal = new bootstrap.Modal(document.getElementById('editRecordModal'));
+            }
+
+            const todayStr = new Date().toISOString().split('T')[0];
+            document.getElementById('dateFilter').value = todayStr;
+            document.getElementById('monthFilter').value = todayStr.substring(0,7);
 
             await fetchUsers();
-            loadData();
+            window.loadData();
             listenToCorrections();
         });
 
@@ -400,7 +407,7 @@
                         <div class="col-md-3 text-end d-flex align-items-center justify-content-end gap-2">
                             ${statusLabel}
                             ${pending > 0 ? `<span class="badge bg-warning text-dark">${pending}</span>` : ''}
-                            <button class="btn btn-sm btn-light border-0" onclick="openManualAction('${uid}', '${targetDate}')"><i data-lucide="settings-2" class="size-4"></i></button>
+                            <button class="btn btn-sm btn-light border-0" onclick="window.openManualAction('${uid}', '${targetDate}'); event.stopPropagation();"><i data-lucide="settings-2" class="size-4"></i></button>
                             <i data-lucide="chevron-down" class="text-muted chevron-icon"></i>
                         </div>
                     </div>
@@ -454,14 +461,23 @@
             return `<div class="list-group-item d-flex justify-content-between align-items-center px-4 py-2">
                 <div class="small"><div class="fw-bold text-muted">${item.session}</div><div class="fw-bold text-dark">${time}</div></div>
                 <div class="text-end d-flex align-items-center gap-3">
-                    ${isV ? '<span class="badge bg-success bg-opacity-10 text-success border border-success">Verified</span>' : `<button class="btn btn-xs btn-primary" onclick="quickVerify('${item.id}')">Verify</button>`}
-                    <button class="btn btn-xs btn-light border" onclick="openEditRecord('${item.id}', '${item.session}', '${tEdit}', '${item.date}')"><i data-lucide="edit-3" class="size-3"></i></button>
-                    ${item.photoUrl ? `<button class="btn btn-xs btn-outline-info" onclick="viewPhoto('${item.photoUrl}')"><i data-lucide="image" class="size-3"></i></button>` : ''}
+                    ${isV ? '<span class="badge bg-success bg-opacity-10 text-success border border-success">Verified</span>' : `<button class="btn btn-xs btn-primary" onclick="window.quickVerify('${item.id}')">Verify</button>`}
+                    <button class="btn btn-xs btn-light border" onclick="window.openEditRecord('${item.id}', '${item.session}', '${tEdit}', '${item.date}')"><i data-lucide="edit-3" class="size-3"></i></button>
+                    ${item.photoUrl ? `<button class="btn btn-xs btn-outline-info" onclick="window.viewPhoto('${item.photoUrl}')"><i data-lucide="image" class="size-3"></i></button>` : ''}
                 </div>
             </div>`;
         }
 
-        // --- Core P1 Hardened Logic ---
+        // --- Core P1 Hardened Logic (Logged) ---
+
+        window.openManualAction = (uid, targetDate) => {
+            document.getElementById('manualUid').value = uid;
+            document.getElementById('manualDate').value = targetDate;
+            document.getElementById('manualActionType').value = "";
+            document.getElementById('manualReason').value = "";
+            window.toggleManualInputs();
+            manualActionModal.show();
+        }
 
         window.submitManualAction = async () => {
             const uid = document.getElementById('manualUid').value;
@@ -490,7 +506,7 @@
                     if(cout) batch.set(doc(collection(db, "attendance")), { ...base, session: "Clock Out", manualOut: cout });
                     
                     // 🟢 Log Admin Action
-                    await logAdminAction(db, auth.currentUser, "MANUAL_ATTENDANCE_PRESENT", userObj.docId, oldDataSnapshot, { cin, cout });
+                    await logAdminAction(db, auth.currentUser, "MANUAL_ATTENDANCE_PRESENT", userObj.docId, oldDataSnapshot, { cin, cout, date: dateStr });
                     await batch.commit();
                 } else if (type === 'Absent') {
                     const leaveRef = doc(collection(db, "leaves"));
@@ -507,14 +523,22 @@
                         const oldBal = uDoc.data().leave_balance?.annual || 0;
                         if(type === 'Annual Leave') tx.update(uRef, { "leave_balance.annual": oldBal - 1 });
                         
-                        const leaveData = { uid: userObj.docId, authUid: userObj.authUid, empName: userObj.name, type, startDate: dateStr, endDate: dateStr, days: 1, status: 'Approved', reviewedAt: serverTimestamp(), isPayrollDeductible: type === 'Unpaid Leave' };
+                        const leaveData = { uid: userObj.docId, authUid: userObj.authUid, empName: userObj.name, type, startDate: dateStr, endDate: dateStr, days: 1, status: 'Approved', reviewedAt: serverTimestamp(), isPayrollDeductible: type === 'Unpaid Leave', reason: document.getElementById('manualReason').value || "Admin Manual Leave" };
                         tx.set(doc(collection(db, "leaves")), leaveData);
                         
                         await logAdminAction(db, auth.currentUser, "MANUAL_LEAVE_ASSIGN", userObj.docId, {oldBalance: oldBal, oldAttendance: oldDataSnapshot}, leaveData);
                     });
                 }
-                manualActionModal.hide(); loadData();
+                manualActionModal.hide(); window.loadData();
             } catch(e) { alert(e.message); }
+        }
+
+        window.openEditRecord = (id, type, time, date) => {
+            document.getElementById('editDocId').value = id;
+            document.getElementById('editSessionType').value = type;
+            document.getElementById('editTimeInput').value = time;
+            document.getElementById('editRecordDate').value = date;
+            editRecordModal.show();
         }
 
         window.saveSingleRecord = async () => {
@@ -540,7 +564,7 @@
                 await logAdminAction(db, auth.currentUser, "EDIT_SINGLE_RECORD", oldData.uid, oldData, newData);
                 await batch.commit();
                 
-                editRecordModal.hide(); loadData();
+                editRecordModal.hide(); window.loadData();
             } catch(e) { alert(e.message); }
         }
 
@@ -551,9 +575,14 @@
                 const snap = await getDoc(doc(db, "attendance", id));
                 await logAdminAction(db, auth.currentUser, "DELETE_RECORD", snap.data().uid, snap.data(), null);
                 await deleteDoc(doc(db, "attendance", id));
-                editRecordModal.hide(); loadData();
+                editRecordModal.hide(); window.loadData();
             } catch(e) { alert(e.message); }
         };
+
+        window.quickVerify = async (id) => {
+            await updateDoc(doc(db, "attendance", id), { verificationStatus: "Verified" });
+            window.loadData();
+        }
 
         // --- UI Logic ---
         window.toggleMode = (mode) => {
@@ -568,7 +597,7 @@
                 document.getElementById('monthControls').classList.remove('d-none');
                 dashTabLi.classList.add('month-mode-hidden');
             }
-            loadData();
+            window.loadData();
         }
 
         window.handleSearch = () => {
@@ -579,7 +608,7 @@
             });
         }
 
-        window.changeDate = (days) => { const el = document.getElementById('dateFilter'); const d = new Date(el.value); d.setDate(d.getDate() + days); el.value = d.toISOString().split('T')[0]; loadData(); }
+        window.changeDate = (days) => { const el = document.getElementById('dateFilter'); const d = new Date(el.value); d.setDate(d.getDate() + days); el.value = d.toISOString().split('T')[0]; window.loadData(); }
         
         window.toggleManualInputs = () => {
             const type = document.getElementById('manualActionType').value;
@@ -616,7 +645,7 @@
                     document.getElementById('noCorrectionsMsg').classList.add('d-none');
                     snap.forEach(docSnap => {
                         const d = docSnap.data();
-                        tbody.innerHTML += `<tr><td class="ps-4"><b>${d.empName || d.email?.split('@')[0]}</b><br><small>${d.targetDate}</small></td><td>${d.originalIn}<br>${d.originalOut}</td><td class="text-primary fw-bold">${d.requestedIn}<br>${d.requestedOut}</td><td><small>${d.remarks||'-'}</small></td><td class="text-end pe-4"><button class="btn btn-sm btn-success me-1" onclick="handleCorrection('${docSnap.id}', '${d.attendanceId}', '${d.requestedIn}', '${d.requestedOut}', 'approve')">✔</button><button class="btn btn-sm btn-danger" onclick="handleCorrection('${docSnap.id}', null, null, null, 'reject')">✖</button></td></tr>`;
+                        tbody.innerHTML += `<tr><td class="ps-4"><b>${d.empName || d.email?.split('@')[0]}</b><br><small>${d.targetDate}</small></td><td>${d.originalIn}<br>${d.originalOut}</td><td class="text-primary fw-bold">${d.requestedIn}<br>${d.requestedOut}</td><td><small>${d.remarks||'-'}</small></td><td class="text-end pe-4"><button class="btn btn-sm btn-success me-1" onclick="window.handleCorrection('${docSnap.id}', '${d.attendanceId}', '${d.requestedIn}', '${d.requestedOut}', 'approve')">✔</button><button class="btn btn-sm btn-danger" onclick="window.handleCorrection('${docSnap.id}', null, null, null, 'reject')">✖</button></td></tr>`;
                     });
                 }
             });
@@ -629,17 +658,23 @@
                 if(action === 'approve' && attId) {
                     batch.update(doc(db, "attendance", attId), { manualIn: nIn, manualOut: nOut, verificationStatus: "Verified", address: "App Correction Approved" });
                     batch.update(doc(db, "attendance_corrections", reqId), { status: "Approved", resolvedAt: serverTimestamp() });
+                    
+                    // 🟢 Log Admin Action
                     await logAdminAction(db, auth.currentUser, "APPROVE_CORRECTION", attId, null, {nIn, nOut});
                 } else {
                     batch.update(doc(db, "attendance_corrections", reqId), { status: "Rejected", resolvedAt: serverTimestamp() });
                 }
-                await batch.commit(); loadData();
+                await batch.commit(); window.loadData();
             } catch(e) { alert(e.message); }
         }
 
         window.exportData = () => { alert("Export feature enabled. CSV will be generated based on current filter."); };
 
-        lucide.createIcons();
+        window.viewPhoto = (url) => {
+            document.getElementById('modalImg').src = url;
+            photoModal.show();
+        };
+
     </script>
 </body>
 </html>

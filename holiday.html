@@ -53,7 +53,7 @@
                 <label class="form-label small fw-bold text-muted">Date</label>
                 <input type="date" id="hDate" class="form-control">
             </div>
-            <button onclick="addHoliday()" class="btn btn-primary w-100 fw-bold">
+            <button onclick="window.addHoliday()" class="btn btn-primary w-100 fw-bold">
                 <i data-lucide="plus" class="size-4 me-1"></i> Add to Calendar
             </button>
             <div id="status" class="text-center mt-2 small"></div>
@@ -77,26 +77,23 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, doc, getDoc, updateDoc, arrayUnion, arrayRemove, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
     
-    // 导入配置和权限守卫
     import { firebaseConfig } from "./firebase-config.js";
     import { requireAdmin } from "./auth-guard.js";
+    import { logAdminAction } from "./utils.js"; // 🟢 导入日志函数
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
+    const auth = getAuth(app); // 🟢 用于获取操作人 UID
     const holidayDocRef = doc(db, "settings", "holidays");
 
-    // 🟢 使用 requireAdmin 自动处理验证
     requireAdmin(app, db, async (user) => {
         document.getElementById('loadingText').innerText = "Loading Holidays...";
         await loadHolidays(); 
         lucide.createIcons();
     });
 
-    /**
-     * Fetches and renders the list of holidays.
-     * Sorts holidays chronologically by date.
-     */
     async function loadHolidays() {
         const listDiv = document.getElementById('holidayList');
         try {
@@ -109,10 +106,8 @@
                     return;
                 }
 
-                // Sort by date (ascending)
                 list.sort((a,b) => a.date.localeCompare(b.date));
 
-                // Render List Items
                 listDiv.innerHTML = list.map(h => `
                     <div class="list-group-item d-flex justify-content-between align-items-center">
                         <div>
@@ -134,11 +129,9 @@
         }
     }
 
-    /**
-     * Adds a new holiday to the Firestore array.
-     */
+    // 🟢 修改：添加审计日志
     window.addHoliday = async function() {
-        const name = document.getElementById('hName').value;
+        const name = document.getElementById('hName').value.trim();
         const date = document.getElementById('hDate').value;
         const status = document.getElementById('status');
 
@@ -147,19 +140,24 @@
         status.innerHTML = "<span class='text-primary'>Saving...</span>";
         try {
             const docSnap = await getDoc(holidayDocRef);
+            const holidayObj = { name: name, date: date };
+
             if (!docSnap.exists()) {
-                await setDoc(holidayDocRef, { holiday_list: [{ name: name, date: date }] });
+                await setDoc(holidayDocRef, { holiday_list: [holidayObj] });
             } else {
                 await updateDoc(holidayDocRef, {
-                    holiday_list: arrayUnion({ name: name, date: date })
+                    holiday_list: arrayUnion(holidayObj)
                 });
             }
             
+            // 🟢 记录添加假期的日志
+            await logAdminAction(db, auth.currentUser, "ADD_HOLIDAY", "GLOBAL", null, holidayObj);
+
             status.innerHTML = "<span class='text-success'>Saved!</span>";
             document.getElementById('hName').value = "";
             document.getElementById('hDate').value = "";
             
-            loadHolidays(); // Refresh UI
+            loadHolidays(); 
             
             setTimeout(() => status.innerHTML = "", 2000);
         } catch (e) {
@@ -168,15 +166,19 @@
         }
     }
 
-    /**
-     * Removes a holiday from the Firestore array.
-     */
+    // 🟢 修改：添加审计日志
     window.deleteHoliday = async function(name, date) {
         if(!confirm(`Remove ${name}?`)) return;
         try {
+            const holidayObj = { name: name, date: date };
+            
             await updateDoc(holidayDocRef, {
-                holiday_list: arrayRemove({ name: name, date: date })
+                holiday_list: arrayRemove(holidayObj)
             });
+
+            // 🟢 记录删除假期的日志
+            await logAdminAction(db, auth.currentUser, "REMOVE_HOLIDAY", "GLOBAL", holidayObj, null);
+
             loadHolidays();
         } catch (e) { alert("Error: " + e.message); }
     }
