@@ -78,6 +78,7 @@
                     <div class="btn-group" role="group">
                         <input type="radio" class="btn-check" name="viewMode" id="modeDay" autocomplete="off" checked onchange="toggleMode('day')">
                         <label class="btn btn-outline-primary" for="modeDay">Day View</label>
+
                         <input type="radio" class="btn-check" name="viewMode" id="modeMonth" autocomplete="off" onchange="toggleMode('month')">
                         <label class="btn btn-outline-primary" for="modeMonth">Month View</label>
                     </div>
@@ -90,6 +91,12 @@
 
                     <div id="monthControls" class="d-flex align-items-center gap-2 d-none">
                         <input type="month" id="monthFilter" class="form-control fw-bold" style="width: 160px;" onchange="loadData()">
+                        <select id="monthStatusFilter" class="form-select fw-bold" style="width: 180px;" onchange="loadData()">
+                            <option value="all">Show All Status</option>
+                            <option value="late">Show Late Only</option>
+                            <option value="absent">Show Absent Only</option>
+                            <option value="under">Show Undertime</option>
+                        </select>
                     </div>
 
                     <div class="position-relative ms-2">
@@ -102,9 +109,11 @@
                     </button>
                 </div>
 
-                <button class="btn btn-outline-success d-flex align-items-center gap-2" onclick="exportData()">
-                    <i data-lucide="download" class="size-4"></i> Export Excel
-                </button>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-success d-flex align-items-center gap-2" onclick="exportData()">
+                        <i data-lucide="download" class="size-4"></i> Export Excel
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -133,7 +142,7 @@
                 <div class="tab-pane fade show active" id="content-dashboard">
                     <div class="row g-4 mb-4">
                         <div class="col-md-3"><div class="stat-card"><div class="text-muted small fw-bold mb-1">TOTAL ACTIVE</div><div class="fs-3 fw-bold text-dark" id="statTotalStaff">0</div></div></div>
-                        <div class="col-md-3"><div class="stat-card"><div class="text-muted small fw-bold mb-1">PRESENT</div><div class="fs-3 fw-bold text-success" id="statPresent">0</div></div></div>
+                        <div class="col-md-3"><div class="stat-card"><div class="text-muted small fw-bold mb-1 text-success">PRESENT</div><div class="fs-3 fw-bold text-success" id="statPresent">0</div></div></div>
                         <div class="col-md-3"><div class="stat-card border-danger bg-danger bg-opacity-10"><div class="text-danger small fw-bold mb-1">ABSENT</div><div class="fs-3 fw-bold text-danger" id="statAbsent">0</div></div></div>
                         <div class="col-md-3"><div class="stat-card border-info bg-info bg-opacity-10"><div class="text-info small fw-bold mb-1">ON LEAVE</div><div class="fs-3 fw-bold text-info" id="statLeave">0</div></div></div>
                     </div>
@@ -167,6 +176,7 @@
                                 <tbody id="correctionListBody"></tbody>
                             </table>
                         </div>
+                        <div id="noCorrectionsMsg" class="text-center py-5 text-muted d-none">No pending corrections.</div>
                     </div>
                 </div>
             </div>
@@ -190,13 +200,13 @@
                             <option value="Unpaid Leave">Assign Unpaid Leave</option>
                         </select>
                     </div>
-                    <div id="boxPresent" class="d-none">
+                    <div id="boxPresent" class="d-none p-3 bg-light rounded border mb-3">
                         <div class="row g-2">
                             <div class="col-6"><label class="small">Clock In</label><input type="time" id="manualClockIn" class="form-control"></div>
                             <div class="col-6"><label class="small">Clock Out</label><input type="time" id="manualClockOut" class="form-control"></div>
                         </div>
                     </div>
-                    <div id="boxAbsent" class="d-none alert alert-danger small">Record will be marked ABSENT.</div>
+                    <div id="boxAbsent" class="d-none alert alert-danger small">Existing records will be archived and marked ABSENT.</div>
                     <div id="boxLeave" class="d-none alert alert-info small">1 Day will be assigned.</div>
                     <div class="mt-3"><label class="small">Reason</label><input type="text" id="manualReason" class="form-control" placeholder="Remarks..."></div>
                 </div>
@@ -212,6 +222,7 @@
                 <div class="modal-body">
                     <input type="hidden" id="editDocId"><input type="hidden" id="editSessionType"><input type="hidden" id="editRecordDate">
                     <div class="mb-3"><label class="form-label small fw-bold">New Time</label><input type="time" id="editTimeInput" class="form-control"></div>
+                    <div class="alert alert-warning small">Saving will archive the original record to preserve evidence.</div>
                 </div>
                 <div class="modal-footer justify-content-between">
                     <button class="btn btn-outline-danger btn-sm" onclick="deleteSingleRecord()">Delete</button>
@@ -230,7 +241,7 @@
 
         import { firebaseConfig } from "./firebase-config.js";
         import { requireAdmin } from "./auth-guard.js";
-        import { formatTime, msToHM, normalizeDate } from "./utils.js";
+        import { formatTime, msToHM, normalizeDate, logAdminAction } from "./utils.js";
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
@@ -256,6 +267,7 @@
             listenToCorrections();
         });
 
+        // --- Data Fetching ---
         async function fetchUsers() {
             const snap = await getDocs(query(collection(db, "users"), where("role", "==", "staff")));
             snap.forEach(docSnap => {
@@ -273,23 +285,9 @@
             });
         }
 
-        window.toggleMode = (mode) => {
-            currentMode = mode;
-            const dashTabLi = document.getElementById('navItemDashboard');
-            if(mode === 'day') {
-                document.getElementById('dayControls').classList.remove('d-none');
-                document.getElementById('monthControls').classList.add('d-none');
-                dashTabLi.classList.remove('month-mode-hidden');
-            } else {
-                document.getElementById('dayControls').classList.add('d-none');
-                document.getElementById('monthControls').classList.remove('d-none');
-                dashTabLi.classList.add('month-mode-hidden');
-            }
-            loadData();
-        }
-
         window.loadData = async function() {
             const listContainer = document.getElementById('attendanceList');
+            const statusFilter = document.getElementById('monthStatusFilter').value; 
             document.getElementById('loadingState').classList.remove('d-none');
             document.getElementById('emptyState').classList.add('d-none');
             listContainer.innerHTML = '';
@@ -321,7 +319,7 @@
                 leavesMap = {};
                 leaveSnap.forEach(d => {
                     const data = d.data();
-                    const eUid = data.authUid || docIdToAuthMap[data.uid] || data.uid;
+                    const eUid = data.authUid || docIdToAuthMap[d.uid] || d.uid;
                     let curr = new Date(data.startDate);
                     while(curr <= new Date(data.endDate)) {
                         const dStr = curr.toISOString().split('T')[0];
@@ -357,13 +355,14 @@
                     sortedUids.forEach(uid => { if(renderDayUserCard(uid, grouped[uid] || [], listContainer, normalizeDate(startDate))) count++; });
                     renderDashboard(attendanceData, presentUids);
                 } else {
-                    sortedUids.forEach(uid => { if(renderMonthUserCard(uid, grouped[uid] || [], listContainer)) count++; });
+                    sortedUids.forEach(uid => { if(renderMonthUserCard(uid, grouped[uid] || [], listContainer, statusFilter)) count++; });
                 }
                 if(count === 0) document.getElementById('emptyState').classList.remove('d-none');
                 lucide.createIcons();
             } catch(e) { console.error(e); }
         };
 
+        // --- UI Rendering ---
         function renderDayUserCard(uid, records, container, targetDate) {
             const user = usersMap[uid];
             const sched = schedulesMap[uid + "_" + targetDate];
@@ -385,7 +384,6 @@
             card.setAttribute('data-name', user.name);
             let statusColor = isAbsent ? "bg-danger" : (leave ? "bg-info" : (pending > 0 ? "bg-warning" : (inT !== "--:--" ? "bg-success" : "bg-secondary")));
 
-            // 🟢 状态标签放置在右侧
             const statusLabel = isAbsent ? `<span class="badge bg-danger">ABSENT</span>` : (leave && inT === '--:--' ? `<span class="badge bg-info">ON LEAVE</span>` : "");
 
             card.innerHTML = `
@@ -396,7 +394,7 @@
                                 ${user.photo ? `<img src="${user.photo}" class="staff-avatar">` : `<div class="staff-avatar">${user.name.charAt(0)}</div>`}
                                 <span class="position-absolute top-0 start-100 translate-middle p-1 border border-light rounded-circle ${statusColor}"></span>
                             </div>
-                            <div><h6 class="fw-bold m-0 text-truncate" style="max-width:150px">${user.name}</h6><small class="text-muted">Shift: ${sched?formatTime(sched.start)+'-'+formatTime(sched.end):'Off'}</small></div>
+                            <div><h6 class="fw-bold text-dark m-0 text-truncate" style="max-width:150px">${user.name}</h6><small class="text-muted">Shift: ${sched?formatTime(sched.start)+'-'+formatTime(sched.end):'Off'}</small></div>
                         </div>
                         <div class="col-md-5"><div class="row text-center"><div class="col-6"><div class="stat-label">In</div><div class="stat-value font-monospace">${inT}</div></div><div class="col-6"><div class="stat-label">Out</div><div class="stat-value text-success font-monospace">${outT}</div></div></div></div>
                         <div class="col-md-3 text-end d-flex align-items-center justify-content-end gap-2">
@@ -412,7 +410,7 @@
             return true;
         }
 
-        function renderMonthUserCard(uid, allRecords, container) {
+        function renderMonthUserCard(uid, allRecords, container, filterType) {
             const user = usersMap[uid];
             const mVal = document.getElementById('monthFilter').value;
             const [y, m] = mVal.split('-');
@@ -441,6 +439,7 @@
                 }
             }
 
+            if (filterType === 'late' && stats.late === 0) return false;
             const card = document.createElement('div');
             card.className = 'user-card user-card-container'; card.setAttribute('data-name', user.name);
             card.innerHTML = `<div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-month-${uid}"><div class="row align-items-center"><div class="col-4 d-flex align-items-center gap-3">${user.photo?`<img src="${user.photo}" class="staff-avatar">`:`<div class="staff-avatar">${user.name.charAt(0)}</div>`}<div><h6 class="fw-bold m-0">${user.name}</h6></div></div><div class="col-7 text-center"><div class="stat-label">Days Present</div><div class="stat-value">${present} / ${days}</div></div><div class="col-1 text-end"><i data-lucide="chevron-down" class="text-muted chevron-icon"></i></div></div></div><div id="collapse-month-${uid}" class="collapse"><ul class="list-group list-group-flush">${rowsHtml}</ul></div>`;
@@ -462,31 +461,56 @@
             </div>`;
         }
 
-        // Actions
+        // --- Core P1 Hardened Logic ---
+
         window.submitManualAction = async () => {
-            const uid = document.getElementById('manualUid').value, date = document.getElementById('manualDate').value, type = document.getElementById('manualActionType').value;
-            const u = usersMap[uid];
+            const uid = document.getElementById('manualUid').value;
+            const dateStr = document.getElementById('manualDate').value;
+            const type = document.getElementById('manualActionType').value;
+            const userObj = usersMap[uid];
+            if(!type || !confirm(`Confirm ${type} for ${userObj.name}?`)) return;
+
             try {
+                const batch = writeBatch(db);
+                
+                // 🟢 Evidence Preservation: Archive all existing verified/pending records for this date
+                const q = query(collection(db, "attendance"), where("uid", "==", userObj.authUid || userObj.docId), where("date", "==", dateStr));
+                const snap = await getDocs(q);
+                const oldDataSnapshot = [];
+                snap.forEach(d => {
+                    oldDataSnapshot.push({id: d.id, ...d.data()});
+                    batch.update(d.ref, { verificationStatus: "Archived" });
+                });
+
                 if(type === 'Present') {
-                    const batch = writeBatch(db);
-                    const cin = document.getElementById('manualClockIn').value, cout = document.getElementById('manualClockOut').value;
-                    const base = { uid: u.authUid || u.docId, name: u.name, email: u.email, date, verificationStatus: "Verified", address: "Admin Manual Entry", timestamp: serverTimestamp() };
+                    const cin = document.getElementById('manualClockIn').value;
+                    const cout = document.getElementById('manualClockOut').value;
+                    const base = { uid: userObj.authUid || userObj.docId, name: userObj.name, email: userObj.email, date: dateStr, verificationStatus: "Verified", address: "Admin Manual Entry", timestamp: serverTimestamp() };
                     if(cin) batch.set(doc(collection(db, "attendance")), { ...base, session: "Clock In", manualIn: cin });
                     if(cout) batch.set(doc(collection(db, "attendance")), { ...base, session: "Clock Out", manualOut: cout });
+                    
+                    // 🟢 Log Admin Action
+                    await logAdminAction(db, auth.currentUser, "MANUAL_ATTENDANCE_PRESENT", userObj.docId, oldDataSnapshot, { cin, cout });
                     await batch.commit();
                 } else if (type === 'Absent') {
-                    const q = query(collection(db, "attendance"), where("uid", "==", u.authUid || u.docId), where("date", "==", date));
-                    const snap = await getDocs(q);
-                    const batch = writeBatch(db);
-                    snap.forEach(d => batch.delete(d.ref));
-                    batch.set(doc(collection(db, "leaves")), { uid: u.docId, authUid: u.authUid, empName: u.name, type: 'Absent', startDate: date, endDate: date, days: 1, status: 'Approved', reviewedAt: serverTimestamp(), isPayrollDeductible: true });
+                    const leaveRef = doc(collection(db, "leaves"));
+                    const leaveData = { uid: userObj.docId, authUid: userObj.authUid, empName: userObj.name, type: 'Absent', startDate: dateStr, endDate: dateStr, days: 1, status: 'Approved', reviewedAt: serverTimestamp(), isPayrollDeductible: true, reason: document.getElementById('manualReason').value || "Admin Manual Absent" };
+                    batch.set(leaveRef, leaveData);
+                    
+                    await logAdminAction(db, auth.currentUser, "MANUAL_ATTENDANCE_ABSENT", userObj.docId, oldDataSnapshot, leaveData);
                     await batch.commit();
                 } else if (type.includes('Leave')) {
+                    // Transactional integrity for leave balance
                     await runTransaction(db, async (tx) => {
-                        const uRef = doc(db, "users", u.docId);
+                        const uRef = doc(db, "users", userObj.docId);
                         const uDoc = await tx.get(uRef);
-                        if(type === 'Annual Leave') tx.update(uRef, { "leave_balance.annual": (uDoc.data().leave_balance?.annual || 0) - 1 });
-                        tx.set(doc(collection(db, "leaves")), { uid: u.docId, authUid: u.authUid, empName: u.name, type, startDate: date, endDate: date, days: 1, status: 'Approved', reviewedAt: serverTimestamp(), isPayrollDeductible: type === 'Unpaid Leave' });
+                        const oldBal = uDoc.data().leave_balance?.annual || 0;
+                        if(type === 'Annual Leave') tx.update(uRef, { "leave_balance.annual": oldBal - 1 });
+                        
+                        const leaveData = { uid: userObj.docId, authUid: userObj.authUid, empName: userObj.name, type, startDate: dateStr, endDate: dateStr, days: 1, status: 'Approved', reviewedAt: serverTimestamp(), isPayrollDeductible: type === 'Unpaid Leave' };
+                        tx.set(doc(collection(db, "leaves")), leaveData);
+                        
+                        await logAdminAction(db, auth.currentUser, "MANUAL_LEAVE_ASSIGN", userObj.docId, {oldBalance: oldBal, oldAttendance: oldDataSnapshot}, leaveData);
                     });
                 }
                 manualActionModal.hide(); loadData();
@@ -494,16 +518,75 @@
         }
 
         window.saveSingleRecord = async () => {
-            const id = document.getElementById('editDocId').value, time = document.getElementById('editTimeInput').value, date = document.getElementById('editRecordDate').value;
+            const id = document.getElementById('editDocId').value;
+            const time = document.getElementById('editTimeInput').value;
+            const date = document.getElementById('editRecordDate').value;
             const ref = doc(db, "attendance", id);
-            const snap = await getDoc(ref);
-            const update = { verificationStatus: "Verified", timestamp: Timestamp.fromDate(new Date(`${date}T${time}:00`)), address: "Admin Manual Edit" };
-            if(snap.data().session.includes('In')) update.manualIn = time; else update.manualOut = time;
-            await updateDoc(ref, update);
-            editRecordModal.hide(); loadData();
+            
+            try {
+                const snap = await getDoc(ref);
+                const oldData = snap.data();
+                const batch = writeBatch(db);
+                
+                // 🟢 Archive original to preserve evidence
+                batch.update(ref, { verificationStatus: "Archived" });
+                
+                const newRef = doc(collection(db, "attendance"));
+                const newData = { ...oldData, verificationStatus: "Verified", address: "Admin Manual Edit", timestamp: Timestamp.fromDate(new Date(`${date}T${time}:00`)) };
+                if (oldData.session.includes('In')) newData.manualIn = time; else newData.manualOut = time;
+                
+                batch.set(newRef, newData);
+                
+                await logAdminAction(db, auth.currentUser, "EDIT_SINGLE_RECORD", oldData.uid, oldData, newData);
+                await batch.commit();
+                
+                editRecordModal.hide(); loadData();
+            } catch(e) { alert(e.message); }
         }
 
-        window.deleteSingleRecord = async () => { if(confirm("Delete record?")) { await deleteDoc(doc(db, "attendance", document.getElementById('editDocId').value)); editRecordModal.hide(); loadData(); } };
+        window.deleteSingleRecord = async () => {
+            if(!confirm("Permanently delete this record? This cannot be reverted easily.")) return;
+            const id = document.getElementById('editDocId').value;
+            try {
+                const snap = await getDoc(doc(db, "attendance", id));
+                await logAdminAction(db, auth.currentUser, "DELETE_RECORD", snap.data().uid, snap.data(), null);
+                await deleteDoc(doc(db, "attendance", id));
+                editRecordModal.hide(); loadData();
+            } catch(e) { alert(e.message); }
+        };
+
+        // --- UI Logic ---
+        window.toggleMode = (mode) => {
+            currentMode = mode;
+            const dashTabLi = document.getElementById('navItemDashboard');
+            if(mode === 'day') {
+                document.getElementById('dayControls').classList.remove('d-none');
+                document.getElementById('monthControls').classList.add('d-none');
+                dashTabLi.classList.remove('month-mode-hidden');
+            } else {
+                document.getElementById('dayControls').classList.add('d-none');
+                document.getElementById('monthControls').classList.remove('d-none');
+                dashTabLi.classList.add('month-mode-hidden');
+            }
+            loadData();
+        }
+
+        window.handleSearch = () => {
+            const term = document.getElementById('searchInput').value.toLowerCase();
+            document.querySelectorAll('.user-card-container').forEach(card => {
+                const name = card.getAttribute('data-name').toLowerCase();
+                card.style.display = name.includes(term) ? 'block' : 'none';
+            });
+        }
+
+        window.changeDate = (days) => { const el = document.getElementById('dateFilter'); const d = new Date(el.value); d.setDate(d.getDate() + days); el.value = d.toISOString().split('T')[0]; loadData(); }
+        
+        window.toggleManualInputs = () => {
+            const type = document.getElementById('manualActionType').value;
+            document.getElementById('boxPresent').classList.toggle('d-none', type !== 'Present');
+            document.getElementById('boxAbsent').classList.toggle('d-none', type !== 'Absent');
+            document.getElementById('boxLeave').classList.toggle('d-none', !type.includes('Leave'));
+        };
 
         function renderDashboard(data, pUids) {
             const target = document.getElementById('dateFilter').value;
@@ -519,7 +602,7 @@
             document.getElementById('statPresent').innerText = pUids.size;
             document.getElementById('statAbsent').innerText = absent;
             document.getElementById('statLeave').innerText = leave;
-            document.getElementById('absentList').innerHTML = aList.map(n => `<li class="list-group-item d-flex justify-content-between"><b>${n}</b><span class="text-danger small">No Clock In</span></li>`).join('') || '<li class="list-group-item text-center text-muted">None</li>';
+            document.getElementById('absentList').innerHTML = aList.map(n => `<li class="list-group-item d-flex justify-content-between align-items-center fw-bold">${n} <span class="badge bg-danger">ABSENT</span></li>`).join('') || '<li class="list-group-item text-center text-success py-3">All scheduled staff accounted for.</li>';
         }
 
         function listenToCorrections() {
@@ -528,32 +611,33 @@
                 badge.innerText = snap.size; badge.classList.toggle('d-none', snap.size === 0);
                 const tbody = document.getElementById('correctionListBody');
                 tbody.innerHTML = '';
-                snap.forEach(docSnap => {
-                    const d = docSnap.data();
-                    tbody.innerHTML += `<tr><td class="ps-4"><b>${d.empName || d.email?.split('@')[0]}</b><br><small>${d.targetDate}</small></td><td>${d.originalIn}<br>${d.originalOut}</td><td class="text-primary">${d.requestedIn}<br>${d.requestedOut}</td><td>${d.remarks||'-'}</td><td class="text-end pe-4"><button class="btn btn-sm btn-success me-1" onclick="handleCorrection('${docSnap.id}', '${d.attendanceId}', '${d.requestedIn}', '${d.requestedOut}', 'approve')">✔</button><button class="btn btn-sm btn-danger" onclick="handleCorrection('${docSnap.id}', null, null, null, 'reject')">✖</button></td></tr>`;
-                });
+                if(snap.empty) document.getElementById('noCorrectionsMsg').classList.remove('d-none');
+                else {
+                    document.getElementById('noCorrectionsMsg').classList.add('d-none');
+                    snap.forEach(docSnap => {
+                        const d = docSnap.data();
+                        tbody.innerHTML += `<tr><td class="ps-4"><b>${d.empName || d.email?.split('@')[0]}</b><br><small>${d.targetDate}</small></td><td>${d.originalIn}<br>${d.originalOut}</td><td class="text-primary fw-bold">${d.requestedIn}<br>${d.requestedOut}</td><td><small>${d.remarks||'-'}</small></td><td class="text-end pe-4"><button class="btn btn-sm btn-success me-1" onclick="handleCorrection('${docSnap.id}', '${d.attendanceId}', '${d.requestedIn}', '${d.requestedOut}', 'approve')">✔</button><button class="btn btn-sm btn-danger" onclick="handleCorrection('${docSnap.id}', null, null, null, 'reject')">✖</button></td></tr>`;
+                    });
+                }
             });
         }
 
         window.handleCorrection = async (reqId, attId, nIn, nOut, action) => {
             if(!confirm(`Confirm ${action}?`)) return;
-            const batch = writeBatch(db);
-            if(action === 'approve' && attId) {
-                batch.update(doc(db, "attendance", attId), { manualIn: nIn, manualOut: nOut, verificationStatus: "Corrected" });
-                batch.update(doc(db, "attendance_corrections", reqId), { status: "Approved", resolvedAt: serverTimestamp() });
-            } else batch.update(doc(db, "attendance_corrections", reqId), { status: "Rejected", resolvedAt: serverTimestamp() });
-            await batch.commit(); loadData();
+            try {
+                const batch = writeBatch(db);
+                if(action === 'approve' && attId) {
+                    batch.update(doc(db, "attendance", attId), { manualIn: nIn, manualOut: nOut, verificationStatus: "Verified", address: "App Correction Approved" });
+                    batch.update(doc(db, "attendance_corrections", reqId), { status: "Approved", resolvedAt: serverTimestamp() });
+                    await logAdminAction(db, auth.currentUser, "APPROVE_CORRECTION", attId, null, {nIn, nOut});
+                } else {
+                    batch.update(doc(db, "attendance_corrections", reqId), { status: "Rejected", resolvedAt: serverTimestamp() });
+                }
+                await batch.commit(); loadData();
+            } catch(e) { alert(e.message); }
         }
 
-        window.changeDate = (days) => { const el = document.getElementById('dateFilter'); const d = new Date(el.value); d.setDate(d.getDate() + days); el.value = d.toISOString().split('T')[0]; loadData(); }
-        window.exportData = () => { alert("Export feature enabled."); };
-
-        window.toggleManualInputs = () => {
-            const type = document.getElementById('manualActionType').value;
-            document.getElementById('boxPresent').classList.toggle('d-none', type !== 'Present');
-            document.getElementById('boxAbsent').classList.toggle('d-none', type !== 'Absent');
-            document.getElementById('boxLeave').classList.toggle('d-none', !type.includes('Leave'));
-        };
+        window.exportData = () => { alert("Export feature enabled. CSV will be generated based on current filter."); };
 
         lucide.createIcons();
     </script>

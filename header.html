@@ -26,22 +26,17 @@
                     <a class="nav-link" href="leave_approval.html">Leaves</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="schedule_planner.html">Schedule</a>
-                </li>
-                 <li class="nav-item">
                     <a class="nav-link" href="payroll.html">Payroll</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="live_tracking.html">Live Map</a>
+                    <a class="nav-link" href="live_tracking.html">Live GPS</a>
                 </li>
             </ul>
 
-            <div class="d-flex align-items-center gap-2 mt-3 mt-lg-0">
-                
-                <div class="dropdown">
-                    <button class="btn btn-light border-0 position-relative rounded-circle p-2" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <div class="d-flex align-items-center gap-2">
+                <div class="dropdown me-2">
+                    <button class="btn btn-white position-relative border-0 p-2" type="button" data-bs-toggle="dropdown">
                         <i data-lucide="bell" class="size-5 text-secondary"></i>
-                        
                         <span id="notificationBadge" class="position-absolute top-0 start-75 translate-middle p-1 bg-danger border border-light rounded-circle d-none">
                             <span class="visually-hidden">New alerts</span>
                         </span>
@@ -60,10 +55,16 @@
                         <div class="bg-light rounded-circle p-1 border">
                             <i data-lucide="user" class="size-5 text-dark"></i>
                         </div>
-                        <span class="fw-medium small d-none d-md-inline">Admin</span>
+                        <span class="fw-medium small d-none d-md-inline" id="userRoleDisplay">Admin</span>
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 mt-2">
-                        <li><button class="dropdown-item text-danger" id="logoutBtn">Sign Out</button></li>
+                        <li id="managerOnlyMenuItem" class="d-none">
+                            <a class="dropdown-item text-dark small fw-bold" href="manage_admins.html">
+                                <i data-lucide="shield-check" class="size-4 me-2"></i>Manage Admins
+                            </a>
+                            <hr class="dropdown-divider">
+                        </li>
+                        <li><button class="dropdown-item text-danger small" id="logoutBtn">Sign Out</button></li>
                     </ul>
                 </div>
 

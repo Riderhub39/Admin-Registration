@@ -4,16 +4,19 @@
  * 格式化金额为马来西亚令吉格式 (RM 0.00)
  */
 export function formatMoney(amount) {
-    return (parseFloat(amount) || 0).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return (parseFloat(amount) || 0).toLocaleString('en-MY', { 
+        minimumFractionDigits: 2, 
+        maximumFractionDigits: 2 
+    });
 }
 
 /**
- * 格式化时间 (处理 Firestore Timestamp 或 普通字符串)
+ * 格式化时间 (支持 Firestore Timestamp, 原生 Date 对象, 以及 普通字符串)
  */
 export function formatTime(val) {
     if (!val) return "--:--";
     
-    // 🟢 修复：新增对原生 JavaScript Date 对象的支持
+    // 支持原生 JavaScript Date 对象
     if (val instanceof Date) {
         return val.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     }
@@ -69,4 +72,36 @@ export function normalizeDate(dateStr) {
     const parts = dateStr.split('-');
     if (parts.length !== 3) return dateStr;
     return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+}
+
+/**
+ * 记录管理员操作审计日志 (Audit Log)
+ * 用于 P1 阶段的数据安全加固与 Manager 撤销功能
+ * * @param {Object} db - Firestore 实例
+ * @param {Object} operator - 执行操作的人 (auth.currentUser)
+ * @param {String} action - 操作指令 (例如: "APPROVE_LEAVE", "MANUAL_ATTENDANCE")
+ * @param {String} targetUid - 被操作的员工 ID (Employee Code 或 UID)
+ * @param {Object} oldData - 修改前的原始快照 (可选，用于 Revert)
+ * @param {Object} newData - 修改后的新快照 (可选)
+ */
+export async function logAdminAction(db, operator, action, targetUid, oldData = null, newData = null) {
+    try {
+        // 使用动态导入，仅在调用日志时加载 Firestore 函数
+        const { addDoc, collection, serverTimestamp } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js");
+        
+        await addDoc(collection(db, "audit_logs"), {
+            operatorEmail: operator.email,
+            operatorUid: operator.uid,
+            action: action,
+            targetUid: targetUid,
+            details: {
+                old: oldData,
+                new: newData
+            },
+            timestamp: serverTimestamp()
+        });
+        console.log(`%c[AUDIT] Action: ${action} on ${targetUid} logged.`, "color: #6366f1; font-weight: bold;");
+    } catch (e) {
+        console.error("Critical: Audit logging failed.", e);
+    }
 }

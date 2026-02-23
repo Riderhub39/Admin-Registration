@@ -3,8 +3,11 @@ import { collection, query, where, onSnapshot } from "https://www.gstatic.com/fi
 
 /**
  * Initializes the global header dynamically.
+ * @param {Object} auth - Firebase Auth instance
+ * @param {Object} db - Firestore instance
+ * @param {Object} userData - Current user's document data (contains role)
  */
-export function initUnifiedHeader(auth, db) {
+export function initUnifiedHeader(auth, db, userData = null) {
     const placeholder = document.getElementById('header-placeholder');
     if (!placeholder) {
         console.warn("Header placeholder not found.");
@@ -19,15 +22,16 @@ export function initUnifiedHeader(auth, db) {
         .then(html => {
             placeholder.innerHTML = html;
 
+            // 🟢 角色权限控制逻辑
+            applyRolePermissions(userData);
+
             highlightCurrentPage();
             attachLogoutHandler(auth);
             
-            // 🔔 Start notification listeners immediately
             if (db) {
                 initNotificationSystem(db);
             }
             
-            // Re-render icons
             if (window.lucide) {
                 window.lucide.createIcons();
             }
@@ -38,41 +42,54 @@ export function initUnifiedHeader(auth, db) {
 }
 
 /**
+ * 🟢 根据用户角色调整 UI 展示
+ */
+function applyRolePermissions(userData) {
+    if (!userData) return;
+
+    const roleDisplay = document.getElementById('userRoleDisplay');
+    const managerMenu = document.getElementById('managerOnlyMenuItem');
+
+    // 1. 更新角色显示文字
+    if (roleDisplay) {
+        roleDisplay.innerText = userData.role === 'manager' ? 'Manager' : 'Admin';
+    }
+
+    // 2. 如果是 Manager，显示“管理管理员”菜单项
+    if (userData.role === 'manager' && managerMenu) {
+        managerMenu.classList.remove('d-none');
+    }
+}
+
+/**
  * Logic: Manage Notification State & Render Dropdown
  */
 function initNotificationSystem(db) {
     const badge = document.getElementById('notificationBadge');
     const list = document.getElementById('notificationList');
     
-    // State object to hold counts
     const counts = {
         leaves: 0,
         attendance: 0,
         edits: 0
     };
 
-    // Central function to update UI based on 'counts' object
     const updateUI = () => {
         const total = counts.leaves + counts.attendance + counts.edits;
 
-        // 1. Toggle Red Dot
-        if (total > 0) {
-            badge.classList.remove('d-none');
-        } else {
-            badge.classList.add('d-none');
+        if (badge) {
+            total > 0 ? badge.classList.remove('d-none') : badge.classList.add('d-none');
         }
 
-        // 2. Build Dropdown List HTML
         let html = `<li><h6 class="dropdown-header fw-bold">Notifications (${total})</h6></li>`;
 
         if (total === 0) {
             html += `
                 <li class="text-center p-4 text-muted">
                     <div class="mb-2"><i data-lucide="check-circle" class="size-6 opacity-50"></i></div>
-                    <small>All caught up! No new alerts.</small>
+                    <small>All caught up!</small>
                 </li>`;
         } else {
-            // Pending Leaves Item
             if (counts.leaves > 0) {
                 html += `
                     <li>
@@ -80,13 +97,11 @@ function initNotificationSystem(db) {
                             <div class="bg-warning bg-opacity-10 text-warning p-1 rounded"><i data-lucide="calendar" class="size-4"></i></div>
                             <div>
                                 <div class="fw-bold small">${counts.leaves} Leave Request${counts.leaves > 1 ? 's' : ''}</div>
-                                <div class="text-muted" style="font-size: 0.75rem;">Waiting for approval</div>
+                                <div class="text-muted" style="font-size: 0.75rem;">Awaiting approval</div>
                             </div>
                         </a>
                     </li>`;
             }
-            
-            // Attendance Fixes Item
             if (counts.attendance > 0) {
                 html += `
                     <li>
@@ -94,13 +109,11 @@ function initNotificationSystem(db) {
                             <div class="bg-danger bg-opacity-10 text-danger p-1 rounded"><i data-lucide="clock" class="size-4"></i></div>
                             <div>
                                 <div class="fw-bold small">${counts.attendance} Attendance Fix${counts.attendance > 1 ? 'es' : ''}</div>
-                                <div class="text-muted" style="font-size: 0.75rem;">Requires verification</div>
+                                <div class="text-muted" style="font-size: 0.75rem;">Verification required</div>
                             </div>
                         </a>
                     </li>`;
             }
-
-            // Profile Edits Item
             if (counts.edits > 0) {
                 html += `
                     <li>
@@ -108,43 +121,33 @@ function initNotificationSystem(db) {
                             <div class="bg-info bg-opacity-10 text-info p-1 rounded"><i data-lucide="user-pen" class="size-4"></i></div>
                             <div>
                                 <div class="fw-bold small">${counts.edits} Profile Update${counts.edits > 1 ? 's' : ''}</div>
-                                <div class="text-muted" style="font-size: 0.75rem;">Staff details changed</div>
+                                <div class="text-muted" style="font-size: 0.75rem;">Staff modifications</div>
                             </div>
                         </a>
                     </li>`;
             }
         }
 
-        list.innerHTML = html;
-        
-        // IMPORTANT: Re-render icons inside the newly injected HTML
+        if (list) list.innerHTML = html;
         if (window.lucide) window.lucide.createIcons();
     };
 
-    // --- Listeners ---
-    
-    // 1. Pending Leaves
     onSnapshot(query(collection(db, "leaves"), where("status", "==", "Pending")), (snap) => {
         counts.leaves = snap.size;
         updateUI();
     });
 
-    // 2. Pending Attendance
     onSnapshot(query(collection(db, "attendance_corrections"), where("status", "==", "Pending")), (snap) => {
         counts.attendance = snap.size;
         updateUI();
     });
 
-    // 3. Pending Edits
     onSnapshot(query(collection(db, "edit_requests"), where("status", "==", "pending")), (snap) => {
         counts.edits = snap.size;
         updateUI();
     });
 }
 
-/**
- * Standard Header Logic
- */
 function highlightCurrentPage() {
     const currentPath = window.location.pathname.split("/").pop().split("?")[0] || 'index.html';
     const navLinks = document.querySelectorAll('.nav-link');
