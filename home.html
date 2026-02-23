@@ -50,9 +50,19 @@
             background: rgba(255, 255, 255, 0.95); z-index: 9999; 
             display: flex; flex-direction: column; justify-content: center; align-items: center; 
         }
+        
         /* Audit Log Specific */
         .log-item { border-left: 3px solid #e2e8f0; transition: all 0.2s; }
         .log-item:hover { background: #f8fafc; border-left-color: var(--primary); }
+        
+        /* Inspect Modal Styles (New!) */
+        .inspect-data-block {
+            background-color: #f8fafc; border: 1px solid #e2e8f0; 
+            border-radius: 8px; padding: 15px; margin-bottom: 15px;
+            font-family: monospace; font-size: 0.85rem; white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .inspect-label { font-weight: bold; color: #475569; margin-bottom: 5px; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.5px;}
     </style>
 </head>
 <body>
@@ -166,21 +176,21 @@
                                 <div class="bg-success bg-opacity-10 text-success p-2 rounded"><i data-lucide="calendar-check" class="size-6"></i></div>
                                 <div><div class="fw-bold text-dark small">Leave Requests</div><div class="text-muted small">Awaiting approval</div></div>
                             </div>
-                            <span class="badge bg-danger rounded-pill" id="badge-leave" style="display:none;"><span id="count-leave">0</span></span>
+                            <span class="badge bg-danger rounded-pill" id="badge-leave" style="display: none;">0</span>
                         </a>
                         <a href="attendance.html" class="task-row d-flex align-items-center justify-content-between p-3 rounded">
                             <div class="d-flex align-items-center gap-3">
                                 <div class="bg-primary bg-opacity-10 text-primary p-2 rounded"><i data-lucide="fingerprint" class="size-6"></i></div>
                                 <div><div class="fw-bold text-dark small">Attendance Fixes</div><div class="text-muted small">Manual corrections</div></div>
                             </div>
-                            <span class="badge bg-danger rounded-pill" id="badge-att" style="display:none;"><span id="count-att">0</span></span>
+                            <span class="badge bg-danger rounded-pill" id="badge-att" style="display: none;">0</span>
                         </a>
                         <a href="manage_staff.html" class="task-row d-flex align-items-center justify-content-between p-3 rounded">
                             <div class="d-flex align-items-center gap-3">
                                 <div class="bg-warning bg-opacity-10 text-warning p-2 rounded"><i data-lucide="user-cog" class="size-6"></i></div>
                                 <div><div class="fw-bold text-dark small">Profile Updates</div><div class="text-muted small">Staff modifications</div></div>
                             </div>
-                            <span class="badge bg-danger rounded-pill" id="badge-edit" style="display:none;"><span id="count-edit">0</span></span>
+                            <span class="badge bg-danger rounded-pill" id="badge-edit" style="display: none;">0</span>
                         </a>
                     </div>
                 </div>
@@ -254,6 +264,27 @@
     </div>
 </div>
 
+<div class="modal fade" id="inspectModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-light border-bottom-0 pb-0">
+                <h6 class="modal-title fw-bold text-dark"><i data-lucide="file-json" class="size-4 me-2"></i>Log Details</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-3">
+                <div id="inspectOldDataContainer" class="d-none">
+                    <div class="inspect-label text-danger">🔴 Previous Data (Old)</div>
+                    <div class="inspect-data-block" id="inspectOldData"></div>
+                </div>
+                <div id="inspectNewDataContainer" class="d-none mt-3">
+                    <div class="inspect-label text-success">🟢 Modified Data (New)</div>
+                    <div class="inspect-data-block" id="inspectNewData"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="announceModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
@@ -268,7 +299,14 @@
                             <label class="small fw-bold text-dark" id="announceLabel">📢 Draft New Message</label>
                             <span class="badge bg-warning text-dark d-none" id="editBadge">EDITING MODE</span>
                         </div>
+                        <input type="text" id="announceTitle" class="form-control bg-white mb-2 fw-bold" placeholder="Announcement Title...">
                         <textarea id="announceText" class="form-control bg-white mb-3" rows="3" placeholder="Type your important announcement here..."></textarea>
+                        
+                        <div class="mb-3 p-2 bg-white border rounded d-flex justify-content-between align-items-center">
+                            <input type="file" id="announceFile" class="form-control form-control-sm border-0 bg-transparent" accept="image/*,.pdf">
+                            <button class="btn btn-sm btn-outline-danger d-none" id="clearFileBtn" onclick="window.clearAnnounceFile()"><i data-lucide="x" class="size-3"></i></button>
+                        </div>
+
                         <input type="hidden" id="editAnnounceId"> 
                         <div class="d-flex justify-content-end gap-2">
                             <button class="btn btn-sm btn-light border text-muted d-none" id="cancelEditBtn" onclick="window.resetAnnounceForm()">Cancel Edit</button>
@@ -337,19 +375,24 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, collection, query, where, getDocs, onSnapshot, addDoc, serverTimestamp, doc, getDoc, setDoc, updateDoc, deleteDoc, orderBy, limit, startAfter, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
     
     import { firebaseConfig } from "./firebase-config.js";
     import { requireAdmin } from "./auth-guard.js";
-    import { normalizeDate, logAdminAction } from "./utils.js"; // 🟢 导入 logAdminAction
+    import { normalizeDate, logAdminAction } from "./utils.js"; 
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const auth = getAuth(app);
+    const storage = getStorage(app); 
 
     let attChartInstance = null;
     let announceModal, officeModal, driverModal, auditModal, photoModal;
     let lastLogDoc = null;
     const PAGE_SIZE = 20;
+
+    // 全局缓存员工数据，用于匹配 Audit Log 中的 Target ID
+    let globalStaffMap = {}; 
 
     requireAdmin(app, db, async (user, userData) => {
         if (typeof bootstrap !== 'undefined') {
@@ -362,6 +405,8 @@
                 document.getElementById('managerAuditAction').classList.remove('d-none');
                 document.getElementById('managerOfficeAction').classList.remove('d-none');
                 auditModal = new bootstrap.Modal(document.getElementById('auditModal'));
+                // 预加载员工字典，用于审计日志解析
+                preloadStaffMap();
             }
         }
 
@@ -369,7 +414,24 @@
         lucide.createIcons();
     });
 
-    // --- Audit Log Logic ---
+    // 🟢 预加载员工字典，用于解析难看的 ID
+    async function preloadStaffMap() {
+        try {
+            const snap = await getDocs(collection(db, "users"));
+            snap.forEach(doc => {
+                const data = doc.data();
+                globalStaffMap[doc.id] = data.personal?.name || data.name || doc.id;
+                // 有时候 TargetUid 存的是 Auth Uid，所以双重映射
+                if (data.authUid) {
+                    globalStaffMap[data.authUid] = data.personal?.name || data.name || data.authUid;
+                }
+            });
+        } catch (e) {
+            console.error("Failed to preload staff map", e);
+        }
+    }
+
+    // --- 🟢 Audit Log Logic (Intelligent Parsing) ---
 
     window.openAuditModal = () => {
         auditModal.show();
@@ -416,13 +478,31 @@
             snap.forEach(d => {
                 const log = d.data();
                 const time = log.timestamp ? new Date(log.timestamp.seconds * 1000).toLocaleString('en-GB') : 'Just now';
+                
+                // 🟢 智能解析 Target Name
+                let targetDisplay = log.targetUid || '-';
+                if (targetDisplay === "GLOBAL" || targetDisplay === "MULTIPLE") {
+                    // 保持原样
+                } else if (globalStaffMap[targetDisplay]) {
+                    targetDisplay = `👤 ${globalStaffMap[targetDisplay]}`;
+                } else if (log.action.includes("ANNOUNCEMENT")) {
+                    // 尝试从 Details 里面捞 Title
+                    if (log.details?.new?.title) targetDisplay = `📢 ${log.details.new.title}`;
+                    else if (log.details?.old?.title) targetDisplay = `📢 ${log.details.old.title}`;
+                    else targetDisplay = "📢 Announcement";
+                } else if (log.action.includes("LEAVE") || log.action.includes("CORRECTION") || log.action.includes("PAYSLIP")) {
+                    // 尝试从 Details 捞 empName
+                    if (log.details?.old?.empName) targetDisplay = `👤 ${log.details.old.empName}`;
+                    else if (log.details?.old?.name) targetDisplay = `👤 ${log.details.old.name}`;
+                }
+
                 const tr = document.createElement('tr');
                 tr.className = "log-item";
                 tr.innerHTML = `
                     <td class="ps-4 small text-muted text-mono">${time}</td>
                     <td><div class="fw-bold small text-dark">${log.operatorEmail}</div></td>
-                    <td><span class="badge bg-primary bg-opacity-10 text-primary border">${log.action}</span></td>
-                    <td class="small fw-bold text-secondary">${log.targetUid || '-'}</td>
+                    <td><span class="badge bg-primary bg-opacity-10 text-primary border">${log.action.replace(/_/g, ' ')}</span></td>
+                    <td class="small fw-bold text-secondary" style="max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${targetDisplay}">${targetDisplay}</td>
                     <td class="text-end pe-4"><button class="btn btn-xs btn-outline-dark" onclick="window.inspectLog('${d.id}')">Inspect</button></td>`;
                 container.appendChild(tr);
             });
@@ -432,9 +512,76 @@
         } catch (e) { container.innerHTML = `<tr><td colspan="5" class="text-center text-danger small">${e.message}</td></tr>`; }
     };
 
+    // 🟢 递归格式化 Firestore 复杂数据
+    function formatFirestoreData(obj) {
+        if (obj === null || obj === undefined) return "None / Removed";
+        if (typeof obj !== 'object') return obj;
+
+        // 如果是 Firestore Timestamp
+        if (obj.seconds !== undefined && obj.nanoseconds !== undefined) {
+            const date = new Date(obj.seconds * 1000);
+            return date.toLocaleString('en-GB', { 
+                day: '2-digit', month: 'short', year: 'numeric', 
+                hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true 
+            });
+        }
+
+        // 如果是 GeoPoint (经纬度)
+        if (obj.latitude !== undefined && obj.longitude !== undefined) {
+            return `📍 Lat: ${obj.latitude.toFixed(4)}, Lng: ${obj.longitude.toFixed(4)}`;
+        }
+
+        // 如果是普通数组或对象，递归处理内部的值
+        const formatted = Array.isArray(obj) ? [] : {};
+        for (const [key, value] of Object.entries(obj)) {
+            formatted[key] = formatFirestoreData(value);
+        }
+        return formatted;
+    }
+
+    let inspectModalInstance;
     window.inspectLog = async (id) => {
-        const snap = await getDoc(doc(db, "audit_logs", id));
-        alert(JSON.stringify(snap.data().details, null, 2));
+        if (!inspectModalInstance) {
+            inspectModalInstance = new bootstrap.Modal(document.getElementById('inspectModal'));
+        }
+        
+        try {
+            const snap = await getDoc(doc(db, "audit_logs", id));
+            if (!snap.exists()) { alert("Log not found."); return; }
+            
+            const details = snap.data().details;
+            if (!details) { alert("No details available for this log."); return; }
+
+            const oldContainer = document.getElementById('inspectOldDataContainer');
+            const newContainer = document.getElementById('inspectNewDataContainer');
+            const oldBox = document.getElementById('inspectOldData');
+            const newBox = document.getElementById('inspectNewData');
+
+            // 格式化数据
+            const formattedOld = details.old ? formatFirestoreData(details.old) : null;
+            const formattedNew = details.new ? formatFirestoreData(details.new) : null;
+
+            // 渲染旧数据
+            if (formattedOld && Object.keys(formattedOld).length > 0) {
+                oldBox.innerText = JSON.stringify(formattedOld, null, 2);
+                oldContainer.classList.remove('d-none');
+            } else {
+                oldContainer.classList.add('d-none');
+            }
+
+            // 渲染新数据
+            if (formattedNew && Object.keys(formattedNew).length > 0) {
+                newBox.innerText = JSON.stringify(formattedNew, null, 2);
+                newContainer.classList.remove('d-none');
+            } else {
+                newContainer.classList.add('d-none');
+            }
+
+            inspectModalInstance.show();
+        } catch (e) {
+            console.error("Error loading log details:", e);
+            alert("Error loading details.");
+        }
     };
 
     // --- Attendance Stats Logic ---
@@ -531,16 +678,26 @@
 
     function loadAllTasks() {
         onSnapshot(query(collection(db, "leaves"), where("status", "==", "Pending")), s => {
-            document.getElementById('count-leave').innerText = s.size;
-            document.getElementById('badge-leave').classList.toggle('d-none', s.size === 0);
+            const count = s.size;
+            const badge = document.getElementById('badge-leave');
+            document.getElementById('count-leave').innerText = count;
+            badge.style.display = count > 0 ? 'inline-block' : 'none'; 
         });
         onSnapshot(query(collection(db, "attendance_corrections"), where("status", "==", "Pending")), s => {
-            document.getElementById('count-att').innerText = s.size;
-            document.getElementById('badge-att').classList.toggle('d-none', s.size === 0);
+            const count = s.size;
+            const badge = document.getElementById('badge-att');
+            document.getElementById('count-att').innerText = count;
+            badge.style.display = count > 0 ? 'inline-block' : 'none';
+        });
+        onSnapshot(query(collection(db, "edit_requests"), where("status", "==", "Pending")), s => {
+            const count = s.size;
+            const badge = document.getElementById('badge-edit');
+            document.getElementById('count-edit').innerText = count;
+            badge.style.display = count > 0 ? 'inline-block' : 'none';
         });
     }
 
-    // --- 🟢 Office Settings (Logged) ---
+    // --- 🟢 Office Settings ---
     let currentWifiList = [];
     window.openOfficeSettingsModal = async () => {
         officeModal.show();
@@ -585,52 +742,118 @@
         const oldSnap = await getDoc(doc(db, "settings", "office_location"));
         
         await setDoc(doc(db, "settings", "office_location"), newData, { merge: true });
-        
-        // 🟢 Log the setting update
         await logAdminAction(db, auth.currentUser, "UPDATE_OFFICE_SETTINGS", "GLOBAL", oldSnap.data() || {}, newData);
-        
         officeModal.hide();
     };
 
-    // --- 🟢 Announcements (Logged) ---
+    // --- 🟢 Announcements ---
     window.openAnnouncementModal = () => { window.resetAnnounceForm(); announceModal.show(); window.loadAnnouncements(); };
     let announceUnsubscribe = null;
+    
+    document.getElementById('announceFile').addEventListener('change', function(e) {
+        const clearBtn = document.getElementById('clearFileBtn');
+        if (e.target.files.length > 0) {
+            clearBtn.classList.remove('d-none');
+        } else {
+            clearBtn.classList.add('d-none');
+        }
+    });
+
+    window.clearAnnounceFile = () => {
+        document.getElementById('announceFile').value = '';
+        document.getElementById('clearFileBtn').classList.add('d-none');
+    }
+
     window.loadAnnouncements = () => {
         if (announceUnsubscribe) return;
         announceUnsubscribe = onSnapshot(query(collection(db, "announcements"), orderBy("createdAt", "desc")), snap => {
             document.getElementById('announceCount').innerText = snap.size;
             document.getElementById('announceList').innerHTML = snap.docs.map(doc => {
                 const d = doc.data();
-                return `<div class="card mb-2 p-3 border-0 shadow-sm"><div class="small mb-1">${d.message}</div><div class="text-end"><button class="btn btn-xs text-danger" onclick="window.deleteAnnouncement('${doc.id}')">Delete</button></div></div>`;
+                
+                let attachmentHtml = '';
+                if (d.attachmentUrl) {
+                    attachmentHtml = `<div class="mt-2"><button class="btn btn-sm btn-light border text-primary" onclick="window.viewPhoto('${d.attachmentUrl}')"><i data-lucide="paperclip" class="size-3 me-1"></i>View Attachment</button></div>`;
+                }
+
+                let titleHtml = d.title ? `<div class="fw-bold text-dark mb-1">${d.title}</div>` : '';
+
+                return `
+                <div class="card mb-2 p-3 border-0 shadow-sm">
+                    ${titleHtml}
+                    <div class="small mb-1 text-secondary">${d.message}</div>
+                    ${attachmentHtml}
+                    <div class="text-end mt-2 pt-2 border-top">
+                        <small class="text-muted float-start">${d.createdAt ? new Date(d.createdAt.seconds * 1000).toLocaleDateString() : 'Just now'}</small>
+                        <button class="btn btn-xs text-danger" onclick="window.deleteAnnouncement('${doc.id}')">Delete</button>
+                    </div>
+                </div>`;
             }).join('');
+            lucide.createIcons();
         });
     };
 
     window.submitAnnouncement = async () => {
+        const title = document.getElementById('announceTitle').value.trim();
         const text = document.getElementById('announceText').value.trim();
-        if (!text) return;
+        const fileInput = document.getElementById('announceFile');
+        const btn = document.getElementById('postBtn');
+
+        if (!title) { alert("Please enter a title."); return; }
+        if (!text) { alert("Please enter a message."); return; }
         
-        const newDocRef = await addDoc(collection(db, "announcements"), { message: text, createdAt: serverTimestamp(), author: auth.currentUser.email });
-        
-        // 🟢 Log the announcement creation
-        await logAdminAction(db, auth.currentUser, "POST_ANNOUNCEMENT", newDocRef.id, null, { message: text });
-        
-        window.resetAnnounceForm();
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Posting...`;
+
+        try {
+            let attachmentUrl = null;
+
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                const storageReference = ref(storage, `announcements/${Date.now()}_${file.name}`);
+                await uploadBytes(storageReference, file);
+                attachmentUrl = await getDownloadURL(storageReference);
+            }
+
+            const payload = { 
+                title: title,
+                message: text, 
+                createdAt: serverTimestamp(), 
+                author: auth.currentUser.email 
+            };
+
+            if (attachmentUrl) {
+                payload.attachmentUrl = attachmentUrl;
+            }
+
+            const newDocRef = await addDoc(collection(db, "announcements"), payload);
+            await logAdminAction(db, auth.currentUser, "POST_ANNOUNCEMENT", newDocRef.id, null, { title: title, hasAttachment: !!attachmentUrl });
+            window.resetAnnounceForm();
+        } catch (e) {
+            console.error(e);
+            alert("Failed to post announcement: " + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="send" class="size-3 me-2"></i>Post Now`;
+            lucide.createIcons();
+        }
     };
 
-    window.resetAnnounceForm = () => { document.getElementById('announceText').value = ""; };
+    window.resetAnnounceForm = () => { 
+        document.getElementById('announceTitle').value = ""; 
+        document.getElementById('announceText').value = ""; 
+        window.clearAnnounceFile();
+    };
 
     window.deleteAnnouncement = async (id) => { 
-        if (confirm("Delete?")) {
+        if (confirm("Delete this announcement?")) {
             const oldSnap = await getDoc(doc(db, "announcements", id));
             await deleteDoc(doc(db, "announcements", id)); 
-            
-            // 🟢 Log the announcement deletion
             await logAdminAction(db, auth.currentUser, "DELETE_ANNOUNCEMENT", id, oldSnap.data(), null);
         }
     };
 
-    // --- 🟢 Driver Setup (Logged) ---
+    // --- 🟢 Driver Setup ---
     let allStaffCache = [];
     window.openDriverSetupModal = async () => {
         driverModal.show();
@@ -649,8 +872,6 @@
 
     window.toggleDriverStatus = async (uid, isDriver) => { 
         await updateDoc(doc(db, "users", uid), { isDriver, updatedAt: serverTimestamp() }); 
-        
-        // 🟢 Log the driver status toggle
         await logAdminAction(db, auth.currentUser, "TOGGLE_DRIVER_STATUS", uid, { isDriver: !isDriver }, { isDriver: isDriver });
     };
 
@@ -661,7 +882,14 @@
         loadTrackingStats();
     }
 
-    window.viewPhoto = (url) => { document.getElementById('modalImg').src = url; photoModal.show(); };
+    window.viewPhoto = (url) => { 
+        if (url.includes('.pdf') || url.includes('alt=media')) {
+            window.open(url, '_blank');
+        } else {
+            document.getElementById('modalImg').src = url; 
+            photoModal.show(); 
+        }
+    };
 </script>
 </body>
 </html>
