@@ -186,29 +186,60 @@
     <div class="modal fade" id="manualActionModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header bg-primary bg-opacity-10"><h6 class="modal-title fw-bold text-primary">Admin Override</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-header bg-primary bg-opacity-10">
+                    <h6 class="modal-title fw-bold text-primary">Admin Override</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
                 <div class="modal-body">
                     <input type="hidden" id="manualUid"><input type="hidden" id="manualDate">
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Select Action</label>
                         <select id="manualActionType" class="form-select" onchange="window.toggleManualInputs()">
                             <option value="">-- Choose --</option>
-                            <option value="Present">Mark Present (Manual Clock In/Out)</option>
-                            <option value="Absent">Mark Absent</option>
-                            <option value="Annual Leave">Assign Annual Leave</option>
-                            <option value="Medical Leave">Assign Medical Leave</option>
-                            <option value="Unpaid Leave">Assign Unpaid Leave</option>
+                            <optgroup label="Partial Adjustment (Safe)">
+                                <option value="Add Clock In">➕ Add Missing Clock In</option>
+                                <option value="Add Break Out">☕ Add Missing Break Out</option>
+                                <option value="Add Break In">💼 Add Missing Break In</option>
+                                <option value="Add Clock Out">🚪 Add Missing Clock Out</option>
+                            </optgroup>
+                            <optgroup label="Full Day Overwrite (Warning)">
+                                <option value="Overwrite Full Day">🔄 Overwrite Full Day (Present)</option>
+                                <option value="Absent">❌ Mark Absent</option>
+                                <option value="Annual Leave">🏖️ Assign Annual Leave</option>
+                                <option value="Medical Leave">🏥 Assign Medical Leave</option>
+                                <option value="Unpaid Leave">🛑 Assign Unpaid Leave</option>
+                            </optgroup>
                         </select>
                     </div>
-                    <div id="boxPresent" class="d-none p-3 bg-light rounded border mb-3">
-                        <div class="row g-2">
-                            <div class="col-6"><label class="small">Clock In</label><input type="time" id="manualClockIn" class="form-control"></div>
-                            <div class="col-6"><label class="small">Clock Out</label><input type="time" id="manualClockOut" class="form-control"></div>
-                        </div>
+
+                    <div id="boxSingleTime" class="d-none p-3 bg-light rounded border mb-3">
+                        <label class="small fw-bold text-primary" id="singleTimeLabel">Time</label>
+                        <input type="time" id="manualSingleTime" class="form-control">
+                        <small class="text-muted mt-1 d-block"><i data-lucide="info" class="size-3"></i> This adds a record without deleting existing ones.</small>
                     </div>
-                    <div id="boxAbsent" class="d-none alert alert-danger small">Existing records will be archived and marked ABSENT.</div>
-                    <div id="boxLeave" class="d-none alert alert-info small">1 Day will be assigned.</div>
-                    <div class="mt-3"><label class="small">Reason</label><input type="text" id="manualReason" class="form-control" placeholder="Remarks..."></div>
+
+                    <div id="boxPresent" class="d-none p-3 bg-light rounded border mb-3">
+                        <div class="row g-2 mb-2">
+                            <div class="col-6"><label class="small fw-bold text-primary">Clock In</label><input type="time" id="manualClockIn" class="form-control"></div>
+                            <div class="col-6"><label class="small fw-bold text-primary">Clock Out</label><input type="time" id="manualClockOut" class="form-control"></div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6"><label class="small text-muted">Break Out (Optional)</label><input type="time" id="manualBreakOut" class="form-control"></div>
+                            <div class="col-6"><label class="small text-muted">Break In (Optional)</label><input type="time" id="manualBreakIn" class="form-control"></div>
+                        </div>
+                        <small class="text-muted mt-2 d-block"><i data-lucide="help-circle" class="size-3"></i> Clock In & Out will default to the employee's shift hours if available.</small>
+                    </div>
+                    
+                    <div id="boxLeave" class="d-none alert alert-info small mb-3">1 Day will be assigned.</div>
+                    
+                    <div id="archiveWarning" class="d-none alert alert-danger small mb-3">
+                        <b>⚠️ Warning:</b> Existing records for this date will be permanently archived and replaced.
+                    </div>
+
+                    <div class="mt-2">
+                        <label class="small">Reason / Remarks</label>
+                        <input type="text" id="manualReason" class="form-control" placeholder="Optional...">
+                    </div>
                 </div>
                 <div class="modal-footer"><button class="btn btn-primary btn-sm px-4 fw-bold" onclick="window.submitManualAction()">Confirm</button></div>
             </div>
@@ -241,7 +272,7 @@
 
         import { firebaseConfig } from "./firebase-config.js";
         import { requireAdmin } from "./auth-guard.js";
-        import { formatTime, msToHM, normalizeDate, logAdminAction } from "./utils.js"; // 🟢 Added logAdminAction
+        import { formatTime, msToHM, normalizeDate, logAdminAction } from "./utils.js"; 
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
@@ -274,7 +305,6 @@
             listenToCorrections();
         });
 
-        // --- Data Fetching ---
         async function fetchUsers() {
             const snap = await getDocs(query(collection(db, "users"), where("role", "==", "staff")));
             snap.forEach(docSnap => {
@@ -338,9 +368,11 @@
                 attendanceData = [];
                 let presentUids = new Set();
                 let unverified = 0;
+                
                 attSnap.forEach(d => {
                     const data = d.data();
                     let eUid = usersMap[data.uid] ? data.uid : docIdToAuthMap[data.uid];
+                    
                     if(eUid && !['Rejected', 'Archived'].includes(data.verificationStatus)) {
                         attendanceData.push({ id: d.id, ...data, uid: eUid, date: normalizeDate(data.date) });
                         if(currentMode === 'day') presentUids.add(eUid);
@@ -369,7 +401,6 @@
             } catch(e) { console.error(e); }
         };
 
-        // --- UI Rendering ---
         function renderDayUserCard(uid, records, container, targetDate) {
             const user = usersMap[uid];
             const sched = schedulesMap[uid + "_" + targetDate];
@@ -377,11 +408,18 @@
             if (!sched && records.length === 0 && !leave) return false;
 
             let inT = "--:--", outT = "--:--", pending = 0;
+            
+            records.sort((a,b) => {
+                const ta = a.timestamp?.toDate ? a.timestamp.toDate() : new Date();
+                const tb = b.timestamp?.toDate ? b.timestamp.toDate() : new Date();
+                return ta - tb;
+            });
+
             records.forEach(r => {
                 if(r.verificationStatus !== 'Verified') pending++;
                 else {
-                    if(r.session === 'Clock In' && inT === "--:--") inT = formatTime(r.manualIn || r.timeIn || r.timestamp);
-                    if(r.session === 'Clock Out') outT = formatTime(r.manualOut || r.timeOut || r.timestamp);
+                    if(r.session === 'Clock In' && inT === "--:--") inT = formatTime(r.timestamp);
+                    if(r.session === 'Clock Out') outT = formatTime(r.timestamp);
                 }
             });
 
@@ -434,7 +472,7 @@
                 const dayRecords = allRecords.filter(r => r.date === dateStr && r.verificationStatus === 'Verified');
 
                 let inT = null;
-                dayRecords.forEach(r => { if(r.session === 'Clock In') inT = r.manualIn || formatTime(r.timeIn || r.timestamp); });
+                dayRecords.forEach(r => { if(r.session === 'Clock In') inT = formatTime(r.timestamp); });
                 if(inT) present++;
 
                 if (dayRecords.length > 0 || sched || leave) {
@@ -446,7 +484,6 @@
                 }
             }
 
-            if (filterType === 'late' && stats.late === 0) return false;
             const card = document.createElement('div');
             card.className = 'user-card user-card-container'; card.setAttribute('data-name', user.name);
             card.innerHTML = `<div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-month-${uid}"><div class="row align-items-center"><div class="col-4 d-flex align-items-center gap-3">${user.photo?`<img src="${user.photo}" class="staff-avatar">`:`<div class="staff-avatar">${user.name.charAt(0)}</div>`}<div><h6 class="fw-bold m-0">${user.name}</h6></div></div><div class="col-7 text-center"><div class="stat-label">Days Present</div><div class="stat-value">${present} / ${days}</div></div><div class="col-1 text-end"><i data-lucide="chevron-down" class="text-muted chevron-icon"></i></div></div></div><div id="collapse-month-${uid}" class="collapse"><ul class="list-group list-group-flush">${rowsHtml}</ul></div>`;
@@ -456,10 +493,15 @@
 
         function renderRecordItem(item) {
             const isV = item.verificationStatus === 'Verified';
-            const time = formatTime(item.manualIn || item.manualOut || item.timeIn || item.timeOut || item.timestamp);
-            const tEdit = (item.manualIn || item.manualOut || (item.timestamp?.toDate ? item.timestamp.toDate().toTimeString().slice(0,5) : ""));
-            return `<div class="list-group-item d-flex justify-content-between align-items-center px-4 py-2">
-                <div class="small"><div class="fw-bold text-muted">${item.session}</div><div class="fw-bold text-dark">${time}</div></div>
+            
+            const time = formatTime(item.timestamp);
+            const tEdit = item.timestamp?.toDate ? item.timestamp.toDate().toTimeString().slice(0,5) : "";
+            
+            const isAuto = item.address === "System Auto Clock Out";
+            const sessionDisplay = isAuto ? `<span class="text-danger fw-bold"><i data-lucide="zap" class="size-3"></i> Auto Clock Out</span>` : `<div class="fw-bold text-muted">${item.session}</div>`;
+            
+            return `<div class="list-group-item d-flex justify-content-between align-items-center px-4 py-2 ${isAuto ? 'bg-danger bg-opacity-10' : ''}">
+                <div class="small">${sessionDisplay}<div class="fw-bold text-dark">${time}</div>${isAuto ? '<small class="text-danger">Forced by System</small>' : ''}</div>
                 <div class="text-end d-flex align-items-center gap-3">
                     ${isV ? '<span class="badge bg-success bg-opacity-10 text-success border border-success">Verified</span>' : `<button class="btn btn-xs btn-primary" onclick="window.quickVerify('${item.id}')">Verify</button>`}
                     <button class="btn btn-xs btn-light border" onclick="window.openEditRecord('${item.id}', '${item.session}', '${tEdit}', '${item.date}')"><i data-lucide="edit-3" class="size-3"></i></button>
@@ -468,16 +510,58 @@
             </div>`;
         }
 
-        // --- Core P1 Hardened Logic (Logged) ---
+        // --- 🟢 新版管理干预逻辑 (支持预填排班时间和四段打卡) ---
 
         window.openManualAction = (uid, targetDate) => {
             document.getElementById('manualUid').value = uid;
             document.getElementById('manualDate').value = targetDate;
             document.getElementById('manualActionType').value = "";
             document.getElementById('manualReason').value = "";
+            
+            // 清空所有输入框
+            document.getElementById('manualSingleTime').value = "";
+            document.getElementById('manualClockIn').value = "";
+            document.getElementById('manualClockOut').value = "";
+            document.getElementById('manualBreakOut').value = "";
+            document.getElementById('manualBreakIn').value = "";
+
+            // 🟢 获取该员工当天的排班数据
+            const sched = schedulesMap[uid + "_" + targetDate];
+            if (sched) {
+                if (sched.start) {
+                    const startD = sched.start.toDate();
+                    const sh = startD.getHours().toString().padStart(2, '0');
+                    const sm = startD.getMinutes().toString().padStart(2, '0');
+                    document.getElementById('manualClockIn').value = `${sh}:${sm}`;
+                }
+                if (sched.end) {
+                    const endD = sched.end.toDate();
+                    const eh = endD.getHours().toString().padStart(2, '0');
+                    const em = endD.getMinutes().toString().padStart(2, '0');
+                    document.getElementById('manualClockOut').value = `${eh}:${em}`;
+                }
+            }
+            
             window.toggleManualInputs();
             manualActionModal.show();
         }
+
+        window.toggleManualInputs = () => {
+            const type = document.getElementById('manualActionType').value;
+            
+            const isSingleAdd = ['Add Clock In', 'Add Break Out', 'Add Break In', 'Add Clock Out'].includes(type);
+            const isFullOverwrite = type === 'Overwrite Full Day';
+            const willArchive = ['Overwrite Full Day', 'Absent'].includes(type) || type.includes('Leave');
+
+            document.getElementById('boxSingleTime').classList.toggle('d-none', !isSingleAdd);
+            document.getElementById('boxPresent').classList.toggle('d-none', !isFullOverwrite);
+            document.getElementById('boxLeave').classList.toggle('d-none', !type.includes('Leave'));
+            document.getElementById('archiveWarning').classList.toggle('d-none', !willArchive);
+
+            if (isSingleAdd) {
+                document.getElementById('singleTimeLabel').innerText = `Enter ${type.replace('Add ', '')} Time`;
+            }
+        };
 
         window.submitManualAction = async () => {
             const uid = document.getElementById('manualUid').value;
@@ -489,25 +573,69 @@
             try {
                 const batch = writeBatch(db);
                 
-                // 🟢 Evidence Preservation: Archive all existing verified/pending records for this date
                 const q = query(collection(db, "attendance"), where("uid", "==", userObj.authUid || userObj.docId), where("date", "==", dateStr));
                 const snap = await getDocs(q);
                 const oldDataSnapshot = [];
-                snap.forEach(d => {
-                    oldDataSnapshot.push({id: d.id, ...d.data()});
-                    batch.update(d.ref, { verificationStatus: "Archived" });
-                });
+                snap.forEach(d => oldDataSnapshot.push({id: d.id, ...d.data()}));
 
-                if(type === 'Present') {
-                    const cin = document.getElementById('manualClockIn').value;
-                    const cout = document.getElementById('manualClockOut').value;
-                    const base = { uid: userObj.authUid || userObj.docId, name: userObj.name, email: userObj.email, date: dateStr, verificationStatus: "Verified", address: "Admin Manual Entry", timestamp: serverTimestamp() };
-                    if(cin) batch.set(doc(collection(db, "attendance")), { ...base, session: "Clock In", manualIn: cin });
-                    if(cout) batch.set(doc(collection(db, "attendance")), { ...base, session: "Clock Out", manualOut: cout });
+                const shouldArchive = ['Overwrite Full Day', 'Absent'].includes(type) || type.includes('Leave');
+                if (shouldArchive) {
+                    snap.forEach(d => batch.update(d.ref, { verificationStatus: "Archived" }));
+                }
+
+                const base = { 
+                    uid: userObj.authUid || userObj.docId, 
+                    name: userObj.name, 
+                    email: userObj.email, 
+                    date: dateStr, 
+                    verificationStatus: "Verified", 
+                    address: "Admin Manual Entry", 
+                };
+
+                if (['Add Clock In', 'Add Break Out', 'Add Break In', 'Add Clock Out'].includes(type)) {
+                    const t = document.getElementById('manualSingleTime').value;
+                    if(!t) throw new Error("Please enter a valid time.");
                     
-                    // 🟢 Log Admin Action
-                    await logAdminAction(db, auth.currentUser, "MANUAL_ATTENDANCE_PRESENT", userObj.docId, oldDataSnapshot, { cin, cout, date: dateStr });
+                    const sessionType = type.replace('Add ', ''); 
+                    const preciseDate = new Date(`${dateStr}T${t}:00`);
+                    
+                    const newDocData = { 
+                        ...base, 
+                        session: sessionType, 
+                        timestamp: Timestamp.fromDate(preciseDate)
+                    };
+                    batch.set(doc(collection(db, "attendance")), newDocData);
+                    
+                    await logAdminAction(db, auth.currentUser, type.toUpperCase().replace(/ /g, '_'), userObj.docId, oldDataSnapshot, newDocData);
                     await batch.commit();
+
+                } else if (type === 'Overwrite Full Day') {
+                    // 🟢 抓取所有四个可能输入的时间
+                    const cin = document.getElementById('manualClockIn').value;
+                    const bout = document.getElementById('manualBreakOut').value;
+                    const bin = document.getElementById('manualBreakIn').value;
+                    const cout = document.getElementById('manualClockOut').value;
+                    
+                    if(cin) {
+                        const preciseIn = new Date(`${dateStr}T${cin}:00`);
+                        batch.set(doc(collection(db, "attendance")), { ...base, session: "Clock In", timestamp: Timestamp.fromDate(preciseIn) });
+                    }
+                    if(bout) {
+                        const preciseBout = new Date(`${dateStr}T${bout}:00`);
+                        batch.set(doc(collection(db, "attendance")), { ...base, session: "Break Out", timestamp: Timestamp.fromDate(preciseBout) });
+                    }
+                    if(bin) {
+                        const preciseBin = new Date(`${dateStr}T${bin}:00`);
+                        batch.set(doc(collection(db, "attendance")), { ...base, session: "Break In", timestamp: Timestamp.fromDate(preciseBin) });
+                    }
+                    if(cout) {
+                        const preciseOut = new Date(`${dateStr}T${cout}:00`);
+                        batch.set(doc(collection(db, "attendance")), { ...base, session: "Clock Out", timestamp: Timestamp.fromDate(preciseOut) });
+                    }
+                    
+                    await logAdminAction(db, auth.currentUser, "MANUAL_OVERWRITE_FULL_DAY", userObj.docId, oldDataSnapshot, { cin, bout, bin, cout, date: dateStr });
+                    await batch.commit();
+
                 } else if (type === 'Absent') {
                     const leaveRef = doc(collection(db, "leaves"));
                     const leaveData = { uid: userObj.docId, authUid: userObj.authUid, empName: userObj.name, type: 'Absent', startDate: dateStr, endDate: dateStr, days: 1, status: 'Approved', reviewedAt: serverTimestamp(), isPayrollDeductible: true, reason: document.getElementById('manualReason').value || "Admin Manual Absent" };
@@ -515,8 +643,9 @@
                     
                     await logAdminAction(db, auth.currentUser, "MANUAL_ATTENDANCE_ABSENT", userObj.docId, oldDataSnapshot, leaveData);
                     await batch.commit();
+
                 } else if (type.includes('Leave')) {
-                    // Transactional integrity for leave balance
+                    await batch.commit(); 
                     await runTransaction(db, async (tx) => {
                         const uRef = doc(db, "users", userObj.docId);
                         const uDoc = await tx.get(uRef);
@@ -529,7 +658,9 @@
                         await logAdminAction(db, auth.currentUser, "MANUAL_LEAVE_ASSIGN", userObj.docId, {oldBalance: oldBal, oldAttendance: oldDataSnapshot}, leaveData);
                     });
                 }
-                manualActionModal.hide(); window.loadData();
+                
+                manualActionModal.hide(); 
+                window.loadData();
             } catch(e) { alert(e.message); }
         }
 
@@ -552,12 +683,12 @@
                 const oldData = snap.data();
                 const batch = writeBatch(db);
                 
-                // 🟢 Archive original to preserve evidence
                 batch.update(ref, { verificationStatus: "Archived" });
                 
+                const preciseDate = new Date(`${date}T${time}:00`);
+                
                 const newRef = doc(collection(db, "attendance"));
-                const newData = { ...oldData, verificationStatus: "Verified", address: "Admin Manual Edit", timestamp: Timestamp.fromDate(new Date(`${date}T${time}:00`)) };
-                if (oldData.session.includes('In')) newData.manualIn = time; else newData.manualOut = time;
+                const newData = { ...oldData, verificationStatus: "Verified", address: "Admin Manual Edit", timestamp: Timestamp.fromDate(preciseDate) };
                 
                 batch.set(newRef, newData);
                 
@@ -584,7 +715,6 @@
             window.loadData();
         }
 
-        // --- UI Logic ---
         window.toggleMode = (mode) => {
             currentMode = mode;
             const dashTabLi = document.getElementById('navItemDashboard');
@@ -609,13 +739,6 @@
         }
 
         window.changeDate = (days) => { const el = document.getElementById('dateFilter'); const d = new Date(el.value); d.setDate(d.getDate() + days); el.value = d.toISOString().split('T')[0]; window.loadData(); }
-        
-        window.toggleManualInputs = () => {
-            const type = document.getElementById('manualActionType').value;
-            document.getElementById('boxPresent').classList.toggle('d-none', type !== 'Present');
-            document.getElementById('boxAbsent').classList.toggle('d-none', type !== 'Absent');
-            document.getElementById('boxLeave').classList.toggle('d-none', !type.includes('Leave'));
-        };
 
         function renderDashboard(data, pUids) {
             const target = document.getElementById('dateFilter').value;
@@ -649,23 +772,6 @@
                     });
                 }
             });
-        }
-
-        window.handleCorrection = async (reqId, attId, nIn, nOut, action) => {
-            if(!confirm(`Confirm ${action}?`)) return;
-            try {
-                const batch = writeBatch(db);
-                if(action === 'approve' && attId) {
-                    batch.update(doc(db, "attendance", attId), { manualIn: nIn, manualOut: nOut, verificationStatus: "Verified", address: "App Correction Approved" });
-                    batch.update(doc(db, "attendance_corrections", reqId), { status: "Approved", resolvedAt: serverTimestamp() });
-                    
-                    // 🟢 Log Admin Action
-                    await logAdminAction(db, auth.currentUser, "APPROVE_CORRECTION", attId, null, {nIn, nOut});
-                } else {
-                    batch.update(doc(db, "attendance_corrections", reqId), { status: "Rejected", resolvedAt: serverTimestamp() });
-                }
-                await batch.commit(); window.loadData();
-            } catch(e) { alert(e.message); }
         }
 
         window.exportData = () => { alert("Export feature enabled. CSV will be generated based on current filter."); };

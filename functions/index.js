@@ -1,5 +1,6 @@
 const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require("firebase-functions/v2/firestore");
-const { setGlobalOptions } = require("firebase-functions/v2"); // 🟢 引入全局设置
+const { onSchedule } = require("firebase-functions/v2/scheduler"); // 🟢 引入定时任务
+const { setGlobalOptions } = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 const { logger } = require("firebase-functions");
 
@@ -127,5 +128,111 @@ exports.sendPayslipPush = onDocumentWritten('payslips/{payslipId}', async (event
         logger.info(`Payslip push sent to user ${uid}`);
     } catch (error) {
         logger.error("Error sending payslip push:", error);
+    }
+});
+
+// ============================================================================
+// 4. 定时任务：自动签退 (Auto Clock Out Job)
+// ============================================================================
+// 每天每小时的第 0 分钟运行 (例如 17:00, 18:00)，时区设为马来西亚
+exports.autoClockOutJob = onSchedule({
+    schedule: "0 * * * *",
+    timeZone: "Asia/Kuala_Lumpur",
+    retryCount: 0 // 不需要重试，下一小时会自动再扫一遍
+}, async (event) => {
+    logger.info("Running Auto Clock Out Job...");
+    
+    const db = admin.firestore();
+    const now = new Date();
+    // Firebase 云端默认是 UTC 时间，我们需要计算马来西亚时间 (UTC+8) 来获取正确的日期字符串
+    const myTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+    const todayStr = myTime.toISOString().split('T')[0];
+    
+    try {
+        // 1. 获取当天的排班
+        const schedSnap = await db.collection("schedules").where("date", "==", todayStr).get();
+        if (schedSnap.empty) {
+            logger.info("No schedules found for today.");
+            return;
+        }
+
+        const schedules = [];
+        schedSnap.forEach(doc => schedules.push(doc.data()));
+
+        // 2. 获取当天所有尚未归档的考勤记录
+        const attSnap = await db.collection("attendance")
+            .where("date", "==", todayStr)
+            .where("verificationStatus", "in", ["Pending", "Verified", "Corrected"])
+            .get();
+
+        // 按员工分组
+        const userRecords = {};
+        attSnap.forEach(doc => {
+            const data = doc.data();
+            if (!userRecords[data.uid]) userRecords[data.uid] = [];
+            userRecords[data.uid].push(data);
+        });
+
+        const batch = db.batch();
+        let fixCount = 0;
+
+        // 3. 核心判断逻辑
+        for (const uid in userRecords) {
+            const records = userRecords[uid];
+            // 找这个人今天的排班 (兼容 userId 和 authUid)
+            const mySched = schedules.find(s => s.userId === uid || s.authUid === uid);
+            
+            if (mySched && mySched.end) {
+                // 排班结束时间
+                const shiftEnd = mySched.end.toDate();
+                // 宽限期：下班时间 + 1 小时
+                const shiftEndPlusOneHour = new Date(shiftEnd.getTime() + (60 * 60 * 1000));
+
+                // 如果现在的时间已经超过了宽限期
+                if (now > shiftEndPlusOneHour) {
+                    // 检查他是否有任何 Clock Out 的记录
+                    const hasClockedOut = records.some(r => r.session === "Clock Out");
+
+                    if (!hasClockedOut) {
+                        // 发现漏打卡！帮他自动下班
+                        const userObj = records[0]; 
+                        
+                        // 使用排班时间格式化为 HH:mm
+                        // 注意：toDate() 本身会根据云端本地时区转换，但由于只取时分，建议显式调整到 UTC+8
+                        const localShiftEnd = new Date(shiftEnd.getTime() + (8 * 60 * 60 * 1000));
+                        const hours = localShiftEnd.getUTCHours().toString().padStart(2, '0');
+                        const minutes = localShiftEnd.getUTCMinutes().toString().padStart(2, '0');
+                        const autoOutTime = `${hours}:${minutes}`;
+
+                        const newRecordRef = db.collection("attendance").doc();
+                        batch.set(newRecordRef, {
+                            uid: uid,
+                            name: userObj.name || "Unknown",
+                            email: userObj.email || "",
+                            date: todayStr,
+                            session: "Clock Out",
+                            manualOut: autoOutTime, // 强制设定为原定的下班时间
+                            verificationStatus: "Verified",
+                            address: "System Auto Clock Out", 
+                            timestamp: admin.firestore.Timestamp.fromDate(shiftEnd) // 强制时间戳为下班时间
+                        });
+
+                        fixCount++;
+                        logger.info(`[Fixed] Auto Clock Out enforced for ${userObj.name} at ${autoOutTime}`);
+                    }
+                }
+            }
+        }
+
+        // 4. 提交
+        if (fixCount > 0) {
+            await batch.commit();
+            logger.info(`Successfully fixed ${fixCount} missing clock outs.`);
+        } else {
+            logger.info("All staff have properly clocked out. No fixes needed.");
+        }
+
+    } catch (error) {
+        logger.error("Error in Auto Clock Out Job:", error);
     }
 });
