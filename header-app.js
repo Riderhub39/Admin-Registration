@@ -68,17 +68,20 @@ function initNotificationSystem(db) {
     const badge = document.getElementById('notificationBadge');
     const list = document.getElementById('notificationList');
     
+    // 🟢 初始化计数器，增加了 attendancePending
     const counts = {
         leaves: 0,
-        attendance: 0,
+        attendanceCorrections: 0,
+        attendancePending: 0,
         edits: 0
     };
 
     const updateUI = () => {
-        const total = counts.leaves + counts.attendance + counts.edits;
+        const total = counts.leaves + counts.attendanceCorrections + counts.attendancePending + counts.edits;
 
         if (badge) {
             total > 0 ? badge.classList.remove('d-none') : badge.classList.add('d-none');
+            badge.innerText = total > 9 ? '9+' : total; // 可选：更新角标数字
         }
 
         let html = `<li><h6 class="dropdown-header fw-bold">Notifications (${total})</h6></li>`;
@@ -90,6 +93,7 @@ function initNotificationSystem(db) {
                     <small>All caught up!</small>
                 </li>`;
         } else {
+            // 1. 请假申请
             if (counts.leaves > 0) {
                 html += `
                     <li>
@@ -102,18 +106,36 @@ function initNotificationSystem(db) {
                         </a>
                     </li>`;
             }
-            if (counts.attendance > 0) {
+
+            // 2. 考勤修正申请 (来自 attendance_corrections)
+            if (counts.attendanceCorrections > 0) {
                 html += `
                     <li>
                         <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="attendance.html">
-                            <div class="bg-danger bg-opacity-10 text-danger p-1 rounded"><i data-lucide="clock" class="size-4"></i></div>
+                            <div class="bg-danger bg-opacity-10 text-danger p-1 rounded"><i data-lucide="alert-circle" class="size-4"></i></div>
                             <div>
-                                <div class="fw-bold small">${counts.attendance} Attendance Fix${counts.attendance > 1 ? 'es' : ''}</div>
-                                <div class="text-muted" style="font-size: 0.75rem;">Verification required</div>
+                                <div class="fw-bold small">${counts.attendanceCorrections} Correction Request${counts.attendanceCorrections > 1 ? 's' : ''}</div>
+                                <div class="text-muted" style="font-size: 0.75rem;">Staff requested fixes</div>
                             </div>
                         </a>
                     </li>`;
             }
+
+            // 3. 🟢 待验证日常打卡 (来自 attendance)
+            if (counts.attendancePending > 0) {
+                html += `
+                    <li>
+                        <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="attendance.html">
+                            <div class="bg-primary bg-opacity-10 text-primary p-1 rounded"><i data-lucide="clock" class="size-4"></i></div>
+                            <div>
+                                <div class="fw-bold small">${counts.attendancePending} Unverified Log${counts.attendancePending > 1 ? 's' : ''}</div>
+                                <div class="text-muted" style="font-size: 0.75rem;">Daily logs to verify</div>
+                            </div>
+                        </a>
+                    </li>`;
+            }
+
+            // 4. 资料修改申请
             if (counts.edits > 0) {
                 html += `
                     <li>
@@ -132,16 +154,27 @@ function initNotificationSystem(db) {
         if (window.lucide) window.lucide.createIcons();
     };
 
+    // --- Listeners ---
+
+    // 监听待处理请假
     onSnapshot(query(collection(db, "leaves"), where("status", "==", "Pending")), (snap) => {
         counts.leaves = snap.size;
         updateUI();
     });
 
+    // 监听考勤修正申请
     onSnapshot(query(collection(db, "attendance_corrections"), where("status", "==", "Pending")), (snap) => {
-        counts.attendance = snap.size;
+        counts.attendanceCorrections = snap.size;
         updateUI();
     });
 
+    // 🟢 监听日常打卡 Pending (verificationStatus)
+    onSnapshot(query(collection(db, "attendance"), where("verificationStatus", "==", "Pending")), (snap) => {
+        counts.attendancePending = snap.size;
+        updateUI();
+    });
+
+    // 监听资料修改
     onSnapshot(query(collection(db, "edit_requests"), where("status", "==", "pending")), (snap) => {
         counts.edits = snap.size;
         updateUI();
