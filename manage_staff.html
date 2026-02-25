@@ -529,6 +529,9 @@
                     batch.update(userRef, { 
                         "leave_balance.annual": finalAnnual, 
                         "leave_balance.medical": finalMedical,
+                        // 🟢 新增：把算出来的总天数也存进去，供 Flutter App 读取
+                        "leave_balance.total_annual": annualEntitlement,
+                        "leave_balance.total_medical": medicalEntitlement,
                         "meta.balanceLastUpdated": serverTimestamp(), 
                         "meta.balanceYear": currentYear 
                     });
