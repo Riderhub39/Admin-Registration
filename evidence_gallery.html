@@ -100,17 +100,17 @@
         </div>
 
         <div class="d-flex gap-2 align-items-center">
-            <button class="btn btn-outline-secondary" onclick="changeDate(-1)">
+            <button class="btn btn-outline-secondary" onclick="window.changeDate(-1)">
                 <i data-lucide="chevron-left" class="size-4"></i>
             </button>
 
-            <input type="date" id="dateFilter" class="form-control fw-bold text-center" style="width: 150px;" onchange="loadEvidence()">
+            <input type="date" id="dateFilter" class="form-control fw-bold text-center" style="width: 150px;" onchange="window.loadEvidence()">
             
-            <button class="btn btn-outline-secondary" onclick="changeDate(1)">
+            <button class="btn btn-outline-secondary" onclick="window.changeDate(1)">
                 <i data-lucide="chevron-right" class="size-4"></i>
             </button>
             
-            <select id="staffFilter" class="form-select ms-2" style="width: 200px;" onchange="loadEvidence()">
+            <select id="staffFilter" class="form-select ms-2" style="width: 200px;" onchange="window.loadEvidence()">
                 <option value="all">All Staff</option>
             </select>
         </div>
@@ -148,157 +148,21 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, query, where, getDocs, orderBy, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-    import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
+    import { getFirestore } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    
     import { firebaseConfig } from "./firebase-config.js";
     import { requireAdmin } from "./auth-guard.js";
-    import { normalizeDate } from "./utils.js";
+    
+    // 🟢 导入控制逻辑
+    import { initEvidenceGalleryApp } from "./evidence-gallery-app.js";
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const auth = getAuth(app);
 
-    let imageModal;
-
-    const dateInput = document.getElementById('dateFilter');
-    dateInput.value = new Date().toISOString().split('T')[0];
-
-    // 🟢 使用 requireAdmin 自动验证身份并处理加载状态
+    // 验证身份并启动应用
     requireAdmin(app, db, async (user) => {
-        document.getElementById('loadingText').innerText = "Loading Gallery...";
-        imageModal = new bootstrap.Modal(document.getElementById('imageModal'));
-        
-        await loadStaffList();
-        loadEvidenceImpl(); // 执行加载逻辑
-        lucide.createIcons();
+        await initEvidenceGalleryApp();
     });
-
-    window.changeDate = (days) => {
-        const current = new Date(dateInput.value);
-        current.setDate(current.getDate() + days);
-        dateInput.value = current.toISOString().split('T')[0];
-        loadEvidenceImpl();
-    };
-
-    // 将实现逻辑暴露给全局供 HTML 内部的 onchange 调用
-    window.loadEvidence = loadEvidenceImpl;
-
-    async function loadStaffList() {
-        const select = document.getElementById('staffFilter');
-        try {
-            const q = query(collection(db, "users"), where("role", "==", "staff"));
-            const snap = await getDocs(q);
-            snap.forEach(doc => {
-                const d = doc.data();
-                if (d.status === 'disabled') return;
-                const name = d.personal?.name || d.name || "Unknown";
-                const opt = document.createElement('option');
-                opt.value = d.authUid || doc.id; 
-                opt.textContent = name;
-                select.appendChild(opt);
-            });
-        } catch (e) {
-            console.error("Error loading staff:", e);
-        }
-    }
-
-    async function loadEvidenceImpl() {
-        const container = document.getElementById('galleryContainer');
-        const dateVal = document.getElementById('dateFilter').value;
-        const staffVal = document.getElementById('staffFilter').value;
-
-        container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>';
-
-        try {
-            const startDate = new Date(dateVal);
-            startDate.setHours(0,0,0,0);
-            const endDate = new Date(dateVal);
-            endDate.setHours(23, 59, 59, 999);
-
-            let q = query(
-                collection(db, "evidence_logs"),
-                where("capturedAt", ">=", startDate),
-                where("capturedAt", "<=", endDate),
-                orderBy("capturedAt", "desc")
-            );
-
-            const snap = await getDocs(q);
-            
-            if (snap.empty) {
-                container.innerHTML = `<div class="text-center py-5 text-muted"><i data-lucide="image-off" class="size-12 mb-3"></i><p>No photos found for this date.</p></div>`;
-                lucide.createIcons();
-                return;
-            }
-
-            const grouped = {};
-            snap.forEach(doc => {
-                const d = doc.data();
-                if (staffVal !== 'all' && d.uid !== staffVal) return;
-
-                const sName = d.staffName || "Unknown Staff";
-                if (!grouped[sName]) grouped[sName] = [];
-                grouped[sName].push({ id: doc.id, ...d });
-            });
-
-            if (Object.keys(grouped).length === 0) {
-                container.innerHTML = `<div class="text-center py-5 text-muted"><p>No photos found for selected staff.</p></div>`;
-                return;
-            }
-
-            container.innerHTML = '';
-            Object.keys(grouped).forEach(staffName => {
-                const photos = grouped[staffName];
-                const section = document.createElement('div');
-                section.className = 'staff-section';
-                
-                let photosHtml = '';
-                photos.forEach(p => {
-                    const timeStr = p.localTime ? p.localTime.split(' ')[1] : "Unknown"; 
-                    const safeData = JSON.stringify(p).replace(/"/g, '&quot;');
-                    
-                    photosHtml += `
-                        <div class="photo-card" onclick="openPhoto(${safeData})">
-                            <span class="timestamp-badge">${timeStr}</span>
-                            <img src="${p.photoUrl}" class="photo-img" loading="lazy">
-                            <div class="photo-info">
-                                <div class="location-text">
-                                    <i data-lucide="map-pin" class="size-3 me-1"></i>${p.location || 'GPS Only'}
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                });
-
-                section.innerHTML = `
-                    <div class="staff-header">
-                        <div class="bg-primary bg-opacity-10 text-primary rounded p-2">
-                            <i data-lucide="user" class="size-5"></i>
-                        </div>
-                        <h6 class="fw-bold m-0 text-dark">${staffName} <span class="text-muted fw-normal">(${photos.length} photos)</span></h6>
-                    </div>
-                    <div class="photo-grid">
-                        ${photosHtml}
-                    </div>
-                `;
-                container.appendChild(section);
-            });
-
-            lucide.createIcons();
-
-        } catch (e) {
-            console.error(e);
-            container.innerHTML = `<div class="alert alert-danger">Error loading evidence: ${e.message}</div>`;
-        }
-    }
-
-    window.openPhoto = (data) => {
-        document.getElementById('modalFullImage').src = data.photoUrl;
-        document.getElementById('modalStaffName').innerText = data.staffName;
-        document.getElementById('modalTime').innerText = data.localTime;
-        document.getElementById('modalLocation').innerText = data.location;
-        imageModal.show();
-    }
 </script>
 </body>
 </html>
