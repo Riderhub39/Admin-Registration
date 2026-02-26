@@ -15,6 +15,15 @@
             background: rgba(255, 255, 255, 0.95); z-index: 9999; 
             display: flex; flex-direction: column; justify-content: center; align-items: center; 
         }
+
+        /* 🟢 新增：用于全局 Toast 的样式 */
+        #statusMessage {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            padding: 12px 24px; border-radius: 8px; z-index: 9999;
+            color: white; font-weight: 500; display: none;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+
         .admin-card { border-radius: 12px; transition: all 0.2s; border: 1px solid #e2e8f0; }
         .admin-card:hover { border-color: var(--primary); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         .avatar-circle { width: 45px; height: 45px; background: #f1f5f9; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #64748b; }
@@ -22,6 +31,8 @@
     </style>
 </head>
 <body class="bg-light">
+
+<div id="statusMessage"></div>
 
 <div id="loadingOverlay">
     <div class="spinner-border text-primary mb-3" role="status"></div>
@@ -41,8 +52,7 @@
         </button>
     </div>
 
-    <div class="row g-3" id="adminList">
-        </div>
+    <div class="row g-3" id="adminList"></div>
 </div>
 
 <div class="modal fade" id="promoteModal" tabindex="-1">
@@ -80,7 +90,9 @@
     
     import { firebaseConfig } from "./firebase-config.js";
     import { requireAdmin } from "./auth-guard.js";
-    import { logAdminAction } from "./utils.js";
+    
+    // 🟢 导入 utils 的公用方法
+    import { logAdminAction, showLoading, hideLoading, showStatusAlert } from "./utils.js";
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
@@ -97,8 +109,11 @@
         }
 
         promoteModal = new bootstrap.Modal(document.getElementById('promoteModal'));
-        loadAdmins();
-        loadStaffForPromotion();
+        await loadAdmins();
+        await loadStaffForPromotion();
+        
+        hideLoading(); // 🟢 移除初始验证的遮罩层
+        document.getElementById('mainContainer').classList.remove('d-none');
         lucide.createIcons();
     });
 
@@ -107,7 +122,6 @@
         container.innerHTML = '<div class="text-center py-5 w-100"><div class="spinner-border text-muted"></div></div>';
 
         try {
-            // 查询所有角色为 admin 或 manager 的用户
             const q = query(collection(db, "users"), where("role", "in", ["admin", "manager"]));
             const snap = await getDocs(q);
             
@@ -143,34 +157,45 @@
                 container.appendChild(col);
             });
             lucide.createIcons();
-        } catch (e) { console.error(e); }
+        } catch (e) { 
+            console.error(e);
+            showStatusAlert('statusMessage', 'Failed to load admins.', false);
+        }
     }
 
     async function loadStaffForPromotion() {
         const select = document.getElementById('staffSelect');
-        const q = query(collection(db, "users"), where("role", "==", "staff"));
-        const snap = await getDocs(q);
-        
-        select.innerHTML = '<option value="">-- Choose Staff Member --</option>';
-        snap.forEach(d => {
-            const data = d.data();
-            if (data.status !== 'disabled') {
-                const opt = document.createElement('option');
-                opt.value = d.id;
-                opt.textContent = `${data.personal?.name} (${data.personal?.email})`;
-                select.appendChild(opt);
-            }
-        });
+        try {
+            const q = query(collection(db, "users"), where("role", "==", "staff"));
+            const snap = await getDocs(q);
+            
+            select.innerHTML = '<option value="">-- Choose Staff Member --</option>';
+            snap.forEach(d => {
+                const data = d.data();
+                if (data.status !== 'disabled') {
+                    const opt = document.createElement('option');
+                    opt.value = d.id;
+                    opt.textContent = `${data.personal?.name} (${data.personal?.email})`;
+                    select.appendChild(opt);
+                }
+            });
+        } catch (e) {
+            console.error(e);
+        }
     }
 
     window.openPromoteModal = () => promoteModal.show();
 
     window.handlePromotion = async () => {
         const staffId = document.getElementById('staffSelect').value;
-        if (!staffId) return alert("Please select a staff member.");
+        if (!staffId) {
+            showStatusAlert('statusMessage', "Please select a staff member.", false);
+            return;
+        }
 
         if (!confirm("Are you sure you want to grant Admin privileges to this user?")) return;
 
+        showLoading(); // 🟢
         try {
             const userRef = doc(db, "users", staffId);
             await updateDoc(userRef, {
@@ -178,19 +203,24 @@
                 updatedAt: serverTimestamp()
             });
 
-            // 🟢 记录审计日志
             await logAdminAction(db, auth.currentUser, "PROMOTE_TO_ADMIN", staffId, {role: 'staff'}, {role: 'admin'});
 
             promoteModal.hide();
-            loadAdmins();
-            loadStaffForPromotion();
-            alert("Staff successfully promoted to Admin.");
-        } catch (e) { alert("Promotion failed: " + e.message); }
+            await loadAdmins();
+            await loadStaffForPromotion();
+            
+            hideLoading(); // 🟢
+            showStatusAlert('statusMessage', "Staff successfully promoted to Admin.", true); // 🟢
+        } catch (e) { 
+            hideLoading(); // 🟢
+            showStatusAlert('statusMessage', "Promotion failed: " + e.message, false); 
+        }
     };
 
     window.demoteAdmin = async (adminId, name) => {
         if (!confirm(`Are you sure you want to remove Admin privileges from ${name}?\nThey will be reverted to 'staff' role.`)) return;
 
+        showLoading(); // 🟢
         try {
             const userRef = doc(db, "users", adminId);
             await updateDoc(userRef, {
@@ -198,13 +228,17 @@
                 updatedAt: serverTimestamp()
             });
 
-            // 🟢 记录审计日志
             await logAdminAction(db, auth.currentUser, "DEMOTE_TO_STAFF", adminId, {role: 'admin'}, {role: 'staff'});
 
-            loadAdmins();
-            loadStaffForPromotion();
-            alert("Admin privileges removed.");
-        } catch (e) { alert("Demotion failed: " + e.message); }
+            await loadAdmins();
+            await loadStaffForPromotion();
+            
+            hideLoading(); // 🟢
+            showStatusAlert('statusMessage', "Admin privileges removed.", true); // 🟢
+        } catch (e) { 
+            hideLoading(); // 🟢
+            showStatusAlert('statusMessage', "Demotion failed: " + e.message, false); 
+        }
     };
 
 </script>

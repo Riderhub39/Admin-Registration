@@ -1,5 +1,9 @@
 // 文件: utils.js
 
+// ==========================================
+// 1. 数据与格式化处理
+// ==========================================
+
 /**
  * 格式化金额为马来西亚令吉格式 (RM 0.00)
  */
@@ -30,6 +34,23 @@ export function formatTime(val) {
     if (typeof val === 'string') return val;
     
     return "--:--";
+}
+
+/**
+ * 将 Firebase Timestamp 或 Date 对象格式化为 YYYY-MM-DD
+ */
+export function formatDate(dateInput) {
+    if (!dateInput) return '-';
+    let date = dateInput.toDate ? dateInput.toDate() : new Date(dateInput);
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+export function formatDateTime(dateInput) {
+    if (!dateInput) return '-';
+    // 直接复用我们已经写好的 formatDate 和 formatTime
+    return `${formatDate(dateInput)} ${formatTime(dateInput)}`;
 }
 
 /**
@@ -74,10 +95,58 @@ export function normalizeDate(dateStr) {
     return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
 }
 
+// ==========================================
+// 2. UI 交互控制 (Loading 与 弹窗)
+// ==========================================
+
+/**
+ * 显示全局加载遮罩层 (需要 HTML 中有 <div id="loadingOverlay">)
+ */
+export function showLoading() {
+    let overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.style.display = 'flex';
+}
+
+/**
+ * 隐藏全局加载遮罩层
+ */
+export function hideLoading() {
+    let overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+/**
+ * 显示状态提示框 (例如绿色成功框或红色报错框)
+ * @param {string} elementId - 用于显示提示的 DOM 元素 ID (例如 'statusMessage')
+ * @param {string} message - 提示信息
+ * @param {boolean} isSuccess - true 为成功(绿色)，false 为报错(红色)
+ */
+export function showStatusAlert(elementId, message, isSuccess = true) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    
+    el.style.display = 'block';
+    el.style.background = isSuccess ? '#16a34a' : '#dc2626';
+    el.style.color = '#fff';
+    
+    const icon = isSuccess ? 'check-circle' : 'alert-triangle';
+    el.innerHTML = `<i data-lucide="${icon}" class="size-4 me-2 align-middle"></i> ${message}`;
+    
+    if (window.lucide) window.lucide.createIcons();
+    
+    setTimeout(() => {
+        el.style.display = 'none';
+    }, 4000);
+}
+
+// ==========================================
+// 3. 审计日志 (Audit Trail)
+// ==========================================
+
 /**
  * 记录管理员操作审计日志 (Audit Log)
  * 用于 P1 阶段的数据安全加固与 Manager 撤销功能
- * * @param {Object} db - Firestore 实例
+ * @param {Object} db - Firestore 实例
  * @param {Object} operator - 执行操作的人 (auth.currentUser)
  * @param {String} action - 操作指令 (例如: "APPROVE_LEAVE", "MANUAL_ATTENDANCE")
  * @param {String} targetUid - 被操作的员工 ID (Employee Code 或 UID)
@@ -89,7 +158,7 @@ export async function logAdminAction(db, operator, action, targetUid, oldData = 
         // 使用动态导入，仅在调用日志时加载 Firestore 函数
         const { addDoc, collection, serverTimestamp } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js");
         
-        await addDoc(collection(db, "audit_logs"), {
+        await addDoc(collection(db, "audit_logs"), { // 注意：你的代码里使用的是 'audit_logs'
             operatorEmail: operator.email,
             operatorUid: operator.uid,
             action: action,

@@ -16,6 +16,14 @@
             display: flex; flex-direction: column; justify-content: center; align-items: center; 
         }
 
+        /* 🟢 新增：用于全局 Toast 的样式 */
+        #statusMessage {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            padding: 12px 24px; border-radius: 8px; z-index: 9999;
+            color: white; font-weight: 500; display: none;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+
         :root { --primary: #2563eb; --bg: #f8fafc; }
         body { font-family: 'Inter', sans-serif; background-color: var(--bg); min-height: 100vh; }
         .card { border: none; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
@@ -25,6 +33,8 @@
     </style>
 </head>
 <body>
+
+<div id="statusMessage"></div>
 
 <div id="loadingOverlay">
     <div class="spinner-border text-primary mb-3" role="status"></div>
@@ -56,7 +66,6 @@
             <button onclick="window.addHoliday()" class="btn btn-primary w-100 fw-bold">
                 <i data-lucide="plus" class="size-4 me-1"></i> Add to Calendar
             </button>
-            <div id="status" class="text-center mt-2 small"></div>
         </div>
     </div>
 
@@ -81,16 +90,22 @@
     
     import { firebaseConfig } from "./firebase-config.js";
     import { requireAdmin } from "./auth-guard.js";
-    import { logAdminAction } from "./utils.js"; // 🟢 导入日志函数
+    
+    // 🟢 导入通用 UI 和日志函数
+    import { logAdminAction, showLoading, hideLoading, showStatusAlert } from "./utils.js"; 
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const auth = getAuth(app); // 🟢 用于获取操作人 UID
+    const auth = getAuth(app); 
     const holidayDocRef = doc(db, "settings", "holidays");
 
     requireAdmin(app, db, async (user) => {
         document.getElementById('loadingText').innerText = "Loading Holidays...";
         await loadHolidays(); 
+        
+        // 🟢 加载完成后隐藏全局遮罩
+        hideLoading();
+        document.getElementById('mainContainer').classList.remove('d-none');
         lucide.createIcons();
     });
 
@@ -129,15 +144,18 @@
         }
     }
 
-    // 🟢 修改：添加审计日志
+    // 🟢 使用全局提示和 Loading
     window.addHoliday = async function() {
         const name = document.getElementById('hName').value.trim();
         const date = document.getElementById('hDate').value;
-        const status = document.getElementById('status');
 
-        if(!name || !date) { alert("Please enter details"); return; }
+        if(!name || !date) { 
+            showStatusAlert('statusMessage', "Please enter a name and date.", false); 
+            return; 
+        }
 
-        status.innerHTML = "<span class='text-primary'>Saving...</span>";
+        showLoading(); // 🟢
+
         try {
             const docSnap = await getDoc(holidayDocRef);
             const holidayObj = { name: name, date: date };
@@ -150,25 +168,27 @@
                 });
             }
             
-            // 🟢 记录添加假期的日志
             await logAdminAction(db, auth.currentUser, "ADD_HOLIDAY", "GLOBAL", null, holidayObj);
 
-            status.innerHTML = "<span class='text-success'>Saved!</span>";
             document.getElementById('hName').value = "";
             document.getElementById('hDate').value = "";
             
-            loadHolidays(); 
+            await loadHolidays(); 
             
-            setTimeout(() => status.innerHTML = "", 2000);
+            hideLoading(); // 🟢
+            showStatusAlert('statusMessage', "Holiday saved successfully!", true);
         } catch (e) {
-            status.innerHTML = `<span class='text-danger'>Error: ${e.message}</span>`;
+            hideLoading(); // 🟢
+            showStatusAlert('statusMessage', `Error: ${e.message}`, false);
             console.error(e);
         }
     }
 
-    // 🟢 修改：添加审计日志
+    // 🟢 使用全局提示和 Loading
     window.deleteHoliday = async function(name, date) {
         if(!confirm(`Remove ${name}?`)) return;
+        
+        showLoading(); // 🟢
         try {
             const holidayObj = { name: name, date: date };
             
@@ -176,11 +196,16 @@
                 holiday_list: arrayRemove(holidayObj)
             });
 
-            // 🟢 记录删除假期的日志
             await logAdminAction(db, auth.currentUser, "REMOVE_HOLIDAY", "GLOBAL", holidayObj, null);
 
-            loadHolidays();
-        } catch (e) { alert("Error: " + e.message); }
+            await loadHolidays();
+            
+            hideLoading(); // 🟢
+            showStatusAlert('statusMessage', "Holiday removed.", true);
+        } catch (e) { 
+            hideLoading(); // 🟢
+            showStatusAlert('statusMessage', `Error: ${e.message}`, false); 
+        }
     }
 
 </script>

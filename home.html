@@ -45,10 +45,19 @@
             padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0;
             border-radius: 6px; margin-bottom: 5px;
         }
+        
         #loadingOverlay { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(255, 255, 255, 0.95); z-index: 9999; 
             display: flex; flex-direction: column; justify-content: center; align-items: center; 
+        }
+
+        /* 🟢 新增：用于全局 Toast 的样式 */
+        #statusMessage {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            padding: 12px 24px; border-radius: 8px; z-index: 9999;
+            color: white; font-weight: 500; display: none;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
         }
         
         /* Audit Log Specific */
@@ -66,6 +75,8 @@
     </style>
 </head>
 <body>
+
+<div id="statusMessage"></div>
 
 <div id="loadingOverlay">
     <div class="spinner-border text-primary mb-3" role="status"></div>
@@ -379,7 +390,9 @@
     
     import { firebaseConfig } from "./firebase-config.js";
     import { requireAdmin } from "./auth-guard.js";
-    import { normalizeDate, logAdminAction } from "./utils.js"; 
+    
+    // 🟢 导入 utils 的公用方法
+    import { normalizeDate, logAdminAction, showLoading, hideLoading, showStatusAlert } from "./utils.js"; 
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
@@ -391,7 +404,6 @@
     let lastLogDoc = null;
     const PAGE_SIZE = 20;
 
-    // 全局缓存员工数据，用于匹配 Audit Log 中的 Target ID
     let globalStaffMap = {}; 
 
     requireAdmin(app, db, async (user, userData) => {
@@ -405,23 +417,23 @@
                 document.getElementById('managerAuditAction').classList.remove('d-none');
                 document.getElementById('managerOfficeAction').classList.remove('d-none');
                 auditModal = new bootstrap.Modal(document.getElementById('auditModal'));
-                // 预加载员工字典，用于审计日志解析
                 preloadStaffMap();
             }
         }
 
         initDashboard(); 
+        
+        hideLoading(); // 🟢
+        document.getElementById('mainContainer').classList.remove('d-none');
         lucide.createIcons();
     });
 
-    // 🟢 预加载员工字典，用于解析难看的 ID
     async function preloadStaffMap() {
         try {
             const snap = await getDocs(collection(db, "users"));
             snap.forEach(doc => {
                 const data = doc.data();
                 globalStaffMap[doc.id] = data.personal?.name || data.name || doc.id;
-                // 有时候 TargetUid 存的是 Auth Uid，所以双重映射
                 if (data.authUid) {
                     globalStaffMap[data.authUid] = data.personal?.name || data.name || data.authUid;
                 }
@@ -431,7 +443,7 @@
         }
     }
 
-    // --- 🟢 Audit Log Logic (Intelligent Parsing) ---
+    // --- 🟢 Audit Log Logic ---
 
     window.openAuditModal = () => {
         auditModal.show();
@@ -479,19 +491,15 @@
                 const log = d.data();
                 const time = log.timestamp ? new Date(log.timestamp.seconds * 1000).toLocaleString('en-GB') : 'Just now';
                 
-                // 🟢 智能解析 Target Name
                 let targetDisplay = log.targetUid || '-';
                 if (targetDisplay === "GLOBAL" || targetDisplay === "MULTIPLE") {
-                    // 保持原样
                 } else if (globalStaffMap[targetDisplay]) {
                     targetDisplay = `👤 ${globalStaffMap[targetDisplay]}`;
                 } else if (log.action.includes("ANNOUNCEMENT")) {
-                    // 尝试从 Details 里面捞 Title
                     if (log.details?.new?.title) targetDisplay = `📢 ${log.details.new.title}`;
                     else if (log.details?.old?.title) targetDisplay = `📢 ${log.details.old.title}`;
                     else targetDisplay = "📢 Announcement";
                 } else if (log.action.includes("LEAVE") || log.action.includes("CORRECTION") || log.action.includes("PAYSLIP")) {
-                    // 尝试从 Details 捞 empName
                     if (log.details?.old?.empName) targetDisplay = `👤 ${log.details.old.empName}`;
                     else if (log.details?.old?.name) targetDisplay = `👤 ${log.details.old.name}`;
                 }
@@ -512,12 +520,10 @@
         } catch (e) { container.innerHTML = `<tr><td colspan="5" class="text-center text-danger small">${e.message}</td></tr>`; }
     };
 
-    // 🟢 递归格式化 Firestore 复杂数据
     function formatFirestoreData(obj) {
         if (obj === null || obj === undefined) return "None / Removed";
         if (typeof obj !== 'object') return obj;
 
-        // 如果是 Firestore Timestamp
         if (obj.seconds !== undefined && obj.nanoseconds !== undefined) {
             const date = new Date(obj.seconds * 1000);
             return date.toLocaleString('en-GB', { 
@@ -526,12 +532,10 @@
             });
         }
 
-        // 如果是 GeoPoint (经纬度)
         if (obj.latitude !== undefined && obj.longitude !== undefined) {
             return `📍 Lat: ${obj.latitude.toFixed(4)}, Lng: ${obj.longitude.toFixed(4)}`;
         }
 
-        // 如果是普通数组或对象，递归处理内部的值
         const formatted = Array.isArray(obj) ? [] : {};
         for (const [key, value] of Object.entries(obj)) {
             formatted[key] = formatFirestoreData(value);
@@ -547,21 +551,25 @@
         
         try {
             const snap = await getDoc(doc(db, "audit_logs", id));
-            if (!snap.exists()) { alert("Log not found."); return; }
+            if (!snap.exists()) { 
+                showStatusAlert('statusMessage', 'Log not found.', false); // 🟢
+                return; 
+            }
             
             const details = snap.data().details;
-            if (!details) { alert("No details available for this log."); return; }
+            if (!details) { 
+                showStatusAlert('statusMessage', 'No details available for this log.', false); // 🟢
+                return; 
+            }
 
             const oldContainer = document.getElementById('inspectOldDataContainer');
             const newContainer = document.getElementById('inspectNewDataContainer');
             const oldBox = document.getElementById('inspectOldData');
             const newBox = document.getElementById('inspectNewData');
 
-            // 格式化数据
             const formattedOld = details.old ? formatFirestoreData(details.old) : null;
             const formattedNew = details.new ? formatFirestoreData(details.new) : null;
 
-            // 渲染旧数据
             if (formattedOld && Object.keys(formattedOld).length > 0) {
                 oldBox.innerText = JSON.stringify(formattedOld, null, 2);
                 oldContainer.classList.remove('d-none');
@@ -569,7 +577,6 @@
                 oldContainer.classList.add('d-none');
             }
 
-            // 渲染新数据
             if (formattedNew && Object.keys(formattedNew).length > 0) {
                 newBox.innerText = JSON.stringify(formattedNew, null, 2);
                 newContainer.classList.remove('d-none');
@@ -580,7 +587,7 @@
             inspectModalInstance.show();
         } catch (e) {
             console.error("Error loading log details:", e);
-            alert("Error loading details.");
+            showStatusAlert('statusMessage', 'Error loading details.', false); // 🟢
         }
     };
 
@@ -680,19 +687,19 @@
         onSnapshot(query(collection(db, "leaves"), where("status", "==", "Pending")), s => {
             const count = s.size;
             const badge = document.getElementById('badge-leave');
-            document.getElementById('count-leave').innerText = count;
+            badge.innerText = count;
             badge.style.display = count > 0 ? 'inline-block' : 'none'; 
         });
         onSnapshot(query(collection(db, "attendance_corrections"), where("status", "==", "Pending")), s => {
             const count = s.size;
             const badge = document.getElementById('badge-att');
-            document.getElementById('count-att').innerText = count;
+            badge.innerText = count;
             badge.style.display = count > 0 ? 'inline-block' : 'none';
         });
         onSnapshot(query(collection(db, "edit_requests"), where("status", "==", "Pending")), s => {
             const count = s.size;
             const badge = document.getElementById('badge-edit');
-            document.getElementById('count-edit').innerText = count;
+            badge.innerText = count;
             badge.style.display = count > 0 ? 'inline-block' : 'none';
         });
     }
@@ -728,22 +735,33 @@
         if (!ssid) return;
         currentWifiList.push({ ssid, bssid });
         window.renderWifiList();
+        document.getElementById('newWifiSSID').value = '';
+        document.getElementById('newWifiBSSID').value = '';
     };
 
     window.removeWifi = (i) => { currentWifiList.splice(i, 1); window.renderWifiList(); };
 
     window.saveOfficeSettings = async () => {
-        const newData = { 
-            latitude: parseFloat(document.getElementById('officeLat').value), 
-            longitude: parseFloat(document.getElementById('officeLng').value), 
-            radius: parseFloat(document.getElementById('officeRadius').value), 
-            allowedWifis: currentWifiList, updatedAt: serverTimestamp() 
-        };
-        const oldSnap = await getDoc(doc(db, "settings", "office_location"));
-        
-        await setDoc(doc(db, "settings", "office_location"), newData, { merge: true });
-        await logAdminAction(db, auth.currentUser, "UPDATE_OFFICE_SETTINGS", "GLOBAL", oldSnap.data() || {}, newData);
-        officeModal.hide();
+        showLoading(); // 🟢
+        try {
+            const newData = { 
+                latitude: parseFloat(document.getElementById('officeLat').value), 
+                longitude: parseFloat(document.getElementById('officeLng').value), 
+                radius: parseFloat(document.getElementById('officeRadius').value), 
+                allowedWifis: currentWifiList, updatedAt: serverTimestamp() 
+            };
+            const oldSnap = await getDoc(doc(db, "settings", "office_location"));
+            
+            await setDoc(doc(db, "settings", "office_location"), newData, { merge: true });
+            await logAdminAction(db, auth.currentUser, "UPDATE_OFFICE_SETTINGS", "GLOBAL", oldSnap.data() || {}, newData);
+            
+            officeModal.hide();
+            hideLoading(); // 🟢
+            showStatusAlert('statusMessage', 'Office settings saved.', true); // 🟢
+        } catch (e) {
+            hideLoading(); // 🟢
+            showStatusAlert('statusMessage', 'Error saving settings.', false); // 🟢
+        }
     };
 
     // --- 🟢 Announcements ---
@@ -799,8 +817,8 @@
         const fileInput = document.getElementById('announceFile');
         const btn = document.getElementById('postBtn');
 
-        if (!title) { alert("Please enter a title."); return; }
-        if (!text) { alert("Please enter a message."); return; }
+        if (!title) { showStatusAlert('statusMessage', "Please enter a title.", false); return; }
+        if (!text) { showStatusAlert('statusMessage', "Please enter a message.", false); return; }
         
         btn.disabled = true;
         btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Posting...`;
@@ -828,10 +846,12 @@
 
             const newDocRef = await addDoc(collection(db, "announcements"), payload);
             await logAdminAction(db, auth.currentUser, "POST_ANNOUNCEMENT", newDocRef.id, null, { title: title, hasAttachment: !!attachmentUrl });
+            
             window.resetAnnounceForm();
+            showStatusAlert('statusMessage', 'Announcement posted!', true); // 🟢
         } catch (e) {
             console.error(e);
-            alert("Failed to post announcement: " + e.message);
+            showStatusAlert('statusMessage', "Failed to post: " + e.message, false); // 🟢
         } finally {
             btn.disabled = false;
             btn.innerHTML = `<i data-lucide="send" class="size-3 me-2"></i>Post Now`;
@@ -847,9 +867,17 @@
 
     window.deleteAnnouncement = async (id) => { 
         if (confirm("Delete this announcement?")) {
-            const oldSnap = await getDoc(doc(db, "announcements", id));
-            await deleteDoc(doc(db, "announcements", id)); 
-            await logAdminAction(db, auth.currentUser, "DELETE_ANNOUNCEMENT", id, oldSnap.data(), null);
+            showLoading(); // 🟢
+            try {
+                const oldSnap = await getDoc(doc(db, "announcements", id));
+                await deleteDoc(doc(db, "announcements", id)); 
+                await logAdminAction(db, auth.currentUser, "DELETE_ANNOUNCEMENT", id, oldSnap.data(), null);
+                hideLoading(); // 🟢
+                showStatusAlert('statusMessage', 'Announcement deleted.', true); // 🟢
+            } catch (e) {
+                hideLoading();
+                showStatusAlert('statusMessage', 'Error deleting announcement.', false);
+            }
         }
     };
 

@@ -14,6 +14,14 @@
             background: rgba(255, 255, 255, 0.95); z-index: 9999; 
             display: flex; flex-direction: column; justify-content: center; align-items: center; 
         }
+
+        /* 🟢 新增：用于全局 Toast 的样式 */
+        #statusMessage {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            padding: 12px 24px; border-radius: 8px; z-index: 9999;
+            color: white; font-weight: 500; display: none;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
         
         .nav-tabs .nav-link { color: #64748b; font-weight: 500; padding: 0.8rem 1rem; }
         .nav-tabs .nav-link.active { color: var(--primary); border-bottom: 3px solid var(--primary); font-weight: 600; }
@@ -29,6 +37,8 @@
     </style>
 </head>
 <body class="bg-light">
+
+<div id="statusMessage"></div>
 
 <div id="loadingOverlay">
     <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;"></div>
@@ -333,8 +343,9 @@
 
     import { firebaseConfig } from "./firebase-config.js";
     import { requireAdmin } from "./auth-guard.js";
-    // 🟢 Imported logAdminAction
-    import { normalizeDate, formatMalaysianPhone, logAdminAction } from "./utils.js";
+    
+    // 🟢 导入 utils 的公用方法
+    import { normalizeDate, formatMalaysianPhone, logAdminAction, showLoading, hideLoading, showStatusAlert } from "./utils.js";
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
@@ -350,6 +361,9 @@
         if (joinDateInput && !joinDateInput.value) {
             joinDateInput.value = new Date().toISOString().split('T')[0];
         }
+        
+        hideLoading(); // 🟢 移除初始验证的遮罩层
+        document.getElementById('mainContainer').classList.remove('d-none');
         lucide.createIcons();
     });
 
@@ -433,19 +447,18 @@
         const emailInput = getVal('Email Address');
 
         if (!empCode || !emailInput) {
-            alert("Error: Employee Code and Email Address are required.");
+            showStatusAlert('statusMessage', "Error: Employee Code and Email Address are required.", false); // 🟢
             return;
         }
 
-        const overlay = document.getElementById('loadingOverlay');
-        overlay.style.display = 'flex';
+        showLoading(); // 🟢
 
         try {
             const docRef = doc(db, "users", empCode);
             const docSnap = await getDoc(docRef);
             if (docSnap.exists()) {
-                alert(`Error: Code '${empCode}' already exists.`);
-                overlay.style.display = 'none';
+                hideLoading(); // 🟢
+                showStatusAlert('statusMessage', `Error: Code '${empCode}' already exists.`, false); // 🟢
                 return;
             }
 
@@ -455,8 +468,8 @@
             // Duplicate checks
             const duplicateCheck = await getDocs(query(collection(db, "users"), where("personal.email", "==", formattedEmail)));
             if (!duplicateCheck.empty) {
-                alert("Error: Email is already in use.");
-                overlay.style.display = 'none';
+                hideLoading(); // 🟢
+                showStatusAlert('statusMessage', "Error: Email is already in use.", false); // 🟢
                 return;
             }
 
@@ -502,12 +515,16 @@
 
             await setDoc(doc(db, "users", empCode), formData);
             
-            // 🟢 Log the registration action
             await logAdminAction(db, auth.currentUser, "REGISTER_NEW_STAFF", empCode, null, { name: formData.personal.name, email: formData.personal.email });
 
-            alert("✅ Staff Successfully Added!");
-            window.location.reload();
-        } catch (e) { alert("Save Error: " + e.message); } finally { overlay.style.display = 'none'; }
+            hideLoading(); // 🟢
+            showStatusAlert('statusMessage', "✅ Staff Successfully Added!", true); // 🟢
+            setTimeout(() => { window.location.reload(); }, 1500);
+            
+        } catch (e) { 
+            hideLoading(); // 🟢
+            showStatusAlert('statusMessage', "Save Error: " + e.message, false); // 🟢
+        } 
     });
 
     // --- Helpers ---

@@ -14,6 +14,14 @@
             background: rgba(255, 255, 255, 0.95); z-index: 9999; 
             display: flex; flex-direction: column; justify-content: center; align-items: center; 
         }
+
+        /* 🟢 新增：用于全局 Toast 的样式 */
+        #statusMessage {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            padding: 12px 24px; border-radius: 8px; z-index: 9999;
+            color: white; font-weight: 500; display: none;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
         
         .nav-tabs .nav-link { color: #64748b; font-weight: 500; padding: 0.8rem 1rem; }
         .nav-tabs .nav-link.active { color: var(--primary); border-bottom: 3px solid var(--primary); font-weight: 600; }
@@ -22,6 +30,8 @@
     </style>
 </head>
 <body class="bg-light">
+
+<div id="statusMessage"></div>
 
 <div id="loadingOverlay">
     <div class="spinner-border text-primary mb-3" role="status"></div>
@@ -297,7 +307,9 @@
     
     import { firebaseConfig } from "./firebase-config.js";
     import { requireAdmin } from "./auth-guard.js";
-    import { formatMalaysianPhone, normalizeDate, logAdminAction } from "./utils.js"; 
+    
+    // 🟢 1. 引入 utils.js 中的所有所需函数
+    import { formatMalaysianPhone, normalizeDate, logAdminAction, showLoading, hideLoading, showStatusAlert } from "./utils.js"; 
 
     (function(){ emailjs.init("yTP2W2IzGSKqHDqWa"); })();
 
@@ -312,13 +324,17 @@
     requireAdmin(app, db, async (user, userData) => {
         document.getElementById('loadingText').innerText = "Loading Profile...";
         if(uid) loadUserData(uid);
-        else { alert("No User ID provided"); window.location.href="manage_staff.html"; }
+        else { 
+            // 如果没有 UID，不应该用 alert，直接跳转
+            window.location.href="manage_staff.html"; 
+        }
     });
 
     const setVal = (id, val) => {
         const el = document.getElementById(id);
         if(!el) return;
         if(el.type === 'checkbox') el.checked = (val === true || val === 'YES');
+        // 🟢 2. 使用 utils 中的 normalizeDate
         else if(el.type === 'date' && val) el.value = normalizeDate(val);
         else el.value = val || '';
     };
@@ -332,10 +348,11 @@
 
     window.createChildRow = function(name, dob, gender, cert, isMy, taxCat, taxPct) {
         const tr = document.createElement('tr');
+        // 🟢 使用 normalizeDate 确保日期格式正确
         tr.innerHTML = `
             <td><input type="text" class="form-control form-control-sm" value="${name || ''}"></td>
             <td><input type="date" class="form-control form-control-sm" value="${normalizeDate(dob) || ''}"></td>
-            <td><select class="form-select form-select-sm"><option value="MALE" ${gender==='MALE'?'selected':''}>Male</option><option value="FEMALE" ${gender==='FEMALE'?'selected':''}>Female</option></select></td>
+            <td><select class="form-select form-select-sm"><option value="MALE" ${gender==='MALE'?'selected':''} >Male</option><option value="FEMALE" ${gender==='FEMALE'?'selected':''}>Female</option></select></td>
             <td><input type="text" class="form-control form-control-sm" value="${cert || ''}"></td>
             <td class="text-center"><input type="checkbox" class="form-check-input" ${isMy?'checked':''}></td>
             <td><input type="text" class="form-control form-control-sm" value="${taxCat || ''}"></td>
@@ -443,11 +460,19 @@
                 }
 
                 toggleFormState(data.status || 'editable');
-                document.getElementById('loadingOverlay').style.display = 'none';
+                
+                // 🟢 3. 使用 utils 隐藏加载层
+                hideLoading(); 
                 document.getElementById('mainContainer').classList.remove('d-none');
                 lucide.createIcons();
-            } else { alert("User not found!"); window.location.href = "manage_staff.html"; }
-        } catch (error) { alert("Error loading profile: " + error.message); }
+            } else { 
+                showStatusAlert('statusMessage', 'User not found!', false);
+                setTimeout(() => window.location.href = "manage_staff.html", 1500); 
+            }
+        } catch (error) { 
+            hideLoading();
+            showStatusAlert('statusMessage', "Error loading profile: " + error.message, false); 
+        }
     }
 
     document.getElementById('btnUpdateStatus').addEventListener('click', async () => {
@@ -458,19 +483,31 @@
             const oldStatus = currentUserData.status;
             let updateData = { status: newStatus, unlockExpiresAt: newStatus === 'editable' ? new Date(Date.now() + 5 * 60 * 1000) : null };
             await updateDoc(doc(db, "users", uid), updateData);
+            
+            // 记录日志
             await logAdminAction(db, auth.currentUser, "UPDATE_USER_STATUS", uid, { status: oldStatus }, { status: newStatus });
+            
             toggleFormState(newStatus);
-            alert(`Status updated to: ${newStatus.toUpperCase()}`);
-        } catch (e) { alert("Error updating status: " + e.message); }
-        finally { btn.disabled = false; lucide.createIcons(); }
+            
+            // 🟢 4. 优雅的 Toast 提示
+            showStatusAlert('statusMessage', `Status updated to: ${newStatus.toUpperCase()}`, true);
+        } catch (e) { 
+            showStatusAlert('statusMessage', "Error updating status: " + e.message, false); 
+        } finally { 
+            btn.disabled = false; 
+            lucide.createIcons(); 
+        }
     });
 
     document.getElementById('btnSaveChanges').addEventListener('click', async () => {
-        const overlay = document.getElementById('loadingOverlay');
         const email = getVal('Email Address').toLowerCase().trim();
+        // 🟢 使用 utils 中的电话格式化
         const phone = formatMalaysianPhone(getVal('Mobile Number'));
         
-        overlay.style.display = 'flex';
+        // 🟢 使用 utils 开启加载层
+        document.getElementById('loadingText').innerText = "Saving Changes...";
+        showLoading();
+        
         try {
             // Duplicate Checks
             const checks = [
@@ -482,14 +519,18 @@
                 if (!c.val) continue;
                 const snap = await getDocs(query(collection(db, "users"), where(c.field, "==", c.val)));
                 if (snap.docs.some(d => d.id !== uid)) {
-                    alert(`Duplicate Data: ${c.label} already exists.`);
-                    overlay.style.display = 'none'; return;
+                    hideLoading();
+                    showStatusAlert('statusMessage', `Duplicate Data: ${c.label} already exists.`, false);
+                    return;
                 }
             }
 
             let requiresReset = false;
             if (currentUserData.authUid && (email !== currentUserData.personal?.email || phone !== formatMalaysianPhone(currentUserData.personal?.mobile))) {
-                if (!confirm("Changing Email/Phone will reset the staff's App access. Proceed?")) { overlay.style.display = 'none'; return; }
+                if (!confirm("Changing Email/Phone will reset the staff's App access. Proceed?")) { 
+                    hideLoading(); 
+                    return; 
+                }
                 requiresReset = true;
             }
 
@@ -541,16 +582,31 @@
             if (requiresReset) {
                 formData.authUid = deleteField();
                 formData.status = 'inactive';
-                if (currentUserData.personal?.email) emailjs.send("service_p0fxt7y", "template_good5a6", { user_name: getVal('Employee Name'), to_email: currentUserData.personal.email });
+                if (currentUserData.personal?.email) {
+                    emailjs.send("service_p0fxt7y", "template_good5a6", { 
+                        user_name: getVal('Employee Name'), 
+                        to_email: currentUserData.personal.email 
+                    });
+                }
             }
 
             await updateDoc(doc(db, "users", uid), formData);
+            
+            // 记录日志
             await logAdminAction(db, auth.currentUser, "UPDATE_STAFF_PROFILE", uid, currentUserData, formData);
             
-            alert("Staff details updated successfully!");
-            location.reload();
-        } catch(e) { alert("Save error: " + e.message); }
-        finally { overlay.style.display = 'none'; }
+            hideLoading();
+            showStatusAlert('statusMessage', "Staff details updated successfully!", true);
+            
+            // 稍微延迟刷新，让用户能看到成功提示
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+            
+        } catch(e) { 
+            hideLoading();
+            showStatusAlert('statusMessage', "Save error: " + e.message, false); 
+        }
     });
 
 </script>

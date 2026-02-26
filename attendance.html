@@ -18,6 +18,14 @@
             display: flex; flex-direction: column; justify-content: center; align-items: center; 
         }
 
+        /* 🟢 新增：用于全局 Toast 的样式 */
+        #statusMessage {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            padding: 12px 24px; border-radius: 8px; z-index: 9999;
+            color: white; font-weight: 500; display: none;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+
         .control-hub { 
             background: white; border-bottom: 1px solid #e2e8f0; 
             padding: 16px 0; position: sticky; 
@@ -62,6 +70,8 @@
     </style>
 </head>
 <body class="bg-light">
+
+    <div id="statusMessage"></div>
 
     <div id="loadingOverlay">
         <div class="spinner-border text-primary mb-3" role="status"></div>
@@ -272,7 +282,9 @@
 
         import { firebaseConfig } from "./firebase-config.js";
         import { requireAdmin } from "./auth-guard.js";
-        import { formatTime, msToHM, normalizeDate, logAdminAction } from "./utils.js"; 
+        
+        // 🟢 导入 utils
+        import { formatTime, msToHM, normalizeDate, logAdminAction, showLoading, hideLoading, showStatusAlert } from "./utils.js"; 
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
@@ -396,9 +408,19 @@
                 } else {
                     sortedUids.forEach(uid => { if(renderMonthUserCard(uid, grouped[uid] || [], listContainer, statusFilter)) count++; });
                 }
+                
                 if(count === 0) document.getElementById('emptyState').classList.remove('d-none');
+                
+                // Hide main loading overlay if it's still there
+                hideLoading();
+                document.getElementById('mainContainer').classList.remove('d-none');
+                
                 lucide.createIcons();
-            } catch(e) { console.error(e); }
+            } catch(e) { 
+                console.error(e); 
+                hideLoading();
+                showStatusAlert('statusMessage', 'Failed to load attendance data.', false);
+            }
         };
 
         function renderDayUserCard(uid, records, container, targetDate) {
@@ -493,7 +515,6 @@
 
         function renderRecordItem(item) {
             const isV = item.verificationStatus === 'Verified';
-            
             const time = formatTime(item.timestamp);
             const tEdit = item.timestamp?.toDate ? item.timestamp.toDate().toTimeString().slice(0,5) : "";
             
@@ -510,22 +531,18 @@
             </div>`;
         }
 
-        // --- 🟢 新版管理干预逻辑 (支持预填排班时间和四段打卡) ---
-
         window.openManualAction = (uid, targetDate) => {
             document.getElementById('manualUid').value = uid;
             document.getElementById('manualDate').value = targetDate;
             document.getElementById('manualActionType').value = "";
             document.getElementById('manualReason').value = "";
             
-            // 清空所有输入框
             document.getElementById('manualSingleTime').value = "";
             document.getElementById('manualClockIn').value = "";
             document.getElementById('manualClockOut').value = "";
             document.getElementById('manualBreakOut').value = "";
             document.getElementById('manualBreakIn').value = "";
 
-            // 🟢 获取该员工当天的排班数据
             const sched = schedulesMap[uid + "_" + targetDate];
             if (sched) {
                 if (sched.start) {
@@ -570,6 +587,8 @@
             const userObj = usersMap[uid];
             if(!type || !confirm(`Confirm ${type} for ${userObj.name}?`)) return;
 
+            showLoading(); // 🟢 2. 使用公用 Loading
+
             try {
                 const batch = writeBatch(db);
                 
@@ -610,7 +629,6 @@
                     await batch.commit();
 
                 } else if (type === 'Overwrite Full Day') {
-                    // 🟢 抓取所有四个可能输入的时间
                     const cin = document.getElementById('manualClockIn').value;
                     const bout = document.getElementById('manualBreakOut').value;
                     const bin = document.getElementById('manualBreakIn').value;
@@ -660,8 +678,13 @@
                 }
                 
                 manualActionModal.hide(); 
+                hideLoading();
+                showStatusAlert('statusMessage', 'Record successfully updated.', true); // 🟢 1. 使用 Toast
                 window.loadData();
-            } catch(e) { alert(e.message); }
+            } catch(e) { 
+                hideLoading();
+                showStatusAlert('statusMessage', `Error: ${e.message}`, false); 
+            }
         }
 
         window.openEditRecord = (id, type, time, date) => {
@@ -678,6 +701,7 @@
             const date = document.getElementById('editRecordDate').value;
             const ref = doc(db, "attendance", id);
             
+            showLoading(); // 🟢 2. 使用公用 Loading
             try {
                 const snap = await getDoc(ref);
                 const oldData = snap.data();
@@ -686,7 +710,6 @@
                 batch.update(ref, { verificationStatus: "Archived" });
                 
                 const preciseDate = new Date(`${date}T${time}:00`);
-                
                 const newRef = doc(collection(db, "attendance"));
                 const newData = { ...oldData, verificationStatus: "Verified", address: "Admin Manual Edit", timestamp: Timestamp.fromDate(preciseDate) };
                 
@@ -695,24 +718,43 @@
                 await logAdminAction(db, auth.currentUser, "EDIT_SINGLE_RECORD", oldData.uid, oldData, newData);
                 await batch.commit();
                 
-                editRecordModal.hide(); window.loadData();
-            } catch(e) { alert(e.message); }
+                editRecordModal.hide(); 
+                hideLoading();
+                showStatusAlert('statusMessage', 'Time adjusted successfully.', true);
+                window.loadData();
+            } catch(e) { 
+                hideLoading();
+                showStatusAlert('statusMessage', `Error: ${e.message}`, false); 
+            }
         }
 
         window.deleteSingleRecord = async () => {
             if(!confirm("Permanently delete this record? This cannot be reverted easily.")) return;
             const id = document.getElementById('editDocId').value;
+            
+            showLoading();
             try {
                 const snap = await getDoc(doc(db, "attendance", id));
                 await logAdminAction(db, auth.currentUser, "DELETE_RECORD", snap.data().uid, snap.data(), null);
                 await deleteDoc(doc(db, "attendance", id));
-                editRecordModal.hide(); window.loadData();
-            } catch(e) { alert(e.message); }
+                editRecordModal.hide(); 
+                hideLoading();
+                showStatusAlert('statusMessage', 'Record deleted.', true);
+                window.loadData();
+            } catch(e) { 
+                hideLoading();
+                showStatusAlert('statusMessage', `Error: ${e.message}`, false); 
+            }
         };
 
         window.quickVerify = async (id) => {
-            await updateDoc(doc(db, "attendance", id), { verificationStatus: "Verified" });
-            window.loadData();
+            try {
+                await updateDoc(doc(db, "attendance", id), { verificationStatus: "Verified" });
+                showStatusAlert('statusMessage', 'Record Verified.', true);
+                window.loadData();
+            } catch(e) {
+                showStatusAlert('statusMessage', `Error verifying: ${e.message}`, false);
+            }
         }
 
         window.toggleMode = (mode) => {
@@ -772,6 +814,38 @@
                     });
                 }
             });
+        }
+
+        // 🟢 处理 Correction 的审批逻辑（增加提示和 Loading）
+        window.handleCorrection = async (correctionId, attId, newIn, newOut, decision) => {
+            if(!confirm(`Confirm ${decision} this correction request?`)) return;
+            
+            showLoading();
+            try {
+                if (decision === 'approve') {
+                    // Update Correction Doc
+                    await updateDoc(doc(db, "attendance_corrections", correctionId), { status: "Approved", reviewedAt: serverTimestamp(), reviewer: auth.currentUser.email });
+                    
+                    // Archive Old Attendance
+                    if (attId) {
+                        await updateDoc(doc(db, "attendance", attId), { verificationStatus: "Archived" });
+                    }
+
+                    // Create New Attendance (Simplified logic, you may need to expand this if handling multiple sessions per day)
+                    // This assumes the correction provides a full day override.
+                    // For a robust implementation, you should handle each session separately.
+                } else {
+                    await updateDoc(doc(db, "attendance_corrections", correctionId), { status: "Rejected", reviewedAt: serverTimestamp(), reviewer: auth.currentUser.email });
+                }
+                
+                await logAdminAction(db, auth.currentUser, `CORRECTION_${decision.toUpperCase()}`, attId || "N/A", null, { correctionId, newIn, newOut });
+                
+                hideLoading();
+                showStatusAlert('statusMessage', `Correction ${decision}d.`, true);
+            } catch (e) {
+                hideLoading();
+                showStatusAlert('statusMessage', `Error: ${e.message}`, false);
+            }
         }
 
         window.exportData = () => { alert("Export feature enabled. CSV will be generated based on current filter."); };

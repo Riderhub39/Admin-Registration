@@ -17,6 +17,14 @@
             display: flex; flex-direction: column; justify-content: center; align-items: center; 
         }
 
+        /* 🟢 新增：用于全局 Toast 的样式 */
+        #statusMessage {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            padding: 12px 24px; border-radius: 8px; z-index: 9999;
+            color: white; font-weight: 500; display: none;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+
         :root { --primary: #2563eb; --bg: #f8fafc; }
         body { font-family: 'Inter', sans-serif; background-color: var(--bg); min-height: 100vh; overflow-x: hidden; }
         
@@ -63,6 +71,8 @@
     </style>
 </head>
 <body>
+
+<div id="statusMessage"></div>
 
 <div id="loadingOverlay">
     <div class="spinner-border text-primary mb-3" role="status"></div>
@@ -222,7 +232,7 @@
                     </div>
                 </form>
             </div>
-            <div class="modal-footer bg-light py-2"><button type="button" class="btn btn-primary btn-sm w-100" onclick="window.runBulkSchedule()">Run Bulk Schedule</button></div>
+            <div class="modal-footer bg-light py-2"><button type="button" id="btnRunBulk" class="btn btn-primary btn-sm w-100" onclick="window.runBulkSchedule()">Run Bulk Schedule</button></div>
         </div>
     </div>
 </div>
@@ -238,7 +248,7 @@
                 <p class="small text-muted mb-2">Updating <b id="listEditCount">0</b> shifts.</p>
                 <div class="row g-2 mb-2"><div class="col-6"><label class="form-label small fw-bold">Start</label><input type="time" id="leStart" class="form-control form-control-sm"></div><div class="col-6"><label class="form-label small fw-bold">End</label><input type="time" id="leEnd" class="form-control form-control-sm"></div></div>
             </div>
-            <div class="modal-footer bg-light py-2"><button class="btn btn-primary btn-sm w-100" onclick="window.submitListEdit()">Update</button></div>
+            <div class="modal-footer bg-light py-2"><button type="button" id="btnSubmitListEdit" class="btn btn-primary btn-sm w-100" onclick="window.submitListEdit()">Update</button></div>
         </div>
     </div>
 </div>
@@ -293,12 +303,14 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, getDocs, getDoc, setDoc, doc, writeBatch, deleteDoc, updateDoc, onSnapshot, query, where, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, collection, getDocs, getDoc, setDoc, doc, writeBatch, deleteDoc, onSnapshot, query, where, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
     import { firebaseConfig } from "./firebase-config.js";
     import { requireAdmin } from "./auth-guard.js";
-    import { formatTime, normalizeDate, logAdminAction } from "./utils.js"; // 🟢 导入 logAdminAction
+    
+    // 🟢 导入 utils 的所有公用方法
+    import { formatTime, normalizeDate, logAdminAction, showLoading, hideLoading, showStatusAlert } from "./utils.js"; 
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
@@ -338,7 +350,11 @@
         await Promise.all([ loadStaffList(), loadHolidays(), loadLeaves(), loadPresets() ]);
         loadSchedules(); 
         
-        setTimeout(() => { if (calendar) calendar.updateSize(); }, 200);
+        setTimeout(() => { 
+            if (calendar) calendar.updateSize(); 
+            hideLoading(); 
+            document.getElementById('mainContainer').classList.remove('d-none');
+        }, 300);
         lucide.createIcons();
     });
 
@@ -493,7 +509,10 @@
             addPanel.style.opacity = '1';
             addPanel.style.pointerEvents = 'auto';
         }
-        if(holidayCache[dateStr]) alert(`Note: ${dateStr} is a holiday.`);
+        
+        // 🟢 2. 使用 Toast
+        if(holidayCache[dateStr]) showStatusAlert('statusMessage', `Note: ${dateStr} is a public holiday.`, true);
+        
         renderDayRoster();
         renderAvailableStaffSelect();
         document.getElementById('dmPresetSelect').value = "";
@@ -539,7 +558,7 @@
         });
     }
 
-    // 🟢 SECURE: Add Shift to Day (Logged)
+    // 🟢 SECURE: Add Shift to Day
     window.addShiftToDay = async function() {
         const select = document.getElementById('dmStaffSelect');
         const selectedOptions = Array.from(select.selectedOptions);
@@ -547,53 +566,75 @@
         const end = document.getElementById('dmEndTime').value;
         const breakMins = parseInt(document.getElementById('dmBreak').value) || 0;
         
-        if(selectedOptions.length === 0 || !start || !end) return alert("Select staff and time.");
+        if(selectedOptions.length === 0 || !start || !end) {
+            showStatusAlert('statusMessage', 'Please select staff and time.', false);
+            return;
+        }
         
-        const batch = writeBatch(db);
-        const startDT = new Date(`${currentManagerDate}T${start}`);
-        const endDT = new Date(`${currentManagerDate}T${end}`);
-        const addedStaffIds = [];
+        showLoading(); // 🟢
+        try {
+            const batch = writeBatch(db);
+            const startDT = new Date(`${currentManagerDate}T${start}`);
+            const endDT = new Date(`${currentManagerDate}T${end}`);
+            const addedStaffIds = [];
 
-        selectedOptions.forEach(opt => {
-            const ref = doc(collection(db, "schedules"));
-            batch.set(ref, { 
-                userId: opt.value, 
-                empName: opt.dataset.name, 
-                date: currentManagerDate, 
-                start: Timestamp.fromDate(startDT), 
-                end: Timestamp.fromDate(endDT), 
-                breakMins: breakMins, 
-                notes: document.getElementById('dmNotes').value, 
-                createdAt: Timestamp.now(), 
-                createdBy: auth.currentUser.uid 
+            selectedOptions.forEach(opt => {
+                const ref = doc(collection(db, "schedules"));
+                batch.set(ref, { 
+                    userId: opt.value, 
+                    empName: opt.dataset.name, 
+                    date: currentManagerDate, 
+                    start: Timestamp.fromDate(startDT), 
+                    end: Timestamp.fromDate(endDT), 
+                    breakMins: breakMins, 
+                    notes: document.getElementById('dmNotes').value, 
+                    createdAt: Timestamp.now(), 
+                    createdBy: auth.currentUser.uid 
+                });
+                addedStaffIds.push(opt.value);
             });
-            addedStaffIds.push(opt.value);
-        });
-        
-        await batch.commit();
-
-        // 🟢 Audit Log
-        logAdminAction(db, auth.currentUser, "ADD_SHIFT", "MULTIPLE", null, { date: currentManagerDate, start: start, end: end, count: addedStaffIds.length });
-
-        document.getElementById('dmStaffSelect').selectedIndex = -1; 
+            
+            await batch.commit();
+            logAdminAction(db, auth.currentUser, "ADD_SHIFT", "MULTIPLE", null, { date: currentManagerDate, start: start, end: end, count: addedStaffIds.length });
+            
+            document.getElementById('dmStaffSelect').selectedIndex = -1; 
+            hideLoading();
+            showStatusAlert('statusMessage', 'Shift added successfully.', true);
+        } catch (e) {
+            hideLoading();
+            showStatusAlert('statusMessage', `Failed to add: ${e.message}`, false);
+        }
     }
 
-    // 🟢 SECURE: Remove Shift (Logged)
+    // 🟢 SECURE: Remove Shift
     window.removeShift = async (id) => {
         const shift = rawSchedules.find(s => s.id === id);
         if (!shift) return;
-        if (shift.clockIn) { alert(`🚫 Action Blocked\n\nCannot delete schedule for ${shift.empName}.\nStaff has already clocked in.`); return; }
-        if (shift.date < getTodayStr()) { if (prompt(`⚠️ SECURITY WARNING\n\nDeleting PAST schedule for ${shift.empName}.\nType "DELETE" to confirm:`) !== "DELETE") return; }
-        else { if(!confirm(`Delete schedule for ${shift.empName}?`)) return; }
         
+        if (shift.clockIn) { 
+            showStatusAlert('statusMessage', `Cannot delete: ${shift.empName} has already clocked in.`, false); 
+            return; 
+        }
+        
+        if (shift.date < getTodayStr()) { 
+            if (prompt(`⚠️ SECURITY WARNING\n\nDeleting PAST schedule for ${shift.empName}.\nType "DELETE" to confirm:`) !== "DELETE") return; 
+        } else { 
+            if(!confirm(`Delete schedule for ${shift.empName}?`)) return; 
+        }
+        
+        showLoading();
         try { 
             await deleteDoc(doc(db, "schedules", id)); 
-            // 🟢 Audit Log
             logAdminAction(db, auth.currentUser, "DELETE_SHIFT", shift.userId, shift, null);
-        } catch (e) { alert("Failed to delete."); }
+            hideLoading();
+            showStatusAlert('statusMessage', 'Shift deleted.', true);
+        } catch (e) { 
+            hideLoading();
+            showStatusAlert('statusMessage', "Failed to delete.", false); 
+        }
     }
 
-    // 🟢 SECURE: Delete Selected List (Logged)
+    // 🟢 SECURE: Delete Selected List
     window.deleteSelectedList = async () => {
         if (listSelectedIds.size === 0) return;
         const idsToDelete = Array.from(listSelectedIds);
@@ -602,7 +643,7 @@
         let hasPastShifts = false;
         const todayStr = getTodayStr();
         
-        const oldDataCache = []; // For Revert
+        const oldDataCache = []; 
 
         idsToDelete.forEach(id => {
             const shift = rawSchedules.find(s => s.id === id);
@@ -616,20 +657,34 @@
             }
         });
 
-        if (blockedDeletes.length > 0) alert(`⚠️ Skipped clocked-in staff:\n${blockedDeletes.join(', ')}`);
+        if (blockedDeletes.length > 0) {
+            alert(`⚠️ Skipped clocked-in staff:\n${blockedDeletes.join(', ')}`);
+        }
         if (validDeletes.length === 0) return;
-        if (hasPastShifts) { if (prompt(`⚠️ Confirm bulk delete (includes PAST dates)? Type "DELETE":`) !== "DELETE") return; }
-        else { if (!confirm(`Delete ${validDeletes.length} selected shifts?`)) return; }
         
-        const batch = writeBatch(db);
-        validDeletes.forEach(id => batch.delete(doc(db, "schedules", id)));
-        await batch.commit();
+        if (hasPastShifts) { 
+            if (prompt(`⚠️ Confirm bulk delete (includes PAST dates)? Type "DELETE":`) !== "DELETE") return; 
+        } else { 
+            if (!confirm(`Delete ${validDeletes.length} selected shifts?`)) return; 
+        }
+        
+        showLoading();
+        try {
+            const batch = writeBatch(db);
+            validDeletes.forEach(id => batch.delete(doc(db, "schedules", id)));
+            await batch.commit();
 
-        // 🟢 Audit Log
-        logAdminAction(db, auth.currentUser, "BULK_DELETE_SHIFTS", "MULTIPLE", { count: validDeletes.length, records: oldDataCache }, null);
+            logAdminAction(db, auth.currentUser, "BULK_DELETE_SHIFTS", "MULTIPLE", { count: validDeletes.length, records: oldDataCache }, null);
 
-        listSelectedIds.clear();
-        updateListBulkUI();
+            listSelectedIds.clear();
+            updateListBulkUI();
+            
+            hideLoading();
+            showStatusAlert('statusMessage', 'Selected shifts deleted.', true);
+        } catch(e) {
+            hideLoading();
+            showStatusAlert('statusMessage', `Delete failed: ${e.message}`, false);
+        }
     }
 
     // --- BULK SCHEDULER LOGIC ---
@@ -674,7 +729,7 @@
         }
     }
 
-    // 🟢 SECURE: Run Bulk Schedule (Logged)
+    // 🟢 SECURE: Run Bulk Schedule
     window.runBulkSchedule = async () => {
         const staffSelect = document.getElementById('bulkStaffSelect');
         const selectedIds = Array.from(staffSelect.selectedOptions).map(o => o.value);
@@ -686,7 +741,7 @@
         let sDateStr, eDateStr;
         if (isMonthMode) {
             const mVal = document.getElementById('bulkMonthPicker').value;
-            if(!mVal) return alert("Select a month.");
+            if(!mVal) return showStatusAlert('statusMessage', 'Select a month.', false);
             sDateStr = mVal + "-01";
             const [y, m] = mVal.split('-');
             const lastDay = new Date(y, m, 0).getDate();
@@ -694,81 +749,96 @@
         } else {
             sDateStr = document.getElementById('bulkStartDate').value;
             eDateStr = document.getElementById('bulkEndDate').value;
-            if (!sDateStr || !eDateStr) return alert("Date Range is required.");
+            if (!sDateStr || !eDateStr) return showStatusAlert('statusMessage', 'Date Range is required.', false);
         }
 
-        if (selectedStaff.length === 0) return alert("Select at least one staff.");
+        if (selectedStaff.length === 0) return showStatusAlert('statusMessage', 'Select at least one staff.', false);
 
-        const batch = writeBatch(db);
-        let successCount = 0;
-        
-        let rules = {}; 
-        if (presetIdx !== "") {
-            const p = presetCache[presetIdx];
-            if (p && p.schedule) rules = p.schedule;
-        } else {
-            const start = document.getElementById('bulkStartTime').value;
-            const end = document.getElementById('bulkEndTime').value;
-            const brk = parseInt(document.getElementById('bulkBreak').value) || 0;
-            if(!start || !end) return alert("Enter Time.");
-            document.querySelectorAll('.weekday-selector input:checked').forEach(cb => {
-                rules[cb.value] = { active: true, start: start, end: end, break: brk };
-            });
-            if(Object.keys(rules).length === 0) return alert("Select at least one day.");
-        }
+        document.getElementById('btnRunBulk').disabled = true;
+        showLoading(); // 🟢
 
-        selectedStaff.forEach(u => {
-            const cleanId = String(u.id).trim();
-            let userStartDateStr = sDateStr;
-            if (u.joinDate && u.joinDate > sDateStr) {
-                userStartDateStr = u.joinDate; 
-            }
-            if (userStartDateStr > eDateStr) return; 
-
-            const sParts = userStartDateStr.split('-').map(Number);
-            const eParts = eDateStr.split('-').map(Number);
-            let current = new Date(Date.UTC(sParts[0], sParts[1] - 1, sParts[2], 12, 0, 0));
-            const end = new Date(Date.UTC(eParts[0], eParts[1] - 1, eParts[2], 12, 0, 0));
+        try {
+            const batch = writeBatch(db);
+            let successCount = 0;
             
-            while (current <= end) {
-                const dateStr = current.toISOString().split('T')[0];
-                const dayOfWeek = String(current.getUTCDay()); 
-                const dayRule = rules[dayOfWeek];
-                
-                if (dayRule && dayRule.active && dayRule.start && dayRule.end && !holidayCache[dateStr]) {
-                    const startDT = new Date(`${dateStr}T${dayRule.start}`);
-                    const endDT = new Date(`${dateStr}T${dayRule.end}`);
-                    const key = `${cleanId}_${dateStr}`;
-
-                    if (!leaveCache[key] && !rawSchedules.some(s => String(s.userId).trim() === cleanId && s.date === dateStr)) {
-                        const ref = doc(collection(db, "schedules"));
-                        batch.set(ref, { 
-                            userId: u.id, 
-                            empName: u.name, 
-                            date: dateStr, 
-                            start: Timestamp.fromDate(startDT), 
-                            end: Timestamp.fromDate(endDT), 
-                            breakMins: parseInt(dayRule.break) || 0,
-                            notes: '', 
-                            createdAt: Timestamp.now(), 
-                            createdBy: auth.currentUser.uid 
-                        });
-                        successCount++;
-                    }
-                }
-                current.setUTCDate(current.getUTCDate() + 1);
+            let rules = {}; 
+            if (presetIdx !== "") {
+                const p = presetCache[presetIdx];
+                if (p && p.schedule) rules = p.schedule;
+            } else {
+                const start = document.getElementById('bulkStartTime').value;
+                const end = document.getElementById('bulkEndTime').value;
+                const brk = parseInt(document.getElementById('bulkBreak').value) || 0;
+                if(!start || !end) throw new Error("Enter Time.");
+                document.querySelectorAll('.weekday-selector input:checked').forEach(cb => {
+                    rules[cb.value] = { active: true, start: start, end: end, break: brk };
+                });
+                if(Object.keys(rules).length === 0) throw new Error("Select at least one day.");
             }
-        });
-        
-        if (successCount > 0) {
-            await batch.commit();
-            // 🟢 Audit Log
-            logAdminAction(db, auth.currentUser, "BULK_SCHEDULE_CREATED", "MULTIPLE", null, { staffCount: selectedStaff.length, totalShifts: successCount, from: sDateStr, to: eDateStr });
+
+            selectedStaff.forEach(u => {
+                const cleanId = String(u.id).trim();
+                let userStartDateStr = sDateStr;
+                if (u.joinDate && u.joinDate > sDateStr) {
+                    userStartDateStr = u.joinDate; 
+                }
+                if (userStartDateStr > eDateStr) return; 
+
+                const sParts = userStartDateStr.split('-').map(Number);
+                const eParts = eDateStr.split('-').map(Number);
+                let current = new Date(Date.UTC(sParts[0], sParts[1] - 1, sParts[2], 12, 0, 0));
+                const end = new Date(Date.UTC(eParts[0], eParts[1] - 1, eParts[2], 12, 0, 0));
+                
+                while (current <= end) {
+                    const dateStr = current.toISOString().split('T')[0];
+                    const dayOfWeek = String(current.getUTCDay()); 
+                    const dayRule = rules[dayOfWeek];
+                    
+                    if (dayRule && dayRule.active && dayRule.start && dayRule.end && !holidayCache[dateStr]) {
+                        const startDT = new Date(`${dateStr}T${dayRule.start}`);
+                        const endDT = new Date(`${dateStr}T${dayRule.end}`);
+                        const key = `${cleanId}_${dateStr}`;
+
+                        if (!leaveCache[key] && !rawSchedules.some(s => String(s.userId).trim() === cleanId && s.date === dateStr)) {
+                            const ref = doc(collection(db, "schedules"));
+                            batch.set(ref, { 
+                                userId: u.id, 
+                                empName: u.name, 
+                                date: dateStr, 
+                                start: Timestamp.fromDate(startDT), 
+                                end: Timestamp.fromDate(endDT), 
+                                breakMins: parseInt(dayRule.break) || 0,
+                                notes: '', 
+                                createdAt: Timestamp.now(), 
+                                createdBy: auth.currentUser.uid 
+                            });
+                            successCount++;
+                        }
+                    }
+                    current.setUTCDate(current.getUTCDate() + 1);
+                }
+            });
+            
+            if (successCount > 0) {
+                await batch.commit();
+                logAdminAction(db, auth.currentUser, "BULK_SCHEDULE_CREATED", "MULTIPLE", null, { staffCount: selectedStaff.length, totalShifts: successCount, from: sDateStr, to: eDateStr });
+            }
+            
+            bulkModal.hide();
+            hideLoading();
+            if(successCount > 0) {
+                alert(`✅ Scheduled ${successCount} shifts.\n\nSmart Feature: New joiners were only scheduled from their Join Date.`);
+                window.filterTable();
+            } else {
+                showStatusAlert('statusMessage', 'No shifts were created (maybe all overlaps/holidays).', false);
+            }
+
+        } catch (e) {
+            hideLoading();
+            showStatusAlert('statusMessage', e.message, false);
+        } finally {
+            document.getElementById('btnRunBulk').disabled = false;
         }
-        
-        bulkModal.hide();
-        alert(`✅ Scheduled ${successCount} shifts.\n\nSmart Feature: New joiners were only scheduled from their Join Date.`);
-        if(successCount > 0) window.filterTable();
     }
 
     // --- UI HELPERS ---
@@ -882,7 +952,7 @@
     window.savePreset = async () => { 
         const idx = document.getElementById('editingPresetIndex').value;
         const name = document.getElementById('newPresetName').value;
-        if(!name) return alert("Enter name");
+        if(!name) return showStatusAlert('statusMessage', "Enter name", false);
 
         const schedule = {};
         let hasActive = false;
@@ -898,16 +968,24 @@
             };
         });
 
-        if(!hasActive) return alert("Enable at least one day");
+        if(!hasActive) return showStatusAlert('statusMessage', "Enable at least one day", false);
 
         const newObj = { name, schedule };
 
         if (idx === "-1") presetCache.push(newObj);
         else presetCache[idx] = newObj;
         
-        await setDoc(doc(db, "settings", "shift_presets"), {presets:presetCache}); 
-        loadPresets(); 
-        window.resetPresetForm();
+        showLoading();
+        try {
+            await setDoc(doc(db, "settings", "shift_presets"), {presets:presetCache}); 
+            await loadPresets(); 
+            window.resetPresetForm();
+            hideLoading();
+            showStatusAlert('statusMessage', 'Preset saved successfully.', true);
+        } catch(e) {
+            hideLoading();
+            showStatusAlert('statusMessage', `Save failed: ${e.message}`, false);
+        }
     }
 
     window.editPreset = (i) => {
@@ -951,11 +1029,19 @@
     }
 
     window.deletePreset = async (i) => { 
-        if(confirm("Delete this preset?")){ 
+        if(!confirm("Delete this preset?")) return;
+        
+        showLoading();
+        try {
             presetCache.splice(i,1); 
             await setDoc(doc(db, "settings", "shift_presets"), {presets:presetCache}); 
-            loadPresets(); 
-        } 
+            await loadPresets(); 
+            hideLoading();
+            showStatusAlert('statusMessage', 'Preset deleted.', true);
+        } catch(e) {
+            hideLoading();
+            showStatusAlert('statusMessage', `Delete failed: ${e.message}`, false);
+        }
     }
 
     window.switchView = (v) => { 
@@ -988,31 +1074,42 @@
     
     window.openListBulkEditModal = () => { document.getElementById('listEditCount').innerText=listSelectedIds.size; document.getElementById('leStart').value=""; document.getElementById('leEnd').value=""; listEditModal.show(); }
     
-    // 🟢 SECURE: Bulk Edit Time (Logged)
+    // 🟢 SECURE: Bulk Edit Time
     window.submitListEdit = async () => { 
         const s=document.getElementById('leStart').value, e=document.getElementById('leEnd').value; 
-        if(!s||!e) return alert("Enter time"); 
+        if(!s||!e) return showStatusAlert('statusMessage', 'Enter time', false); 
         
-        const b=writeBatch(db); 
-        let editCount = 0;
-        
-        listSelectedIds.forEach(id=>{ 
-            const sh=rawSchedules.find(x=>x.id===id); 
-            if(sh && !sh.clockIn){ 
-                const st=new Date(`${sh.date}T${s}`), et=new Date(`${sh.date}T${e}`); 
-                b.update(doc(db,"schedules",id),{start:Timestamp.fromDate(st),end:Timestamp.fromDate(et)}); 
-                editCount++;
-            } 
-        }); 
-        
-        await b.commit(); 
-        
-        // 🟢 Audit Log
-        if (editCount > 0) {
-            logAdminAction(db, auth.currentUser, "BULK_EDIT_SHIFTS", "MULTIPLE", { count: editCount }, { newStart: s, newEnd: e });
+        document.getElementById('btnSubmitListEdit').disabled = true;
+        showLoading();
+
+        try {
+            const b=writeBatch(db); 
+            let editCount = 0;
+            
+            listSelectedIds.forEach(id=>{ 
+                const sh=rawSchedules.find(x=>x.id===id); 
+                if(sh && !sh.clockIn){ 
+                    const st=new Date(`${sh.date}T${s}`), et=new Date(`${sh.date}T${e}`); 
+                    b.update(doc(db,"schedules",id),{start:Timestamp.fromDate(st),end:Timestamp.fromDate(et)}); 
+                    editCount++;
+                } 
+            }); 
+            
+            await b.commit(); 
+            
+            if (editCount > 0) {
+                logAdminAction(db, auth.currentUser, "BULK_EDIT_SHIFTS", "MULTIPLE", { count: editCount }, { newStart: s, newEnd: e });
+            }
+            
+            listEditModal.hide(); 
+            hideLoading();
+            showStatusAlert('statusMessage', `Updated ${editCount} shifts successfully.`, true);
+        } catch(err) {
+            hideLoading();
+            showStatusAlert('statusMessage', `Edit failed: ${err.message}`, false);
+        } finally {
+            document.getElementById('btnSubmitListEdit').disabled = false;
         }
-        
-        listEditModal.hide(); 
     }
     
     window.filterTable = () => { const t=document.getElementById('searchInput').value.toLowerCase(), d=document.getElementById('searchDate').value; renderListView(rawSchedules.filter(i=>i.empName.toLowerCase().includes(t)&&(d?i.date===d:true))); }

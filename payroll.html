@@ -15,6 +15,15 @@
             background: rgba(255, 255, 255, 0.95); z-index: 9999; 
             display: flex; flex-direction: column; justify-content: center; align-items: center; 
         }
+
+        /* 🟢 新增：用于全局 Toast 的样式 */
+        #statusMessage {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            padding: 12px 24px; border-radius: 8px; z-index: 9999;
+            color: white; font-weight: 500; display: none;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+
         @media print {
             body * { visibility: hidden; }
             #printArea, #printArea * { visibility: visible; }
@@ -47,6 +56,8 @@
     </style>
 </head>
 <body class="bg-light">
+
+    <div id="statusMessage"></div>
 
     <div id="loadingOverlay">
         <div class="spinner-border text-primary mb-3" role="status"></div>
@@ -390,11 +401,13 @@
         import { getFirestore, collection, query, where, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, serverTimestamp, getDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         
-        import { formatMoney, formatTime, calculateStatutoryAmount, msToHM, logAdminAction } from './utils.js';
+        // 🟢 导入 utils 所有公用方法
+        import { formatMoney, formatTime, calculateStatutoryAmount, msToHM, logAdminAction, showLoading, hideLoading, showStatusAlert } from './utils.js';
         import { requireAdmin } from './auth-guard.js';
 
+        // 仅保留 formatMoney 因为部分内联 JS(如果存在的话) 可能需要
         window.formatMoney = formatMoney;
-        window.showLoading = (show) => { document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none'; };
+        
         window.onerror = function(msg) {
             const loadingText = document.getElementById('loadingText');
             if(loadingText) { loadingText.innerText = "Error: " + msg; loadingText.classList.add('text-danger'); }
@@ -411,7 +424,7 @@
 
         requireAdmin(app, db, async (user) => {
             try {
-                window.showLoading(true);
+                showLoading(); // 🟢 使用公用 Loading
                 
                 if (typeof bootstrap !== 'undefined') {
                     formModal = new bootstrap.Modal(document.getElementById('payslipFormModal'));
@@ -433,9 +446,9 @@
                 document.getElementById('mainContainer').classList.remove('d-none');
             } catch (e) {
                 console.error("Init Error:", e);
-                alert("Failed to initialize Payroll system.");
+                showStatusAlert('statusMessage', 'Failed to initialize Payroll system.', false); // 🟢 使用 Toast
             } finally {
-                window.showLoading(false);
+                hideLoading(); // 🟢
                 lucide.createIcons();
             }
         });
@@ -484,6 +497,8 @@
                 lateMode: document.getElementById('configLateMode').value, 
                 lateFixedAmount: parseFloat(document.getElementById('configLateAmount').value) || 0 
             };
+            
+            showLoading(); // 🟢
             try {
                 const oldSnap = await getDoc(doc(db, "settings", "payroll_config"));
                 await setDoc(doc(db, "settings", "payroll_config"), newConfig, { merge: true });
@@ -492,8 +507,12 @@
 
                 globalSettings = { ...globalSettings, ...newConfig };
                 settingsModal.hide();
-                alert("Settings Saved! \n\nPlease re-save any Draft payslips to apply the new rules.");
-            } catch (e) { alert("Error saving settings: " + e.message); }
+                hideLoading();
+                showStatusAlert('statusMessage', "Settings Saved! Please re-save Drafts.", true); // 🟢
+            } catch (e) { 
+                hideLoading();
+                showStatusAlert('statusMessage', "Error saving settings: " + e.message, false); 
+            }
         };
 
         window.openSettingsModal = () => settingsModal.show();
@@ -553,6 +572,7 @@
         };
 
         window.updateAdvanceStatus = async (id, status) => {
+            showLoading(); // 🟢
             try {
                 const docRef = doc(db, "salary_advances", id);
                 const oldSnap = await getDoc(docRef);
@@ -562,8 +582,13 @@
                 
                 await logAdminAction(db, auth.currentUser, "APPROVE_ADVANCE", oldData.uid, { status: oldData.status }, { status: status, amount: oldData.amount });
 
+                hideLoading();
+                showStatusAlert('statusMessage', `Advance marked as ${status}`, true); // 🟢
                 window.openAdvancesModal(); 
-            } catch (e) { alert("Error: " + e.message); }
+            } catch (e) { 
+                hideLoading();
+                showStatusAlert('statusMessage', "Error: " + e.message, false); 
+            }
         };
 
         // ==========================================
@@ -625,10 +650,10 @@
                 window.recalcStatutoryAndTotals(); 
             }
 
-            window.showLoading(true);
+            showLoading(); // 🟢
             await calculateAttendanceStats(uid, monthStr);
             window.calcTotals(true); 
-            window.showLoading(false);
+            hideLoading(); // 🟢
         };
 
         window.recalcStatutoryAndTotals = () => {
@@ -815,9 +840,9 @@
         window.savePayslipForm = async () => {
             const uid = document.getElementById('staffSelect').value;
             const month = document.getElementById('formMonthPicker').value;
-            if(!uid || !month) return alert("Select staff and month");
+            if(!uid || !month) return showStatusAlert('statusMessage', "Select staff and month", false); // 🟢
 
-            window.showLoading(true);
+            showLoading(); // 🟢
             const staff = staffMap[uid];
             const getVal = (id) => parseFloat(document.getElementById(id).value) || 0;
             const status = document.getElementById('formStatus').value;
@@ -863,7 +888,7 @@
 
                 if (isExisting && oldData.status === 'Published' && status === 'Published' && oldDocId !== payslipId) {
                     if(!confirm(`⚠️ OVERWRITE WARNING\n\nA Published payslip already exists for ${staff.displayName} in ${month}.\nSaving will automatically OVERWRITE the old one. Proceed?`)) {
-                        window.showLoading(false);
+                        hideLoading();
                         return;
                     }
                 }
@@ -873,7 +898,6 @@
 
                 payload.createdAt = isExisting ? oldData.createdAt : serverTimestamp();
 
-                // Clear old random ID doc if it exists to prevent duplicates
                 if (oldDocId && oldDocId !== payslipId) {
                     await deleteDoc(doc(db, "payslips", oldDocId));
                     actionType = "MIGRATE_AND_OVERWRITE_PAYSLIP";
@@ -897,15 +921,19 @@
                 await logAdminAction(db, auth.currentUser, actionType, uid, oldData, payload);
 
                 formModal.hide();
+                hideLoading();
+                showStatusAlert('statusMessage', 'Payslip saved successfully.', true); // 🟢
                 window.loadPayroll();
-            } catch(e) { alert("Save error: "+e.message); }
-            finally { window.showLoading(false); }
+            } catch(e) { 
+                hideLoading();
+                showStatusAlert('statusMessage', "Save error: " + e.message, false); 
+            }
         };
 
         window.loadPayroll = async () => {
             const month = document.getElementById('globalMonthPicker').value;
             if(!month) return;
-            window.showLoading(true);
+            showLoading(); // 🟢
             const listDiv = document.getElementById('payrollList');
             listDiv.innerHTML = '';
             
@@ -951,8 +979,12 @@
                 document.getElementById('statTotal').innerText = "RM " + formatMoney(totalNet);
                 document.getElementById('statEPF').innerText = "RM " + formatMoney(totalEmpEPF);
                 lucide.createIcons();
-            } catch (e) { console.error(e); } 
-            finally { window.showLoading(false); }
+            } catch (e) { 
+                console.error(e); 
+            } 
+            finally { 
+                hideLoading(); 
+            }
         };
 
         window.openCreateModal = () => {
@@ -961,7 +993,7 @@
             document.getElementById('pendingAdvanceIds').value = "";
             document.getElementById('formModalTitle').innerText = "Create New Payslip";
             document.getElementById('staffSelect').disabled = false;
-            document.getElementById('formMonthPicker').disabled = false; // 🟢 Allow month change
+            document.getElementById('formMonthPicker').disabled = false;
             
             document.getElementById('dispNet').innerText = "RM 0.00";
             document.getElementById('dispGrossBasic').value = "0.00";
@@ -983,9 +1015,9 @@
             document.getElementById('formModalTitle').innerText = "Edit Payslip - " + d.staffName;
             
             document.getElementById('staffSelect').value = d.uid;
-            document.getElementById('staffSelect').disabled = true; // Lock Staff
+            document.getElementById('staffSelect').disabled = true; 
             document.getElementById('formMonthPicker').value = d.month;
-            document.getElementById('formMonthPicker').disabled = true; // 🟢 Lock Month to prevent collision bugs
+            document.getElementById('formMonthPicker').disabled = true; 
 
             document.getElementById('inpBasic').value = d.basic; 
             document.getElementById('inpComm').value = d.earnings.commission || 0;
@@ -1118,14 +1150,14 @@
             printModal.show();
         };
 
-        // 🟢 SECURE: Publish All (Logged)
+        // 🟢 SECURE: Publish All
         window.publishAll = async () => {
             const drafts = currentPayrollData.filter(d => d.status === 'Draft');
-            if(drafts.length === 0) return alert("No draft payslips found to publish.");
+            if(drafts.length === 0) return showStatusAlert('statusMessage', "No draft payslips found to publish.", false); // 🟢
             
             if(!confirm(`Are you sure you want to officially publish ${drafts.length} payslip(s)?\n\nThis will make them visible to staff and PERMANENTLY deduct their approved Salary Advances.`)) return;
             
-            window.showLoading(true);
+            showLoading(); // 🟢
             const month = document.getElementById('globalMonthPicker').value;
 
             try {
@@ -1157,15 +1189,15 @@
 
                 await logAdminAction(db, auth.currentUser, "BULK_PUBLISH_PAYSLIPS", "MULTIPLE", null, { count: drafts.length, month: month });
 
-                alert(`Successfully published ${drafts.length} payslips!`);
+                hideLoading();
+                showStatusAlert('statusMessage', `Successfully published ${drafts.length} payslips!`, true); // 🟢
                 window.loadPayroll();
 
             } catch (e) { 
+                hideLoading();
                 console.error(e);
-                alert("Transaction Failed: " + e.message); 
-            } finally { 
-                window.showLoading(false); 
-            }
+                showStatusAlert('statusMessage', "Publish Failed: " + e.message, false); 
+            } 
         };
     </script>
 </body>

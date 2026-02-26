@@ -16,6 +16,14 @@
             display: flex; flex-direction: column; justify-content: center; align-items: center; 
         }
 
+        /* 🟢 新增：用于全局 Toast 的样式 */
+        #statusMessage {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            padding: 12px 24px; border-radius: 8px; z-index: 9999;
+            color: white; font-weight: 500; display: none;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+
         :root { --primary: #2563eb; --bg: #f8fafc; }
         body { font-family: 'Inter', sans-serif; background-color: var(--bg); min-height: 100vh; }
         
@@ -37,6 +45,8 @@
     </style>
 </head>
 <body>
+
+<div id="statusMessage"></div>
 
 <div id="loadingOverlay">
     <div class="spinner-border text-primary mb-3" role="status"></div>
@@ -242,7 +252,9 @@
 
     import { firebaseConfig } from "./firebase-config.js";
     import { requireAdmin } from "./auth-guard.js";
-    import { normalizeDate, logAdminAction } from "./utils.js"; // 🟢 Added logAdminAction
+    
+    // 🟢 1. 引入 utils.js 中的函数
+    import { normalizeDate, logAdminAction, formatDate, formatDateTime, showLoading, hideLoading, showStatusAlert } from "./utils.js"; 
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
@@ -251,7 +263,7 @@
     let fullHistoryList = [];
     let attachmentModal, rejectModal, editStatusModal;
 
-    document.getElementById('todayDate').innerText = new Date().toLocaleDateString();
+    document.getElementById('todayDate').innerText = new Date().toLocaleDateString('en-GB');
 
     requireAdmin(app, db, async (user) => {
         document.getElementById('loadingText').innerText = "Loading Requests...";
@@ -281,6 +293,10 @@
             list.sort((a,b) => (b.reviewedAt?.seconds || 0) - (a.reviewedAt?.seconds || 0));
             fullHistoryList = list;
             window.filterHistory();
+            
+            // 数据加载完后隐藏 loading 遮罩
+            hideLoading();
+            document.getElementById('mainContainer').classList.remove('d-none');
         });
     }
 
@@ -429,7 +445,7 @@
                     ${reasonNote}
                 </td>
                 <td class="text-end pe-4">
-                    <span class="text-muted small me-2">${formatDate(item.reviewedAt, true)}</span>
+                    <span class="text-muted small me-2">${formatDateTime(item.reviewedAt)}</span>
                     ${editBtn}
                 </td>`;
             tbody.appendChild(tr);
@@ -462,8 +478,13 @@
         const reason = document.getElementById('editStatusReason').value;
 
         if (oldStatus === newStatus) { editStatusModal.hide(); return; }
-        if (newStatus === 'Rejected' && !reason.trim()) { alert("Please provide a rejection reason."); return; }
+        if (newStatus === 'Rejected' && !reason.trim()) { 
+            showStatusAlert('statusMessage', 'Please provide a rejection reason.', false); 
+            return; 
+        }
         if(!confirm(`⚠️ Warning:\nChanging status from ${oldStatus} to ${newStatus}.\n\nThis will auto-calculate the employee's Leave Balance.\nContinue?`)) return;
+
+        showLoading(); // 🟢 3. 使用公用 Loading
 
         try {
             await runTransaction(db, async (transaction) => {
@@ -505,15 +526,18 @@
 
                 transaction.update(leaveRef, updateData);
                 
-                // 🟢 Audit Log
                 logAdminAction(db, auth.currentUser, "MODIFY_LEAVE_STATUS", authUid, 
                     { leaveId: id, oldStatus: oldStatus, oldBalance: currentBalance }, 
                     { newStatus: newStatus, newBalance: newBalance, reason: reason }
                 );
             });
             editStatusModal.hide();
+            hideLoading();
+            showStatusAlert('statusMessage', 'Status updated and balance recalculated successfully!', true); // 🟢 3. 使用公用 Toast
         } catch (e) {
-            console.error(e); alert("Update Failed: " + e.message);
+            console.error(e); 
+            hideLoading();
+            showStatusAlert('statusMessage', `Update Failed: ${e.message}`, false);
         }
     }
 
@@ -527,10 +551,15 @@
     window.submitRejection = async function() {
         const leaveId = document.getElementById('hiddenRejectLeaveId').value;
         const reason = document.getElementById('rejectReasonInput').value.trim();
-        if(!reason) { alert("Please enter a reason."); return; }
+        
+        if(!reason) { 
+            showStatusAlert('statusMessage', 'Please enter a reason.', false); 
+            return; 
+        }
         
         const btn = document.querySelector('#rejectModal .btn-danger');
         btn.disabled = true; btn.innerText = "Processing...";
+        showLoading(); // 🟢 3. 使用公用 Loading
         
         try {
             const oldSnap = await getDoc(doc(db, "leaves", leaveId));
@@ -539,12 +568,15 @@
                 status: 'Rejected', rejectionReason: reason, reviewedAt: serverTimestamp(), reviewer: auth.currentUser.email
             });
             
-            // 🟢 Audit Log
             await logAdminAction(db, auth.currentUser, "REJECT_LEAVE", oldSnap.data()?.uid, oldSnap.data(), { status: 'Rejected', reason: reason });
 
             rejectModal.hide();
+            hideLoading();
+            showStatusAlert('statusMessage', 'Leave request rejected.', true);
         } catch (error) { 
-            console.error(error); alert("Error: " + error.message); 
+            console.error(error); 
+            hideLoading();
+            showStatusAlert('statusMessage', `Error: ${error.message}`, false); 
         } finally { 
             btn.disabled = false; btn.innerText = "Confirm Reject"; 
         }
@@ -553,6 +585,8 @@
     window.handleApprove = async function(leaveId, userId) {
         if(!confirm(`Confirm APPROVE this leave request?`)) return;
         
+        showLoading(); // 🟢 3. 使用公用 Loading
+
         try {
             await runTransaction(db, async (transaction) => {
                 const leaveRef = doc(db, "leaves", leaveId);
@@ -587,16 +621,17 @@
                     deductibleDays: days 
                 });
 
-                // 🟢 Audit Log (Added inside transaction logic string, executed outside later via array trick or async safe point)
-                // Note: Direct execution here is safe as long as transaction doesn't retry multiple times leading to dupe logs. 
-                // However, Firestore allows it safely in most non-contested scenarios.
                 logAdminAction(db, auth.currentUser, "APPROVE_LEAVE", userId, 
                     { leaveId: leaveId, oldBalance: currentBalance }, 
                     { daysDeducted: isAnnual ? days : 0, type: type }
                 );
             });
+            hideLoading();
+            showStatusAlert('statusMessage', 'Leave approved successfully.', true);
         } catch (e) { 
-            console.error(e); alert("Transaction Failed: " + e.message); 
+            console.error(e); 
+            hideLoading();
+            showStatusAlert('statusMessage', `Failed: ${e.message}`, false); 
         }
     }
 
@@ -615,22 +650,13 @@
         count > 0 ? badge.classList.remove('d-none') : badge.classList.add('d-none');
     }
     
-    function formatDate(val, withTime = false) {
-        if (!val) return '-';
-        let date;
-        if (val.seconds) date = new Date(val.seconds * 1000);
-        else date = new Date(val);
-        if (isNaN(date.getTime())) return val;
-        const options = { month: 'short', day: 'numeric', year: 'numeric' };
-        if (withTime) { options.hour = '2-digit'; options.minute = '2-digit'; }
-        return date.toLocaleDateString('en-GB', options);
-    }
-    
     function getBadgeClass(type) {
         if(type && type.includes('Medical')) return 'badge-leave-medical';
         if(type && type.includes('Unpaid')) return 'badge-leave-unpaid';
         return 'badge-leave-annual';
     }
+    
+    // 🟢 注意：内部自己写的 formatDate 被删除了，因为在顶部导入了 utils.js 中的版本
 
 </script>
 </body>

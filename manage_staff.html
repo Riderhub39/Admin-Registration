@@ -17,6 +17,14 @@
             display: flex; flex-direction: column; justify-content: center; align-items: center; 
         }
 
+        /* 🟢 新增：用于全局 Toast 的样式 (从旧代码中提取) */
+        #statusMessage {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            padding: 12px 24px; border-radius: 8px; z-index: 9999;
+            color: white; font-weight: 500; display: none;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+
         body { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
         
         /* Status Badge Styles */
@@ -40,6 +48,8 @@
     </style>
 </head>
 <body>
+
+<div id="statusMessage"></div>
 
 <div id="loadingOverlay">
     <div class="spinner-border text-primary mb-3" role="status"></div>
@@ -185,11 +195,13 @@
     
     import { firebaseConfig } from "./firebase-config.js";
     import { requireAdmin } from "./auth-guard.js";
-    import { logAdminAction } from "./utils.js"; // 🟢 导入 Audit Log
+    
+    // 🟢 1. 引入我们的公共工具
+    import { logAdminAction, showStatusAlert, showLoading, hideLoading } from "./utils.js"; 
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const auth = getAuth(app); // 用于获取当前管理员身份
+    const auth = getAuth(app); 
     const settingsRef = doc(db, "settings", "leave_rules");
     
     let reviewModal; 
@@ -198,7 +210,7 @@
     let searchTerm = "";      
     let leaveRulesConfig = { annual: [], medical: [] };
 
-    // 🟢 权限验证
+    // 权限验证
     requireAdmin(app, db, async (user) => {
         document.getElementById('loadingText').innerText = "Loading Staff List...";
         reviewModal = new bootstrap.Modal(document.getElementById('reviewModal'));
@@ -332,7 +344,7 @@
         }
     }
 
-    // --- Profile Unlock Logic (Logged) ---
+    // --- Profile Unlock Logic ---
     window.openReview = function(userId) {
         const request = pendingRequests[userId];
         if(!request) return;
@@ -358,24 +370,23 @@
                 const expiryDate = new Date(Date.now() + 5 * 60 * 1000); 
                 await updateDoc(doc(db, "users", userId), { status: 'editable', unlockExpiresAt: expiryDate });
                 
-                // 🟢 Audit Log: Profile Unlock Approved
                 await logAdminAction(db, auth.currentUser, "APPROVE_PROFILE_UNLOCK", userId, null, { reqId });
             } else {
                 await updateDoc(doc(db, "edit_requests", reqId), { status: 'rejected', reviewedAt: serverTimestamp() });
                 
-                // 🟢 Audit Log: Profile Unlock Rejected
                 await logAdminAction(db, auth.currentUser, "REJECT_PROFILE_UNLOCK", userId, null, { reqId });
             }
             reviewModal.hide();
+            showStatusAlert('statusMessage', `Request ${decision}d.`, true); // 🟢 2. 使用公共提示
         } catch (error) { 
-            alert("Error: " + error.message); 
+            showStatusAlert('statusMessage', `Error: ${error.message}`, false); 
         } finally { 
             btn.disabled = false; 
             btn.innerText = "Approve Request"; 
         }
     };
 
-    // --- Leave Rules Management (Logged) ---
+    // --- Leave Rules Management ---
     window.createRuleRow = function(type, min = 0, max = 1, days = 8) {
         const div = document.createElement('div');
         div.className = 'input-group input-group-sm mb-2 rule-row';
@@ -449,34 +460,35 @@
 
     window.saveLeaveRules = async function() {
         try {
+            showLoading(); // 🟢 3. 使用公共 Loading
             const annualRules = parseAndValidateRules('annual', 'Annual Leave');
             const medicalRules = parseAndValidateRules('medical', 'Medical Leave');
             const newRules = { annual: annualRules, medical: medicalRules };
             
-            // 🟢 Audit Log: Get old config before replacing
             const oldSnap = await getDoc(settingsRef);
-            
             await setDoc(settingsRef, newRules);
             
-            // 🟢 Audit Log: Log leave rules update
             await logAdminAction(db, auth.currentUser, "UPDATE_LEAVE_RULES", "GLOBAL", oldSnap.data() || {}, newRules);
             
-            alert("✅ Leave Rules saved successfully!\n\nPlease click 'Recalculate Balances' to apply these changes to all staff.");
+            hideLoading();
+            showStatusAlert('statusMessage', "Leave Rules saved successfully! Please recalculate balances.", true);
             bootstrap.Modal.getInstance(document.getElementById('leaveConfigModal')).hide();
-        } catch (e) { alert(e.message); }
+        } catch (e) { 
+            hideLoading();
+            alert(e.message); 
+        }
     };
 
-    // --- Batch Recalculation (Logged) ---
+    // --- Batch Recalculation ---
     window.recalculateAllBalances = async function() {
         const currentYear = new Date().getFullYear();
         const startOfYear = `${currentYear}-01-01`;
         
         if(!confirm(`Recalculate BOTH Annual & Medical Leave for ${currentYear}?\n\nThis will map staff years of service to the new rules and deduct taken leaves.`)) return;
 
-        const statusDiv = document.createElement('div');
-        statusDiv.style.position = 'fixed'; statusDiv.style.top = '10px'; statusDiv.style.left = '50%'; statusDiv.style.transform = 'translateX(-50%)'; statusDiv.style.background = '#0f172a'; statusDiv.style.color = 'white'; statusDiv.style.padding = '12px 24px'; statusDiv.style.borderRadius = '8px'; statusDiv.style.zIndex = '9999'; statusDiv.style.boxShadow = '0 4px 6px -1px rgb(0 0 0 / 0.1)';
-        document.body.appendChild(statusDiv);
-        statusDiv.innerHTML = `<div class="spinner-border spinner-border-sm me-2" role="status"></div> Analyzing Leave History for ${currentYear}...`;
+        // 🟢 4. 彻底抛弃手写的 DOM 操作，使用优雅的 Loading 覆盖层
+        document.getElementById('loadingText').innerHTML = `Analyzing Leave History for ${currentYear}...<br><small class="text-muted">Please wait</small>`;
+        showLoading();
 
         try {
             const ruleSnap = await getDoc(settingsRef);
@@ -501,7 +513,6 @@
                 return rule ? rule.days : 0; 
             };
 
-            statusDiv.innerHTML = `<div class="spinner-border spinner-border-sm me-2 text-warning" role="status"></div> Updating User Balances...`;
             const q = query(collection(db, "users"), where("role", "==", "staff"));
             const snapshot = await getDocs(q);
             const batch = writeBatch(db);
@@ -529,7 +540,6 @@
                     batch.update(userRef, { 
                         "leave_balance.annual": finalAnnual, 
                         "leave_balance.medical": finalMedical,
-                        // 🟢 新增：把算出来的总天数也存进去，供 Flutter App 读取
                         "leave_balance.total_annual": annualEntitlement,
                         "leave_balance.total_medical": medicalEntitlement,
                         "meta.balanceLastUpdated": serverTimestamp(), 
@@ -541,20 +551,15 @@
 
             await batch.commit();
             
-            // 🟢 Audit Log: Log the batch recalculation
             await logAdminAction(db, auth.currentUser, "BATCH_RECALCULATE_LEAVES", "ALL_STAFF", null, { impactedUsers: count, year: currentYear });
 
-            statusDiv.style.background = '#16a34a'; 
-            statusDiv.innerHTML = `<i data-lucide="check-circle" class="size-4 me-2"></i> Success! Updated ${count} staff balances.`;
-            lucide.createIcons();
-            setTimeout(() => statusDiv.remove(), 4000);
+            hideLoading();
+            showStatusAlert('statusMessage', `Success! Updated ${count} staff balances.`, true);
 
         } catch (e) {
             console.error(e);
-            statusDiv.style.background = '#dc2626'; 
-            statusDiv.innerHTML = `<i data-lucide="alert-triangle" class="size-4 me-2"></i> Error: ${e.message}`;
-            lucide.createIcons();
-            setTimeout(() => statusDiv.remove(), 7000);
+            hideLoading();
+            showStatusAlert('statusMessage', `Error: ${e.message}`, false);
         }
     };
 </script>
