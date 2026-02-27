@@ -40,7 +40,7 @@ export async function initManageStaffApp() {
 // --- 实时监听器 ---
 function initData() {
     // 监听员工列表
-    const q = query(collection(db, "users"), where("role", "==", "staff"));
+    const q = query(collection(db, "users"), where("role", "in", ["staff", "admin"]));
     onSnapshot(q, (snapshot) => {
         staffList = [];
         snapshot.forEach(doc => staffList.push({ id: doc.id, ...doc.data() }));
@@ -319,7 +319,7 @@ window.recalculateAllBalances = async function() {
             return rule ? rule.days : 0; 
         };
 
-        const staffSnap = await getDocs(query(collection(db, "users"), where("role", "==", "staff")));
+        const staffSnap = await getDocs(query(collection(db, "users"), where("role", "in", ["staff", "admin"])));
         const batch = writeBatch(db);
         let count = 0;
 

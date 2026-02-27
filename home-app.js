@@ -213,7 +213,7 @@ async function loadAttendanceStats() {
     const todayStr = normalizeDate(`${new Date().getFullYear()}-${new Date().getMonth() + 1}-${new Date().getDate()}`);
     try {
         const [usersSnap, attSnap, schedSnap] = await Promise.all([
-            getDocs(query(collection(db, "users"), where("role", "==", "staff"))),
+            getDocs(query(collection(db, "users"), where("role", "in", ["staff", "admin"]))),
             getDocs(query(collection(db, "attendance"), where("date", "==", todayStr))),
             getDocs(query(collection(db, "schedules"), where("date", "==", todayStr)))
         ]);
@@ -508,7 +508,7 @@ window.deleteAnnouncement = async (id) => {
 let allStaffCache = [];
 window.openDriverSetupModal = async () => {
     driverModal.show();
-    const snap = await getDocs(query(collection(db, "users"), where("role", "==", "staff")));
+    const snap = await getDocs(query(collection(db, "users"), where("role", "in", ["staff", "admin"])));
     allStaffCache = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(s => s.status !== 'disabled');
     window.renderDriverSetupList(allStaffCache);
 };
