@@ -10,8 +10,6 @@ import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth
 
 import { firebaseConfig } from "./firebase-config.js";
 import { requireAdmin } from "./auth-guard.js";
-
-// 🟢 导入 utils
 import { formatTime, msToHM, normalizeDate, logAdminAction, showLoading, hideLoading, showStatusAlert } from "./utils.js"; 
 
 const app = initializeApp(firebaseConfig);
@@ -26,10 +24,7 @@ let attendanceData = [];
 let currentMode = 'day'; 
 
 let photoModal, manualActionModal, editRecordModal;
-let currentManagerDate = null;
-let currentFilterIds = null;
 
-// 初始化页面
 export async function initAttendanceApp() {
     document.getElementById('loadingText').innerText = "Loading Attendance...";
     
@@ -43,16 +38,9 @@ export async function initAttendanceApp() {
     document.getElementById('dateFilter').value = todayStr;
     document.getElementById('monthFilter').value = todayStr.substring(0,7);
 
-    // 绑定基础事件限制
-    initDateConstraints();
-
     await fetchUsers();
     window.loadData();
     listenToCorrections();
-}
-
-function initDateConstraints() {
-    // 此处可添加日期选择器的限制逻辑（如果需要的话，例如不能选择未来等）
 }
 
 async function fetchUsers() {
@@ -71,8 +59,6 @@ async function fetchUsers() {
         };
     });
 }
-
-// --- 将所有全局函数挂载到 window，供 HTML 调用 ---
 
 window.loadData = async function() {
     const listContainer = document.getElementById('attendanceList');
@@ -120,6 +106,7 @@ window.loadData = async function() {
         attendanceData = [];
         let presentUids = new Set();
         let unverified = 0;
+        let missingOutData = []; // 🟢 用于记录缺少 Clock Out 的员工
         
         attSnap.forEach(d => {
             const data = d.data();
@@ -139,19 +126,30 @@ window.loadData = async function() {
         const grouped = {};
         attendanceData.forEach(r => { if(!grouped[r.uid]) grouped[r.uid] = []; grouped[r.uid].push(r); });
 
+        // 🟢 计算当天 Missing Clock Out 的人员
+        if(currentMode === 'day') {
+             Object.keys(grouped).forEach(uid => {
+                 const dayRecords = grouped[uid];
+                 const hasIn = dayRecords.some(r => r.session === 'Clock In');
+                 const hasOut = dayRecords.some(r => r.session === 'Clock Out');
+                 if (hasIn && !hasOut) {
+                     missingOutData.push(usersMap[uid].name);
+                 }
+             });
+        }
+
         let count = 0;
         const sortedUids = Object.keys(usersMap).sort((a,b) => usersMap[a].name.localeCompare(usersMap[b].name));
 
         if(currentMode === 'day') {
             sortedUids.forEach(uid => { if(renderDayUserCard(uid, grouped[uid] || [], listContainer, normalizeDate(startDate))) count++; });
-            renderDashboard(attendanceData, presentUids);
+            renderDashboard(attendanceData, presentUids, missingOutData); // 🟢 传入 missingOutData
         } else {
             sortedUids.forEach(uid => { if(renderMonthUserCard(uid, grouped[uid] || [], listContainer, statusFilter)) count++; });
         }
         
         if(count === 0) document.getElementById('emptyState').classList.remove('d-none');
         
-        // Hide main loading overlay if it's still there
         hideLoading();
         document.getElementById('mainContainer').classList.remove('d-none');
         
@@ -269,6 +267,39 @@ function renderRecordItem(item) {
             ${item.photoUrl ? `<button class="btn btn-xs btn-outline-info" onclick="window.viewPhoto('${item.photoUrl}')"><i data-lucide="image" class="size-3"></i></button>` : ''}
         </div>
     </div>`;
+}
+
+// 🟢 修改签名，增加 missingOutData 参数
+function renderDashboard(data, pUids, missingOutData = []) {
+    const target = document.getElementById('dateFilter').value;
+    let active=0, leave=0, absent=0;
+    const aList = [];
+    Object.keys(usersMap).forEach(uid => {
+        if(usersMap[uid].status === 'disabled') return;
+        active++;
+        if(leavesMap[uid+"_"+target]) leave++;
+        else if(schedulesMap[uid+"_"+target] && !pUids.has(uid)) { absent++; aList.push(usersMap[uid].name); }
+    });
+    
+    document.getElementById('statTotalStaff').innerText = active;
+    document.getElementById('statPresent').innerText = pUids.size;
+    document.getElementById('statAbsent').innerText = absent;
+    document.getElementById('statLeave').innerText = leave;
+    document.getElementById('absentList').innerHTML = aList.map(n => `<li class="list-group-item d-flex justify-content-between align-items-center fw-bold">${n} <span class="badge bg-danger">ABSENT</span></li>`).join('') || '<li class="list-group-item text-center text-success py-3">All scheduled staff accounted for.</li>';
+
+    // 🟢 渲染缺少 Clock Out 的员工警告
+    const lateListContainer = document.getElementById('lateList');
+    if (missingOutData.length > 0) {
+        let warningHtml = missingOutData.map(n => 
+            `<li class="list-group-item d-flex justify-content-between align-items-center fw-bold text-warning" style="background-color: #fffbeb;">
+                ${n} 
+                <span class="badge bg-warning text-dark"><i data-lucide="alert-triangle" class="size-3 me-1"></i> Missing Out</span>
+            </li>`
+        ).join('');
+        lateListContainer.innerHTML = warningHtml;
+    } else {
+        lateListContainer.innerHTML = '<li class="list-group-item text-center text-muted py-3">No anomalies detected.</li>';
+    }
 }
 
 window.openManualAction = (uid, targetDate) => {
@@ -521,23 +552,6 @@ window.handleSearch = () => {
 }
 
 window.changeDate = (days) => { const el = document.getElementById('dateFilter'); const d = new Date(el.value); d.setDate(d.getDate() + days); el.value = d.toISOString().split('T')[0]; window.loadData(); }
-
-function renderDashboard(data, pUids) {
-    const target = document.getElementById('dateFilter').value;
-    let active=0, leave=0, absent=0;
-    const aList = [];
-    Object.keys(usersMap).forEach(uid => {
-        if(usersMap[uid].status === 'disabled') return;
-        active++;
-        if(leavesMap[uid+"_"+target]) leave++;
-        else if(schedulesMap[uid+"_"+target] && !pUids.has(uid)) { absent++; aList.push(usersMap[uid].name); }
-    });
-    document.getElementById('statTotalStaff').innerText = active;
-    document.getElementById('statPresent').innerText = pUids.size;
-    document.getElementById('statAbsent').innerText = absent;
-    document.getElementById('statLeave').innerText = leave;
-    document.getElementById('absentList').innerHTML = aList.map(n => `<li class="list-group-item d-flex justify-content-between align-items-center fw-bold">${n} <span class="badge bg-danger">ABSENT</span></li>`).join('') || '<li class="list-group-item text-center text-success py-3">All scheduled staff accounted for.</li>';
-}
 
 function listenToCorrections() {
     onSnapshot(query(collection(db, "attendance_corrections"), where("status", "==", "Pending")), (snap) => {
