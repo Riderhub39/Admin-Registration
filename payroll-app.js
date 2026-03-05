@@ -280,7 +280,6 @@ window.autoFillStaffData = async () => {
             const advSnap = await getDocs(query(collection(db, "salary_advances"), where("uid", "in", targetIds), where("status", "==", "Approved"), where("isDeducted", "==", false)));
             advSnap.forEach(d => {
                 const adv = d.data();
-                // 🟢 严格校验：只有被标记为 isTransferred = true 的才扣钱
                 if (adv.isTransferred === true) {
                     totalAdv += adv.amount; 
                     advIds.push(d.id); 
@@ -564,9 +563,15 @@ window.savePayslipForm = async () => {
 
         await logAdminAction(db, auth.currentUser, actionType, uid, oldData, payload);
 
-        formModal.hide();
-        hideLoading();
-        showStatusAlert('statusMessage', 'Payslip saved successfully.', true); 
+        // 如果用户是在通过左右键核对，点击Save后不要关闭弹窗，而是跳到下一个
+        if (window.currentViewingPayslipId) {
+            showStatusAlert('statusMessage', 'Saved! Moving to next...', true);
+            window.navigatePayslip(1); 
+        } else {
+            formModal.hide();
+            showStatusAlert('statusMessage', 'Payslip saved successfully.', true); 
+        }
+        
         window.loadPayroll();
     } catch(e) { 
         hideLoading();
@@ -632,6 +637,10 @@ window.loadPayroll = async () => {
 };
 
 window.openCreateModal = () => {
+    window.currentViewingPayslipId = null;
+    const navGroup = document.getElementById('navPayslipGroup');
+    if (navGroup) navGroup.style.display = 'none';
+
     document.getElementById('payslipForm').reset();
     document.getElementById('editDocId').value = "";
     document.getElementById('pendingAdvanceIds').value = "";
@@ -654,6 +663,11 @@ window.openCreateModal = () => {
 window.openEditModal = (id) => {
     const d = currentPayrollData.find(x => x.id === id);
     if(!d) return;
+
+    // 记录当前核对的 ID，并显示左右切换按钮
+    window.currentViewingPayslipId = id;
+    const navGroup = document.getElementById('navPayslipGroup');
+    if (navGroup) navGroup.style.display = 'inline-flex';
 
     document.getElementById('editDocId').value = id;
     document.getElementById('formModalTitle').innerText = "Edit Payslip - " + d.staffName;
@@ -842,3 +856,249 @@ window.publishAll = async () => {
         showStatusAlert('statusMessage', "Publish Failed: " + e.message, false); 
     } 
 };
+
+// ==========================================
+// 4. BATCH GENERATOR ENGINE (AUTO GENERATE ALL)
+// ==========================================
+window.generateAllDrafts = async () => {
+    const monthStr = document.getElementById('globalMonthPicker').value;
+    if(!monthStr) return showStatusAlert('statusMessage', "Please select a month first.", false);
+    
+    if(!confirm(`⚠️ AUTO GENERATION WARNING\n\nThis will automatically calculate and generate DRAFT payslips for ALL active staff for ${monthStr} based on their attendance, leaves, schedules, and advances.\n\nAny existing 'Draft' for this month will be OVERWRITTEN.\nExisting 'Published' payslips will be SKIPPED.\n\nProceed?`)) return;
+
+    showLoading();
+    document.getElementById('loadingText').innerText = "Processing automated payroll batch...";
+
+    try {
+        const batch = writeBatch(db);
+        let generatedCount = 0;
+        let skippedCount = 0;
+
+        const [year, month] = monthStr.split('-');
+        const startDate = `${monthStr}-01`;
+        const endDate = `${monthStr}-${new Date(year, month, 0).getDate()}`;
+
+        // 并发拉取当月所有的公共数据
+        const [allSchedSnap, allLeavesSnap, allAttSnap, allAdvSnap] = await Promise.all([
+            getDocs(query(collection(db, "schedules"), where("date", ">=", startDate), where("date", "<=", endDate))),
+            getDocs(query(collection(db, "leaves"), where("status", "==", "Approved"))),
+            getDocs(query(collection(db, "attendance"), where("date", ">=", startDate), where("date", "<=", endDate))),
+            getDocs(query(collection(db, "salary_advances"), where("status", "==", "Approved"), where("isDeducted", "==", false)))
+        ]);
+
+        const schedules = {}; const leaves = []; const attendances = {}; const advances = {};
+        allSchedSnap.forEach(d => { const s = d.data(); if(!schedules[s.userId]) schedules[s.userId] = []; schedules[s.userId].push(s); });
+        allLeavesSnap.forEach(d => leaves.push(d.data()));
+        allAttSnap.forEach(d => { 
+            const a = d.data(); 
+            if(a.verificationStatus === 'Verified') {
+                if(!attendances[a.uid]) attendances[a.uid] = {};
+                if(!attendances[a.uid][a.date]) attendances[a.uid][a.date] = { in: null, out: null };
+                if(a.session === 'Clock In') attendances[a.uid][a.date].in = a.manualIn || a.timeIn || a.timestamp;
+                if(a.session === 'Clock Out') attendances[a.uid][a.date].out = a.manualOut || a.timeOut || a.timestamp;
+            }
+        });
+        allAdvSnap.forEach(d => { 
+            const a = d.data(); 
+            if (a.isTransferred === true) {
+                advances[a.uid] = (advances[a.uid] || 0) + a.amount; 
+            }
+        });
+
+        for (const [uid, staff] of Object.entries(staffMap)) {
+            const payslipId = `${uid}_${monthStr}`;
+            
+            const existingPs = currentPayrollData.find(p => p.id === payslipId);
+            if (existingPs && existingPs.status === 'Published') {
+                skippedCount++;
+                continue; 
+            }
+
+            const searchIds = [uid];
+            if (staff.authUid) searchIds.push(staff.authUid);
+
+            let mySchedCount = 0; let majorityDays = 26; 
+            searchIds.forEach(sid => { if(schedules[sid]) mySchedCount += schedules[sid].length; });
+
+            let actWorkedDays = 0, totalWorkMs = 0, totalLateMs = 0, lateCount = 0;
+            const satMulti = parseFloat(globalSettings.satMultiplier || 1.0);
+            
+            const toDateObj = (t, dateStr) => {
+                if(!t) return null;
+                if(t.toDate) return t.toDate();
+                if(typeof t === 'string' && t.includes(':')) return new Date(`${dateStr}T${t}:00`);
+                return new Date(t);
+            };
+
+            const myAtt = searchIds.map(sid => attendances[sid] || {}).reduce((acc, curr) => ({...acc, ...curr}), {});
+            const mySchedsList = searchIds.map(sid => schedules[sid] || []).flat().reduce((acc, s) => { acc[s.date] = s; return acc; }, {});
+
+            for (const [dateStr, records] of Object.entries(myAtt)) {
+                if (records.in) {
+                    const isSat = new Date(dateStr).getDay() === 6;
+                    actWorkedDays += isSat ? satMulti : 1;
+
+                    const sched = mySchedsList[dateStr];
+                    if (sched && sched.start) {
+                        const inTime = toDateObj(records.in, dateStr);
+                        const schedStart = toDateObj(sched.start, dateStr);
+                        if (inTime > schedStart) { totalLateMs += (inTime - schedStart); lateCount++; }
+                        if (records.out) {
+                            const outTime = toDateObj(records.out, dateStr);
+                            let workMs = outTime - (inTime < schedStart ? schedStart : inTime);
+                            workMs -= ((sched.breakMins || 60) * 60000); 
+                            if(workMs > 0) totalWorkMs += workMs;
+                        }
+                    }
+                }
+            }
+
+            let paidLeaveCount = 0;
+            leaves.forEach(l => {
+                if (searchIds.includes(l.uid)) {
+                    let curr = new Date(l.startDate); let end = new Date(l.endDate);
+                    while(curr <= end) {
+                        const dStr = curr.toISOString().split('T')[0];
+                        if(dStr >= startDate && dStr <= endDate && l.type !== 'Unpaid Leave' && !myAtt[dStr]?.in) paidLeaveCount++; 
+                        curr.setDate(curr.getDate() + 1);
+                    }
+                }
+            });
+
+            const totalDecimalHrs = totalWorkMs / 3600000;
+            const totalLateMins = Math.floor(totalLateMs / 60000);
+            
+            let totalAdvanceDed = 0;
+            searchIds.forEach(sid => { if(advances[sid]) totalAdvanceDed += advances[sid]; });
+
+            const fullBasic = parseFloat(staff.payroll?.basic) || 0;
+            let grossBasic = 0, autoLateDeduct = 0;
+
+            if (globalSettings.calcMode === 'hourly') {
+                const hrRate = parseFloat(staff.payroll?.hourlyRate) || (fullBasic / 208);
+                grossBasic = hrRate * totalDecimalHrs;
+                if (globalSettings.lateMode === 'times') {
+                    autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
+                }
+            } else {
+                const totalPayableDays = actWorkedDays + paidLeaveCount;
+                const dailyRate = fullBasic / majorityDays;
+                grossBasic = Math.min(dailyRate * totalPayableDays, fullBasic);
+
+                if (globalSettings.lateMode === 'times') {
+                    autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
+                } else {
+                    autoLateDeduct = ((dailyRate / 8) / 60) * totalLateMins;
+                }
+            }
+
+            let epfAmt = 0, eisAmt = 0;
+            if (staff.statutory) {
+                const epfRaw = staff.statutory.epf?.contrib || '';
+                const eisRaw = staff.statutory.eis || '';
+                epfAmt = calculateStatutoryAmount(epfRaw, grossBasic, true);
+                eisAmt = calculateStatutoryAmount(eisRaw, grossBasic, true);
+            }
+
+            const grossTotal = grossBasic; 
+            const totalDed = epfAmt + eisAmt + autoLateDeduct + totalAdvanceDed;
+            const net = grossTotal - totalDed;
+
+            const payload = {
+                uid, month: monthStr,
+                staffName: staff.displayName,
+                staffCode: staff.displayId,
+                icNo: staff.personal?.icNo || '-',
+                epfNo: staff.statutory?.epf?.no || '-',
+                socsoNo: staff.statutory?.socso?.no || '-',
+                department: staff.employment?.dept || '-',
+                bankAcc: staff.payroll?.bank1?.acc || '-',
+                bankName: staff.payroll?.bank1?.name || '-',
+                basic: fullBasic,
+                final_basic: parseFloat(grossBasic.toFixed(2)), 
+                earnings: { commission: 0, ot: 0, allowance: 0, total: parseFloat(grossTotal.toFixed(2)) },
+                deductions: { epf: parseFloat(epfAmt.toFixed(2)), socso: 0, eis: parseFloat(eisAmt.toFixed(2)), tax: 0, late: parseFloat(autoLateDeduct.toFixed(2)), advance: parseFloat(totalAdvanceDed.toFixed(2)), total: parseFloat(totalDed.toFixed(2)) },
+                employer_epf: 0, employer_socso: 0, employer_eis: 0,
+                attendanceStats: {
+                    stdDays: majorityDays, actDays: actWorkedDays,
+                    paidLeave: paidLeaveCount, totalHrs: totalDecimalHrs.toFixed(2),
+                    lateMins: totalLateMins, lateCount: lateCount, 
+                    mode: globalSettings.calcMode
+                },
+                gross: parseFloat(grossTotal.toFixed(2)), net: parseFloat(net.toFixed(2)), 
+                status: 'Draft', 
+                updatedAt: serverTimestamp(),
+                createdAt: existingPs ? existingPs.createdAt : serverTimestamp()
+            };
+
+            batch.set(doc(db, "payslips", payslipId), payload);
+            generatedCount++;
+        }
+
+        if (generatedCount > 0) {
+            await batch.commit();
+            await logAdminAction(db, auth.currentUser, "BATCH_GENERATE_PAYSLIPS", "MULTIPLE", null, { count: generatedCount, month: monthStr });
+        }
+
+        hideLoading();
+        let msg = `Batch generation complete!\nGenerated ${generatedCount} Drafts.`;
+        if(skippedCount > 0) msg += `\nSkipped ${skippedCount} already Published payslips.`;
+        alert(msg); 
+        
+        window.loadPayroll();
+
+    } catch (e) {
+        hideLoading();
+        console.error(e);
+        alert("Batch Generation Failed: " + e.message);
+    }
+};
+
+
+// ==========================================
+// 5. QUICK NAVIGATION (LEFT/RIGHT ARROWS)
+// ==========================================
+window.currentViewingPayslipId = null;
+
+window.navigatePayslip = function(direction) {
+    if (!window.currentViewingPayslipId || !currentPayrollData || currentPayrollData.length === 0) return;
+
+    const currentIndex = currentPayrollData.findIndex(p => p.id === window.currentViewingPayslipId);
+    if (currentIndex === -1) return;
+
+    let newIndex = currentIndex + direction;
+    if (newIndex < 0) newIndex = currentPayrollData.length - 1;
+    if (newIndex >= currentPayrollData.length) newIndex = 0;
+
+    const nextPayslip = currentPayrollData[newIndex];
+    
+    if (nextPayslip) {
+        const modalBody = document.querySelector('#payslipFormModal .modal-body');
+        if (modalBody) {
+            modalBody.style.opacity = '0.3';
+            setTimeout(() => { modalBody.style.opacity = '1'; }, 150);
+        }
+        window.openEditModal(nextPayslip.id);
+    }
+};
+
+document.addEventListener('keydown', (e) => {
+    const formModalEl = document.getElementById('payslipFormModal');
+    
+    if (formModalEl && formModalEl.classList.contains('show') && window.currentViewingPayslipId) {
+        
+        if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
+            if (e.altKey && e.key === 'ArrowLeft') window.navigatePayslip(-1);
+            if (e.altKey && e.key === 'ArrowRight') window.navigatePayslip(1);
+            return; 
+        }
+
+        if (e.key === 'ArrowLeft') {
+            e.preventDefault(); 
+            window.navigatePayslip(-1);
+        } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            window.navigatePayslip(1);
+        }
+    }
+});

@@ -1,19 +1,19 @@
 // live-tracking-app.js
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, query, where, onSnapshot, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+// 🟢 引入 RTDB
+import { getDatabase, ref, onValue, off } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 import { firebaseConfig } from "./firebase-config.js";
-
-// 🟢 导入通用 UI 提示和加载函数
 import { showLoading, hideLoading, showStatusAlert } from "./utils.js"; 
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const rtdb = getDatabase(app); 
 const auth = getAuth(app);
 
-// ⚠️ Store Location 默认配置 (如需动态可改为从 Firestore 读取)
 const STORE_LOCATION = { lat: 4.5975, lng: 101.0901 }; 
 const STORE_RADIUS_METERS = 500; 
 
@@ -24,29 +24,48 @@ let activeStaffMap = {};
 let usersMap = {}; 
 
 let lastKnownPosition = null;
-let unsubscribeLastLoc = null;
+let activeRTDBListener = null;
 
-// 初始化地图（该函数在 Google Maps API 加载后会被调用）
-window.initMap = function() {
-    console.log("Google Maps API loaded.");
-};
-
+// ==========================================
+// 1. Google Maps 动态加载机制 (防止 initMap 报错)
+// ==========================================
 export async function initLiveTrackingApp() {
-    document.getElementById('loadingText').innerText = "Initializing Map...";
-    await fetchUsers(); 
+    showLoading();
+    document.getElementById('loadingText').innerText = "Initializing Tracking...";
     
+    await fetchUsers(); 
+
+    // 如果 HTML 中还没挂载 initMap，就在这里接管
+    if (!window.initMap) {
+        window.initMap = function() {
+            setupMapAndUI();
+        };
+    } else {
+        // 如果 API 已经加载完了
+        if (typeof google !== 'undefined' && google.maps) {
+            setupMapAndUI();
+        } else {
+            // 重写占位的 initMap
+            window.initMap = function() {
+                setupMapAndUI();
+            };
+        }
+    }
+}
+
+function setupMapAndUI() {
     if(typeof google === 'undefined' || !google.maps) {
         hideLoading();
-        showStatusAlert('statusMessage', 'Google Maps failed to load. Please check your internet connection.', false);
+        showStatusAlert('statusMessage', 'Google Maps failed to load. Please check your key.', false);
         return;
     }
 
-    // 初始化 Google Map
     map = new google.maps.Map(document.getElementById("map"), {
         center: STORE_LOCATION,
         zoom: 12,
         disableDefaultUI: false,
         zoomControl: true,
+        styles: [ { "featureType": "poi", "stylers": [{ "visibility": "off" }] } ]
     });
 
     directionsService = new google.maps.DirectionsService();
@@ -54,41 +73,25 @@ export async function initLiveTrackingApp() {
         map: map,
         suppressMarkers: true,
         preserveViewport: true,
-        polylineOptions: {
-            strokeColor: "#2563eb",
-            strokeOpacity: 0.8,
-            strokeWeight: 6
-        }
+        polylineOptions: { strokeColor: "#2563eb", strokeOpacity: 0.8, strokeWeight: 6 }
     });
 
     storeCircle = new google.maps.Circle({
         strokeColor: "#F59E0B", strokeOpacity: 0.8, strokeWeight: 2,
         fillColor: "#F59E0B", fillOpacity: 0.1,
-        map: map,
-        center: STORE_LOCATION,
-        radius: STORE_RADIUS_METERS,
+        map: map, center: STORE_LOCATION, radius: STORE_RADIUS_METERS,
     });
 
     const datePicker = document.getElementById('datePicker');
-    const now = new Date();
-    const localDateString = now.toLocaleDateString('en-CA'); 
-    datePicker.value = localDateString;
+    datePicker.value = new Date().toLocaleDateString('en-CA');
     
-    // 首次加载列表
     loadDriverListForSelectedDate();
 
-    // 绑定日期切换事件
     datePicker.addEventListener('change', () => {
         loadDriverListForSelectedDate();
-        
-        // 清空当前视图
-        if(currentMarker) currentMarker.setMap(null);
-        if(directionsRenderer) directionsRenderer.setDirections({routes: []});
-        document.getElementById('statusOverlay').classList.add('d-none');
-        window.selectedUid = null;
+        resetMapView();
     });
 
-    // 绑定搜索事件
     document.getElementById('searchInput').addEventListener('keyup', (e) => {
         const term = e.target.value.toLowerCase();
         document.querySelectorAll('.user-item').forEach(item => {
@@ -96,191 +99,162 @@ export async function initLiveTrackingApp() {
         });
     });
 
-    if (typeof lucide !== 'undefined') lucide.createIcons();
-    
     hideLoading();
     document.getElementById('mainContainer').classList.remove('d-none');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
+function resetMapView() {
+    if(activeRTDBListener) { off(activeRTDBListener); activeRTDBListener = null; }
+    if(currentMarker) currentMarker.setMap(null);
+    if(directionsRenderer) directionsRenderer.setDirections({routes: []});
+    document.getElementById('statusOverlay').classList.add('d-none');
+    window.selectedUid = null;
+    lastKnownPosition = null;
+}
+
+// ==========================================
+// 2. 数据获取
+// ==========================================
 async function fetchUsers() {
     try {
         const snap = await getDocs(collection(db, "users"));
         snap.forEach(doc => {
             const d = doc.data();
-            const key = d.authUid || doc.id;
-            const name = d.personal?.name || d.name || "Unknown Staff";
-            usersMap[key] = name;
+            usersMap[d.authUid || doc.id] = d.personal?.name || d.name || "Unknown Staff";
         });
-    } catch (e) { 
-        console.error(e); 
-    }
+    } catch (e) { console.error(e); }
 }
 
-// 🟢 根据所选日期加载侧边栏列表
 async function loadDriverListForSelectedDate() {
-    if(unsubscribeLastLoc) {
-        unsubscribeLastLoc();
-        unsubscribeLastLoc = null;
-    }
+    if(activeRTDBListener) { off(activeRTDBListener); activeRTDBListener = null; }
 
     const dateStr = document.getElementById('datePicker').value;
-    const now = new Date();
-    const todayStr = now.toLocaleDateString('en-CA');
+    const todayStr = new Date().toLocaleDateString('en-CA');
     const listDiv = document.getElementById('driverList');
-    
-    listDiv.innerHTML = '<div class="text-center text-muted small py-4">Loading...</div>';
+    listDiv.innerHTML = '<div class="text-center text-muted small py-4">Syncing...</div>';
 
     if (dateStr === todayStr) {
-        // 如果选的是今天：使用实时监听
-        unsubscribeLastLoc = onSnapshot(collection(db, "user_last_locations"), (snapshot) => {
+        // 🟢 今天：监听 RTDB
+        const liveRef = ref(rtdb, 'live_locations');
+        activeRTDBListener = onValue(liveRef, (snapshot) => {
+            const data = snapshot.val();
+            if (!data) {
+                listDiv.innerHTML = '<div class="text-center text-muted small py-4">No active drivers today.</div>';
+                return;
+            }
+
             let html = '';
-            let hasData = false;
-
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                if(!data.timestamp) return;
-
-                const lastUpdate = data.timestamp.toDate();
-                const logDateStr = lastUpdate.toLocaleDateString('en-CA');
-
-                // 关键过滤：只显示今天有位置更新的员工
-                if (logDateStr !== todayStr) return;
-
-                hasData = true;
-                const uid = doc.id;
+            Object.entries(data).forEach(([uid, val]) => {
                 const realName = usersMap[uid] || "Staff";
-                activeStaffMap[uid] = data;
-
-                if (window.selectedUid === uid) {
-                    lastKnownPosition = { lat: parseFloat(data.lat), lng: parseFloat(data.lng) };
-                }
-
-                const isOnline = (now - lastUpdate) < 1000 * 60 * 15; 
+                const lastUpdate = new Date(val.lastUpdate);
+                
+                // 15分钟内算在线
+                const isOnline = (new Date() - lastUpdate) < 1000 * 60 * 15; 
                 const statusBadge = isOnline 
                     ? '<div class="d-flex align-items-center gap-1"><span class="status-dot dot-online"></span> <small class="text-success" style="font-size:10px">Active</small></div>'
                     : '<span class="badge bg-secondary bg-opacity-10 text-secondary border" style="font-size:10px">Offline</span>';
 
                 html += buildUserListItem(uid, realName, lastUpdate.toLocaleTimeString(), statusBadge);
             });
-
-            listDiv.innerHTML = hasData ? html : '<div class="text-center text-muted small py-4">No active drivers today.</div>';
+            listDiv.innerHTML = html;
             if (typeof lucide !== 'undefined') lucide.createIcons();
         });
-
     } else {
-        // 如果选的是历史日期：单次查询
+        // 🟢 历史：解析 tracking_batches 
         try {
-            const logsSnap = await getDocs(query(
-                collection(db, "tracking_logs"), 
-                where("date", "==", dateStr)
-            ));
+            const snap = await getDocs(query(collection(db, "tracking_batches"), where("date", "==", dateStr)));
+            const users = new Set();
+            snap.forEach(d => users.add(d.data().uid));
 
-            // 提取当天产生过轨迹的唯一用户 ID
-            const usersOnThatDay = new Set();
-            logsSnap.forEach(d => {
-                usersOnThatDay.add(d.data().uid);
-            });
-
-            if (usersOnThatDay.size === 0) {
-                listDiv.innerHTML = '<div class="text-center text-muted small py-4">No tracking records for this date.</div>';
+            if (users.size === 0) {
+                listDiv.innerHTML = '<div class="text-center text-muted small py-4">No tracking records.</div>';
                 return;
             }
 
             let html = '';
-            usersOnThatDay.forEach(uid => {
-                const realName = usersMap[uid] || "Staff";
-                const statusBadge = '<span class="badge bg-light text-secondary border" style="font-size:10px">History</span>';
-                html += buildUserListItem(uid, realName, "Archived Data", statusBadge);
+            users.forEach(uid => {
+                html += buildUserListItem(uid, usersMap[uid] || "Staff", "Archived Data", '<span class="badge bg-light text-secondary border" style="font-size:10px">History</span>');
             });
-
             listDiv.innerHTML = html;
             if (typeof lucide !== 'undefined') lucide.createIcons();
-
         } catch(e) {
-            console.error("Error loading history list:", e);
             listDiv.innerHTML = '<div class="text-center text-danger small py-4">Error loading data.</div>';
         }
     }
 }
 
-function buildUserListItem(uid, realName, timeText, statusBadge) {
-    return `
-        <div class="user-item p-3" id="user-${uid}" data-name="${realName}" onclick="window.viewStaffRoute('${uid}', '${realName}')">
-            <div class="d-flex align-items-center gap-3">
-                <div class="avatar-placeholder bg-primary bg-opacity-10 text-primary small">${realName.substring(0, 2).toUpperCase()}</div>
-                <div class="flex-grow-1 overflow-hidden">
-                    <div class="fw-bold text-dark text-truncate">${realName}</div>
-                    <div class="small text-muted"><i data-lucide="clock" class="size-3"></i> ${timeText}</div>
-                </div>
-                ${statusBadge}
+function buildUserListItem(uid, realName, timeText, badge) {
+    return `<div class="user-item p-3" id="user-${uid}" data-name="${realName}" onclick="window.viewStaffRoute('${uid}', '${realName}')">
+        <div class="d-flex align-items-center gap-3">
+            <div class="avatar-placeholder bg-primary bg-opacity-10 text-primary small">${realName.substring(0, 2).toUpperCase()}</div>
+            <div class="flex-grow-1 overflow-hidden">
+                <div class="fw-bold text-dark text-truncate">${realName}</div>
+                <div class="small text-muted"><i data-lucide="clock" class="size-3"></i> ${timeText}</div>
             </div>
-        </div>`;
+            ${badge}
+        </div>
+    </div>`;
 }
 
-// 暴露到 window
+// ==========================================
+// 3. 路线与标点展示
+// ==========================================
 window.viewStaffRoute = async function(uid, realName) {
+    resetMapView();
     window.selectedUid = uid;
     document.querySelectorAll('.user-item').forEach(el => el.classList.remove('active'));
     document.getElementById(`user-${uid}`)?.classList.add('active');
     document.getElementById('statusOverlay').classList.remove('d-none');
     document.getElementById('overlayName').innerText = realName;
 
-    if(currentMarker) currentMarker.setMap(null);
-    if(directionsRenderer) directionsRenderer.setDirections({routes: []});
-    lastKnownPosition = null; 
-
     const dateStr = document.getElementById('datePicker').value;
+    const todayStr = new Date().toLocaleDateString('en-CA');
 
-    const q = query(
-        collection(db, "tracking_logs"), 
-        where("uid", "==", uid),
-        where("date", "==", dateStr),
-        orderBy("timestamp", "asc")
-    );
-
-    try {
-        const logsSnap = await getDocs(q);
-        const logs = [];
-        logsSnap.forEach(d => logs.push(d.data()));
-        
-        const now = new Date();
-        const todayStr = now.toLocaleDateString('en-CA');
-
-        if (logs.length > 0) {
-            drawRoute(logs, realName); 
-        } else {
-            if (dateStr === todayStr && activeStaffMap[uid]) {
-                const lastPos = activeStaffMap[uid];
-                const lastUpdateDate = lastPos.timestamp ? lastPos.timestamp.toDate().toLocaleDateString('en-CA') : '';
-                if (lastUpdateDate === todayStr) {
-                     updateCarMarker(lastPos, realName);
-                } else {
-                    showNoRecordState();
-                }
-            } else {
-                showNoRecordState();
+    if (dateStr === todayStr) {
+        // 🟢 RTDB 实时跟随模式
+        const singleRef = ref(rtdb, `live_locations/${uid}`);
+        onValue(singleRef, (snapshot) => {
+            const val = snapshot.val();
+            if (val && window.selectedUid === uid) {
+                updateCarMarker(val, realName);
             }
+        });
+    }
+
+    // 🟢 加载历史轨迹批次 (tracking_batches)
+    try {
+        const snap = await getDocs(query(collection(db, "tracking_batches"), where("uid", "==", uid), where("date", "==", dateStr)));
+        
+        let allPoints = [];
+        const batches = snap.docs.map(d => d.data());
+        // 按照上传时间排序，确保路线是顺的
+        batches.sort((a, b) => (a.uploadedAt?.seconds || 0) - (b.uploadedAt?.seconds || 0));
+
+        batches.forEach(b => {
+            if (b.points) {
+                b.points.forEach(p => allPoints.push({ lat: p.lat, lng: p.lng, timestamp: p.ts }));
+            }
+        });
+
+        if (allPoints.length > 0) {
+            drawRoute(allPoints, realName);
+        } else if (dateStr !== todayStr) {
+            showNoRecordState();
         }
 
         setTimeout(() => { if(lastKnownPosition) window.focusOnDriver(); }, 600);
-
-    } catch (e) {
-        console.error("Error fetching logs:", e);
-    }
+    } catch (e) { console.error(e); }
 };
 
 function showNoRecordState() {
     document.getElementById('overlaySpeed').innerText = "0";
-    document.getElementById('overlayTime').innerText = "No Tracking Data";
+    document.getElementById('overlayTime').innerText = "No Data";
     document.getElementById('overlayStatusTag').innerText = "No Record";
     document.getElementById('overlayStatusTag').className = "badge bg-secondary";
-    if(currentMarker) currentMarker.setMap(null);
-    if(directionsRenderer) directionsRenderer.setDirections({routes: []});
-    lastKnownPosition = null;
 }
 
 function drawRoute(logs, realName) {
-    if(currentMarker) currentMarker.setMap(null);
     if(directionsRenderer) directionsRenderer.setDirections({routes: []});
     
     const filteredLogs = [];
@@ -306,7 +280,6 @@ function drawRoute(logs, realName) {
     });
 
     if (filteredLogs.length < 2) {
-        updateCarMarker(logs[logs.length - 1], realName);
         return; 
     }
 
@@ -322,9 +295,7 @@ function drawRoute(logs, realName) {
             waypoints.push({ location: intermediatePoints[i].location, stopover: false });
         }
     } else {
-        intermediatePoints.forEach(pt => {
-            waypoints.push({ location: pt.location, stopover: false });
-        });
+        intermediatePoints.forEach(pt => waypoints.push({ location: pt.location, stopover: false }));
     }
 
     directionsService.route({
@@ -335,10 +306,18 @@ function drawRoute(logs, realName) {
     }, (response, status) => {
         if (status === "OK") {
             directionsRenderer.setDirections(response);
-            updateStatusCard(logs[logs.length - 1]);
-            updateCarMarker(logs[logs.length - 1], realName);
-        } else {
-            console.error("Directions request failed due to " + status);
+            
+            // 历史模式下，如果当天没有 RTDB 实时更新，则用最后一个批次点的信息
+            const isToday = document.getElementById('datePicker').value === new Date().toLocaleDateString('en-CA');
+            if(!isToday) {
+               updateCarMarker({
+                   lat: logs[logs.length-1].lat, 
+                   lng: logs[logs.length-1].lng,
+                   lastUpdate: logs[logs.length-1].timestamp,
+                   speed: 0
+               }, realName);
+               updateStatusCard(logs[logs.length - 1]);
+            }
         }
     });
 }
@@ -356,39 +335,35 @@ function updateStatusCard(lastLog) {
     }
 }
 
-function updateCarMarker(lastLog, realName) {
-    const pos = { 
-        lat: parseFloat(lastLog.lat), 
-        lng: parseFloat(lastLog.lng) 
-    };
+function updateCarMarker(data, realName) {
+    const pos = { lat: parseFloat(data.lat), lng: parseFloat(data.lng) };
     lastKnownPosition = pos; 
     
-    if(currentMarker) currentMarker.setMap(null);
-
-    currentMarker = new google.maps.Marker({
-        position: pos, 
-        map: map, 
-        title: realName,
-        icon: { 
-            path: google.maps.SymbolPath.CIRCLE, 
-            scale: 7, 
-            fillColor: "#2563eb", 
-            fillOpacity: 1, 
-            strokeWeight: 2, 
-            strokeColor: "white" 
-        }
-    });
+    if(!currentMarker) {
+        currentMarker = new google.maps.Marker({
+            position: pos, map: map, title: realName,
+            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: "#2563eb", fillOpacity: 1, strokeWeight: 2, strokeColor: "white" }
+        });
+    } else {
+        currentMarker.setPosition(pos);
+    }
     
-    map.panTo(pos);
-    map.setZoom(16);
-
-    document.getElementById('overlaySpeed').innerText = (lastLog.speed * 3.6).toFixed(1);
-    document.getElementById('overlayTime').innerText = lastLog.timestamp ? lastLog.timestamp.toDate().toLocaleTimeString() : '-';
+    document.getElementById('overlaySpeed').innerText = ((data.speed || 0) * 3.6).toFixed(1);
+    
+    if (data.lastUpdate) {
+        // 如果是 RTDB 的毫秒级时间戳或者是 Batch 的 ISO 字符串
+        const t = new Date(data.lastUpdate);
+        document.getElementById('overlayTime').innerText = t.toLocaleTimeString();
+    } else {
+        document.getElementById('overlayTime').innerText = '-';
+    }
+    
+    updateStatusCard(data);
 }
 
 window.focusOnDriver = function() {
     if (lastKnownPosition && lastKnownPosition.lat && map) { 
-        map.setCenter(lastKnownPosition); 
+        map.panTo(lastKnownPosition); 
         map.setZoom(17); 
     }
 }
