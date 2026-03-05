@@ -3,11 +3,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { getFirestore, collection, query, where, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, serverTimestamp, getDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-// 🟢 导入 utils 所有公用方法
 import { formatMoney, formatTime, calculateStatutoryAmount, msToHM, logAdminAction, showLoading, hideLoading, showStatusAlert } from './utils.js';
 import { requireAdmin } from './auth-guard.js';
 
-// 仅保留 formatMoney 因为部分内联 JS(如果存在的话) 可能需要
 window.formatMoney = formatMoney;
 
 window.onerror = function(msg) {
@@ -24,9 +22,12 @@ let staffMap = {};
 let formModal, printModal, advancesModal, settingsModal;
 let globalSettings = { calcMode: 'daily', satMultiplier: 1.0, lateMode: 'minutes', lateFixedAmount: 10 }; 
 
+// ==========================================
+// INITIALIZATION
+// ==========================================
 requireAdmin(app, db, async (user) => {
     try {
-        showLoading(); // 🟢 使用公用 Loading
+        showLoading(); 
         
         if (typeof bootstrap !== 'undefined') {
             formModal = new bootstrap.Modal(document.getElementById('payslipFormModal'));
@@ -48,9 +49,9 @@ requireAdmin(app, db, async (user) => {
         document.getElementById('mainContainer').classList.remove('d-none');
     } catch (e) {
         console.error("Init Error:", e);
-        showStatusAlert('statusMessage', 'Failed to initialize Payroll system.', false); // 🟢 使用 Toast
+        showStatusAlert('statusMessage', 'Failed to initialize Payroll system.', false); 
     } finally {
-        hideLoading(); // 🟢
+        hideLoading(); 
         lucide.createIcons();
     }
 });
@@ -100,7 +101,7 @@ window.saveSettings = async () => {
         lateFixedAmount: parseFloat(document.getElementById('configLateAmount').value) || 0 
     };
     
-    showLoading(); // 🟢
+    showLoading();
     try {
         const oldSnap = await getDoc(doc(db, "settings", "payroll_config"));
         await setDoc(doc(db, "settings", "payroll_config"), newConfig, { merge: true });
@@ -110,7 +111,7 @@ window.saveSettings = async () => {
         globalSettings = { ...globalSettings, ...newConfig };
         settingsModal.hide();
         hideLoading();
-        showStatusAlert('statusMessage', "Settings Saved! Please re-save Drafts.", true); // 🟢
+        showStatusAlert('statusMessage', "Settings Saved! Please re-save Drafts.", true); 
     } catch (e) { 
         hideLoading();
         showStatusAlert('statusMessage', "Error saving settings: " + e.message, false); 
@@ -133,6 +134,7 @@ function listenToAdvances() {
 window.openAdvancesModal = async () => {
     const listDiv = document.getElementById('advancesList');
     listDiv.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">Loading...</td></tr>';
+    document.getElementById('advanceModalAlert').classList.add('d-none');
     advancesModal.show();
 
     try {
@@ -145,36 +147,45 @@ window.openAdvancesModal = async () => {
 
             count++;
             let actionHtml = "";
-            let statusBadge = `<span class="badge bg-warning text-dark px-2 py-1">Pending</span>`;
+            let statusBadge = "";
 
             if (data.status === 'Pending') {
+                statusBadge = `<span class="badge bg-warning text-dark px-2 py-1">Pending</span>`;
                 actionHtml = `
                     <button class="btn btn-sm btn-success fw-bold px-3 py-1 me-1 shadow-sm" onclick="window.updateAdvanceStatus('${d.id}', 'Approved')">Approve</button>
                     <button class="btn btn-sm btn-outline-danger fw-bold px-3 py-1" onclick="window.updateAdvanceStatus('${d.id}', 'Rejected')">Reject</button>
                 `;
             } else if (data.status === 'Approved') {
-                statusBadge = `<span class="badge bg-success px-2 py-1"><i data-lucide="check" class="size-3 me-1"></i> Approved</span>`;
-                actionHtml = `<button class="btn btn-sm btn-light border text-muted py-1" onclick="window.updateAdvanceStatus('${d.id}', 'Rejected')">Revoke</button>`;
+                if (data.isTransferred) {
+                    statusBadge = `<span class="badge bg-success px-2 py-1"><i data-lucide="check-double" class="size-3 me-1"></i> Transferred</span>`;
+                    actionHtml = `<span class="text-success small fw-bold"><i data-lucide="check-circle" class="size-3"></i> Ready for Deduction</span>`;
+                } else {
+                    statusBadge = `<span class="badge bg-info text-dark px-2 py-1"><i data-lucide="clock" class="size-3 me-1"></i> Awaiting Transfer</span>`;
+                    actionHtml = `
+                        <button class="btn btn-sm btn-primary fw-bold px-3 py-1 me-1 shadow-sm" onclick="window.markAdvanceTransferred('${d.id}')">Mark Transferred</button>
+                        <button class="btn btn-sm btn-light border text-danger py-1" onclick="window.updateAdvanceStatus('${d.id}', 'Rejected')">Revoke</button>
+                    `;
+                }
             }
 
             html += `
                 <tr class="align-middle">
                     <td class="ps-4"><div class="fw-bold text-dark">${data.empName || '-'}</div><small class="text-muted">${data.empCode || ''}</small></td>
                     <td class="text-danger fw-bold fs-6">RM ${formatMoney(data.amount)}</td>
-                    <td class="text-secondary">${data.reason || '-'}</td>
+                    <td class="text-secondary" style="max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${data.reason || '-'}">${data.reason || '-'}</td>
                     <td>${statusBadge}</td>
                     <td class="text-end pe-4">${actionHtml}</td>
                 </tr>
             `;
         });
         
-        listDiv.innerHTML = count > 0 ? html : '<tr><td colspan="5" class="text-center py-5 text-muted fw-bold">No pending requests found.</td></tr>';
+        listDiv.innerHTML = count > 0 ? html : '<tr><td colspan="5" class="text-center py-5 text-muted fw-bold">No pending/active requests found.</td></tr>';
         lucide.createIcons();
     } catch (e) { console.error(e); }
 };
 
 window.updateAdvanceStatus = async (id, status) => {
-    showLoading(); // 🟢
+    showLoading(); 
     try {
         const docRef = doc(db, "salary_advances", id);
         const oldSnap = await getDoc(docRef);
@@ -185,13 +196,42 @@ window.updateAdvanceStatus = async (id, status) => {
         await logAdminAction(db, auth.currentUser, "APPROVE_ADVANCE", oldData.uid, { status: oldData.status }, { status: status, amount: oldData.amount });
 
         hideLoading();
-        showStatusAlert('statusMessage', `Advance marked as ${status}`, true); // 🟢
+        showModalAlert(`Request successfully marked as ${status}.`, 'success');
         window.openAdvancesModal(); 
     } catch (e) { 
         hideLoading();
-        showStatusAlert('statusMessage', "Error: " + e.message, false); 
+        showModalAlert("Error: " + e.message, 'danger'); 
     }
 };
+
+window.markAdvanceTransferred = async (id) => {
+    if(!confirm("Are you sure you have transferred the funds to the employee's bank account?\n\nOnce marked as transferred, it will be automatically deducted from their next payslip.")) return;
+    
+    showLoading();
+    try {
+        const docRef = doc(db, "salary_advances", id);
+        await updateDoc(docRef, { 
+            isTransferred: true, 
+            transferredAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+        
+        hideLoading();
+        showModalAlert('Funds marked as transferred successfully!', 'success');
+        window.openAdvancesModal(); 
+    } catch (e) {
+        hideLoading();
+        showModalAlert("Error: " + e.message, 'danger'); 
+    }
+};
+
+function showModalAlert(msg, type) {
+    const alertBox = document.getElementById('advanceModalAlert');
+    alertBox.className = `alert alert-${type} m-3 small fw-bold text-center`;
+    alertBox.innerText = msg;
+    alertBox.classList.remove('d-none');
+    setTimeout(() => { alertBox.classList.add('d-none'); }, 4000);
+}
 
 // ==========================================
 // 3. CORE PAYROLL LOGIC
@@ -204,7 +244,7 @@ async function loadStaffData() {
 
     snap.forEach(doc => {
         const s = doc.data();
-        if (s.status === 'disabled' ||  s.role === 'manager') return;
+        if (s.status === 'disabled' || s.role === 'manager') return;
         
         const personal = s.personal || {}; 
         const displayName = personal.name || s.name || 'Unknown Staff';
@@ -237,10 +277,14 @@ window.autoFillStaffData = async () => {
             const targetIds = [String(uid)];
             if (staff.authUid) targetIds.push(String(staff.authUid));
             
-            const advSnap = await getDocs(query(collection(db, "salary_advances"), where("uid", "in", targetIds), where("status", "==", "Approved")));
+            const advSnap = await getDocs(query(collection(db, "salary_advances"), where("uid", "in", targetIds), where("status", "==", "Approved"), where("isDeducted", "==", false)));
             advSnap.forEach(d => {
                 const adv = d.data();
-                if (!adv.isDeducted) { totalAdv += adv.amount; advIds.push(d.id); }
+                // 🟢 严格校验：只有被标记为 isTransferred = true 的才扣钱
+                if (adv.isTransferred === true) {
+                    totalAdv += adv.amount; 
+                    advIds.push(d.id); 
+                }
             });
         } catch (e) { console.error("Error fetching advances", e); }
     }
@@ -252,10 +296,10 @@ window.autoFillStaffData = async () => {
         window.recalcStatutoryAndTotals(); 
     }
 
-    showLoading(); // 🟢
+    showLoading(); 
     await calculateAttendanceStats(uid, monthStr);
     window.calcTotals(true); 
-    hideLoading(); // 🟢
+    hideLoading(); 
 };
 
 window.recalcStatutoryAndTotals = () => {
@@ -438,13 +482,12 @@ window.calcTotals = (autoUpdateStatutory = false) => {
     document.getElementById('dispNet').innerText = "RM " + formatMoney(grossTotal - totalDed);
 };
 
-// 🟢 SECURE: Save Payslip (Auto Overwrite via Deterministic ID + Logging)
 window.savePayslipForm = async () => {
     const uid = document.getElementById('staffSelect').value;
     const month = document.getElementById('formMonthPicker').value;
-    if(!uid || !month) return showStatusAlert('statusMessage', "Select staff and month", false); // 🟢
+    if(!uid || !month) return showStatusAlert('statusMessage', "Select staff and month", false);
 
-    showLoading(); // 🟢
+    showLoading();
     const staff = staffMap[uid];
     const getVal = (id) => parseFloat(document.getElementById(id).value) || 0;
     const status = document.getElementById('formStatus').value;
@@ -507,7 +550,6 @@ window.savePayslipForm = async () => {
 
         await setDoc(psRef, payload);
 
-        // Advance deduction
         if (status === 'Published' && getVal('inpAdvance') > 0) {
             const rawIds = document.getElementById('pendingAdvanceIds').value;
             if (rawIds) {
@@ -524,7 +566,7 @@ window.savePayslipForm = async () => {
 
         formModal.hide();
         hideLoading();
-        showStatusAlert('statusMessage', 'Payslip saved successfully.', true); // 🟢
+        showStatusAlert('statusMessage', 'Payslip saved successfully.', true); 
         window.loadPayroll();
     } catch(e) { 
         hideLoading();
@@ -535,7 +577,7 @@ window.savePayslipForm = async () => {
 window.loadPayroll = async () => {
     const month = document.getElementById('globalMonthPicker').value;
     if(!month) return;
-    showLoading(); // 🟢
+    showLoading(); 
     const listDiv = document.getElementById('payrollList');
     listDiv.innerHTML = '';
     
@@ -559,7 +601,6 @@ window.loadPayroll = async () => {
             const displayName = staffMap[d.uid] ? staffMap[d.uid].displayName : d.staffName;
             const modeText = d.attendanceStats?.mode === 'hourly' ? '⌚ Hourly' : '📅 Daily';
             
-            // 替换 window.loadPayroll 里面的这一段:
             const row = document.createElement('div');
             row.className = `row align-items-center py-3 border-bottom px-3 bg-white status-${d.status} hover-bg-light`;
             row.innerHTML = `
@@ -573,8 +614,7 @@ window.loadPayroll = async () => {
                 <div class="col-1"><span class="badge ${d.status === 'Published' ? 'bg-success' : 'bg-warning text-dark'} px-2 py-1">${d.status}</span></div>
                 <div class="col-2 text-end">
                     <button class="btn btn-sm btn-light border me-1" onclick="window.openEditModal('${d.id}')" title="Edit"><i data-lucide="edit-2" class="size-4"></i></button>
-                    <button class="btn btn-sm btn-outline-dark me-1" onclick="window.viewPayslip('${d.id}')" title="Print/View"><i data-lucide="printer" class="size-4"></i></button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="window.deletePayslip('${d.id}')" title="Delete"><i data-lucide="trash-2" class="size-4"></i></button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="window.viewPayslip('${d.id}')" title="Print/View"><i data-lucide="printer" class="size-4"></i></button>
                 </div>
             `;
             listDiv.appendChild(row);
@@ -590,72 +630,7 @@ window.loadPayroll = async () => {
         hideLoading(); 
     }
 };
-// 🟢 SECURE: Delete Payslip (With multiple confirmations for Published items)
-window.deletePayslip = async (id) => {
-    const d = currentPayrollData.find(x => x.id === id);
-    if (!d) return;
 
-    // 1. 验证与多重确认机制
-    if (d.status === 'Published') {
-        const confirm1 = confirm(`⚠️ WARNING: This payslip for ${d.staffName} is already PUBLISHED.\nDeleting it will remove the official record and revert any deducted advances.\n\nAre you sure you want to proceed?`);
-        if (!confirm1) return;
-        
-        const confirm2 = prompt(`To confirm deletion of this PUBLISHED payslip, please type the word "DELETE" below:`);
-        if (confirm2 !== "DELETE") {
-            alert("Action cancelled. You did not type 'DELETE'.");
-            return;
-        }
-    } else {
-        // 对于 Draft 状态，只需要普通的确认
-        if (!confirm(`Are you sure you want to delete the draft payslip for ${d.staffName}?`)) return;
-    }
-
-    showLoading(); // 🟢
-
-    try {
-        // 2. 如果是已发布的工资单且包含预支扣款 (Advance)，需要将预支记录退回到 "未扣除" 状态
-        if (d.status === 'Published' && d.deductions?.advance > 0) {
-            const targetIds = [d.uid];
-            if (staffMap[d.uid]?.authUid) targetIds.push(staffMap[d.uid].authUid);
-            
-            // 找出这个月被扣除的 advance
-            const advSnap = await getDocs(query(collection(db, "salary_advances"), 
-                where("uid", "in", targetIds), 
-                where("deductedInMonth", "==", d.month)
-            ));
-            
-            if (!advSnap.empty) {
-                const batch = writeBatch(db);
-                advSnap.forEach(advDoc => {
-                    batch.update(advDoc.ref, { 
-                        isDeducted: false, 
-                        deductedInMonth: null, 
-                        deductedAt: null,
-                        updatedAt: serverTimestamp()
-                    });
-                });
-                await batch.commit();
-            }
-        }
-
-        // 3. 删除 Payslip 记录
-        await deleteDoc(doc(db, "payslips", id));
-
-        // 4. 记录管理员操作日志
-        await logAdminAction(db, auth.currentUser, "DELETE_PAYSLIP", d.uid, d, null);
-
-        hideLoading();
-        showStatusAlert('statusMessage', 'Payslip deleted successfully.', true); // 🟢
-        
-        // 重新加载列表
-        window.loadPayroll();
-
-    } catch (e) {
-        hideLoading();
-        console.error("Delete Error:", e);
-        showStatusAlert('statusMessage', "Delete Failed: " + e.message, false);
-    }
-};
 window.openCreateModal = () => {
     document.getElementById('payslipForm').reset();
     document.getElementById('editDocId').value = "";
@@ -753,11 +728,7 @@ window.viewPayslip = (id) => {
     if(d.deductions.late > 0) extraDedRows += `<tr><td></td><td></td><td style="padding-left: 20px; color:red;">LATE DEDUCTION</td><td style="text-align: right; color:red;">${formatMoney(d.deductions.late)}</td></tr>`;
     if(d.deductions.advance > 0) extraDedRows += `<tr><td></td><td></td><td style="padding-left: 20px; color:red;">SALARY ADVANCE</td><td style="text-align: right; color:red;">${formatMoney(d.deductions.advance)}</td></tr>`;
 
-    // 获取当前打印日期
-    const today = new Date();
-    const printDate = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
     const stats = d.attendanceStats || { actDays:0, schDays:0, paidLeave:0 };
-
     const html = `
         <div class="payslip-preview bg-white shadow-sm border rounded">
             <div class="payslip-header border-bottom border-dark pb-3 mb-3">
@@ -776,7 +747,8 @@ window.viewPayslip = (id) => {
                     <div class="info-row"><span>IC Number</span> <span>: ${d.icNo}</span></div>
                     <div class="info-row"><span>EPF Number</span> <span>: ${d.epfNo}</span></div>
                     <div class="info-row"><span>SOCSO Number</span> <span>: ${d.socsoNo}</span></div>
-<div class="info-row mt-1 pt-1 border-top border-secondary border-opacity-25 text-primary fw-bold"><span>Print Date</span> <span>: ${printDate}</span></div>                </div>
+                    <div class="info-row mt-1 pt-1 border-top border-secondary border-opacity-25 text-primary fw-bold"><span>Pay Period</span> <span>: ${d.month}</span></div>
+                </div>
             </div>
 
             <table class="finance-table">
@@ -822,14 +794,13 @@ window.viewPayslip = (id) => {
     printModal.show();
 };
 
-// 🟢 SECURE: Publish All
 window.publishAll = async () => {
     const drafts = currentPayrollData.filter(d => d.status === 'Draft');
-    if(drafts.length === 0) return showStatusAlert('statusMessage', "No draft payslips found to publish.", false); // 🟢
+    if(drafts.length === 0) return showStatusAlert('statusMessage', "No draft payslips found to publish.", false);
     
     if(!confirm(`Are you sure you want to officially publish ${drafts.length} payslip(s)?\n\nThis will make them visible to staff and PERMANENTLY deduct their approved Salary Advances.`)) return;
     
-    showLoading(); // 🟢
+    showLoading(); 
     const month = document.getElementById('globalMonthPicker').value;
 
     try {
@@ -862,7 +833,7 @@ window.publishAll = async () => {
         await logAdminAction(db, auth.currentUser, "BULK_PUBLISH_PAYSLIPS", "MULTIPLE", null, { count: drafts.length, month: month });
 
         hideLoading();
-        showStatusAlert('statusMessage', `Successfully published ${drafts.length} payslips!`, true); // 🟢
+        showStatusAlert('statusMessage', `Successfully published ${drafts.length} payslips!`, true);
         window.loadPayroll();
 
     } catch (e) { 

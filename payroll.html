@@ -16,7 +16,7 @@
             display: flex; flex-direction: column; justify-content: center; align-items: center; 
         }
 
-        /* 🟢 新增：用于全局 Toast 的样式 */
+        /* 🟢 全局 Toast 样式 */
         #statusMessage {
             position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
             padding: 12px 24px; border-radius: 8px; z-index: 9999;
@@ -263,7 +263,7 @@
                             <div class="col-md-2">
                                 <label class="form-label text-muted small text-danger fw-bold">Advance (Auto)</label>
                                 <div class="input-group input-group-sm"><span class="input-group-text text-danger border-danger fw-bold">RM</span><input type="number" id="inpAdvance" class="form-control border-danger text-danger fw-bold" step="0.01" oninput="window.calcTotals()"></div>
-                                <div class="form-text text-danger" style="font-size:0.65rem">From I.O.U</div>
+                                <div class="form-text text-danger" style="font-size:0.65rem">From Transferred I.O.U</div>
                             </div>
                         </div>
 
@@ -359,6 +359,8 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-0">
+                    <div id="advanceModalAlert" class="alert d-none m-3 small fw-bold text-center"></div>
+                    
                     <table class="table table-hover align-middle mb-0">
                         <thead class="table-light text-secondary small text-uppercase">
                             <tr>
