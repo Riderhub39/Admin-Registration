@@ -1,0 +1,607 @@
+/* ========================================================
+   FieldTrack Pro - Global Stylesheet (style.css)
+   ======================================================== */
+
+/* 🟢 1. 全局主题变量 (Theming Variables) - 以后换风格只改这里！ */
+:root {
+    --primary-color: #2563eb;       /* 主色调：蓝色 */
+    --primary-hover: #1d4ed8;       /* 按钮悬停深蓝色 */
+    --success-color: #22c55e;       /* 成功/在线：绿色 */
+    --warning-color: #fbbf24;       /* 警告/草稿：黄色 */
+    --danger-color: #dc2626;        /* 危险/扣款：红色 */
+    
+    --bg-main: #f8fafc;             /* 网页背景底色 */
+    --bg-card: #ffffff;             /* 卡片/弹窗背景色 */
+    --bg-highlight: #eff6ff;        /* 选中高亮色 */
+    
+    --border-color: #e2e8f0;        /* 统一边框颜色 */
+    
+    --text-dark: #0f172a;           /* 主标题文字 */
+    --text-muted: #64748b;          /* 次要说明文字 */
+}
+
+/* 🟢 2. 基础重置与排版 */
+body {
+    background-color: var(--bg-main);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    margin: 0;
+}
+
+/* 🟢 3. 全局组件 (加载动画 & 提示消息) */
+#loadingOverlay { 
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+    background: rgba(255, 255, 255, 0.95); z-index: 9999; 
+    display: flex; flex-direction: column; justify-content: center; align-items: center; 
+}
+
+#statusMessage {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    padding: 12px 24px; border-radius: 8px; z-index: 9999;
+    color: white; font-weight: 500; display: none;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+/* ========================================================
+   模块 A：实时追踪 (Live Tracking Layout)
+   ======================================================== */
+.tracking-page-body { 
+    height: 100vh; overflow: hidden; display: flex; flex-direction: column; 
+}
+
+.tracking-sidebar { 
+    width: 320px; background: var(--bg-card); border-right: 1px solid var(--border-color); 
+    display: flex; flex-direction: column; z-index: 10; 
+    box-shadow: 2px 0 5px rgba(0,0,0,0.05); height: calc(100vh - 58px); 
+}
+
+.tracking-map-container { 
+    flex: 1; background: var(--border-color); position: relative; height: calc(100vh - 58px); 
+}
+
+.user-item { cursor: pointer; transition: all 0.2s; border-bottom: 1px solid #f1f5f9; }
+.user-item:hover { background-color: var(--bg-main); }
+.user-item.active { background-color: var(--bg-highlight); border-left: 4px solid var(--primary-color); }
+
+.dot-online { background-color: var(--success-color); box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2); }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+.avatar-placeholder { 
+    width: 40px; height: 40px; background: var(--border-color); border-radius: 50%; 
+    display: flex; align-items: center; justify-content: center; 
+    color: var(--text-muted); font-weight: bold; 
+}
+
+.map-status-card {
+    position: absolute; top: 10px; left: 10px; width: 280px;
+    background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(5px);
+    border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 5;
+}
+
+/* ========================================================
+   模块 B：薪资中心 (Payroll & Payslip Layout)
+   ======================================================== */
+.status-Draft { border-left: 4px solid var(--warning-color); background-color: #fffbeb; }
+.status-Published { border-left: 4px solid var(--success-color); background-color: #f0fdf4; }
+
+.form-section-title { 
+    font-size: 0.8rem; font-weight: bold; text-transform: uppercase; 
+    color: var(--text-muted); margin-bottom: 10px; 
+    border-bottom: 1px solid var(--border-color); padding-bottom: 5px; margin-top: 15px;
+}
+
+.bg-calc { background-color: var(--bg-main); }
+
+.stats-box { 
+    background: #f1f5f9; padding: 10px; border-radius: 6px; 
+    font-size: 0.8rem; border: 1px solid var(--border-color); text-align: center; 
+}
+.stats-label { color: var(--text-muted); display: block; margin-bottom: 2px; font-size: 0.7rem; text-transform: uppercase; }
+.stats-val { font-weight: bold; color: var(--text-dark); font-size: 1.1rem; }
+
+/* 打印专属排版 (A4 纸样式) */
+@media print {
+    body * { visibility: hidden; }
+    #printArea, #printArea * { visibility: visible; }
+    #printArea { position: absolute; left: 0; top: 0; width: 100%; font-family: 'Courier New', Courier, monospace; }
+    .no-print { display: none !important; }
+    .modal-dialog { max-width: 100%; margin: 0; }
+    .modal-content { border: none; box-shadow: none; }
+}
+
+.payslip-preview { font-family: 'Courier New', Courier, monospace; border: 1px solid #ccc; padding: 40px; background: white; max-width: 800px; margin: 0 auto; }
+.payslip-header { text-align: left; margin-bottom: 20px; }
+.company-name { font-weight: bold; font-size: 1.2rem; }
+.company-address { font-size: 0.8rem; margin-bottom: 10px; }
+
+.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9rem; margin-bottom: 20px; border-bottom: 1px dashed #000; padding-bottom: 10px;}
+.info-row { display: flex; justify-content: space-between; }
+
+.finance-table { width: 100%; border-top: 2px solid #000; border-bottom: 2px solid #000; margin-bottom: 10px; font-size: 0.9rem; }
+.finance-table th { text-align: left; padding: 5px; border-bottom: 1px solid #000; }
+.finance-table td { padding: 5px; vertical-align: top; }
+.total-section { border-top: 1px dashed #000; padding-top: 10px; margin-top: 10px; }
+/* ========================================================
+   模块 C：控制中心 (Home / Command Center Layout)
+   ======================================================== */
+
+.quick-action-btn {
+    background: var(--bg-card); 
+    border: 1px solid var(--border-color); 
+    border-radius: 12px;
+    padding: 15px; 
+    text-align: center; 
+    transition: all 0.2s;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100px; text-decoration: none; 
+    color: var(--text-dark); cursor: pointer;
+}
+.quick-action-btn:hover {
+    transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+    border-color: var(--primary-color); color: var(--primary-color);
+}
+
+.stat-card { 
+    background: var(--bg-card); border-radius: 16px; border: 1px solid var(--border-color); 
+    padding: 20px; height: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.01); 
+    display: flex; flex-direction: column;
+}
+.stat-value { font-size: 2rem; font-weight: 800; line-height: 1; }
+
+.task-row { 
+    transition: all 0.2s ease; border: 1px solid var(--border-color); background: var(--bg-card);
+    text-decoration: none; color: inherit;
+}
+.task-row:hover { 
+    background-color: var(--bg-main); border-color: var(--primary-color); 
+    transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.bg-online { background-color: var(--success-color); box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2); }
+.bg-offline { background-color: var(--text-muted); }
+.cursor-pointer { cursor: pointer; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+
+.wifi-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 12px; background: var(--bg-main); border: 1px solid var(--border-color);
+    border-radius: 6px; margin-bottom: 5px;
+}
+
+/* 审计日志专属样式 */
+.log-item { border-left: 3px solid var(--border-color); transition: all 0.2s; }
+.log-item:hover { background: var(--bg-main); border-left-color: var(--primary-color); }
+
+.inspect-data-block {
+    background-color: var(--bg-main); border: 1px solid var(--border-color); 
+    border-radius: 8px; padding: 15px; margin-bottom: 15px;
+    font-family: monospace; font-size: 0.85rem; white-space: pre-wrap;
+    word-break: break-all;
+}
+.inspect-label { 
+    font-weight: bold; color: var(--text-muted); margin-bottom: 5px; 
+    text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.5px;
+}
+/* ========================================================
+   模块 D：通用表单 & 列表页 (Holiday / Roster / Settings)
+   ======================================================== */
+
+.card { 
+    border: none; 
+    border-radius: 12px; 
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+    background-color: var(--bg-card);
+}
+
+.list-group-item { 
+    border-left: none; 
+    border-right: none; 
+    padding: 1rem; 
+    background-color: transparent;
+}
+.list-group-item:first-child { 
+    border-top: none; 
+}
+
+.btn-primary { 
+    background-color: var(--primary-color); 
+    border-color: var(--primary-color); 
+}
+.btn-primary:hover {
+    background-color: var(--primary-hover);
+    border-color: var(--primary-hover);
+}
+/* ========================================================
+   模块 E：登录页 (Login Layout)
+   ======================================================== */
+.login-container { 
+    min-height: 100vh; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+}
+
+.login-card { 
+    width: 100%; 
+    max-width: 400px; 
+    padding: 2rem; 
+    border: 1px solid var(--border-color); 
+    border-radius: 12px; 
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
+    background-color: var(--bg-card);
+}
+/* ========================================================
+   模块 F：请假审批 (Leave Approval Layout)
+   ======================================================== */
+
+.nav-tabs .nav-link { 
+    color: var(--text-muted); 
+    font-weight: 500; 
+    border: none; 
+    border-bottom: 2px solid transparent; 
+}
+.nav-tabs .nav-link.active { 
+    color: var(--primary-color); 
+    border-bottom: 2px solid var(--primary-color); 
+    font-weight: 600; 
+    background: none; 
+}
+
+.table-hover tbody tr { transition: background-color 0.2s; }
+
+.avatar-initial { 
+    width: 32px; height: 32px; 
+    background: var(--bg-highlight); color: var(--primary-hover); 
+    border-radius: 50%; display: flex; align-items: center; justify-content: center; 
+    font-weight: bold; font-size: 0.8rem; 
+}
+
+/* 请假类型徽章 */
+.badge-leave-annual { background-color: #dbeafe; color: #1e40af; }
+.badge-leave-medical { background-color: #fce7f3; color: #9d174d; }
+.badge-leave-unpaid { background-color: #ffedd5; color: #9a3412; } 
+
+/* 审批状态颜色 */
+.status-pending { background-color: #fef9c3; color: #854d0e; }
+.status-approved { background-color: #dcfce7; color: #166534; }
+.status-rejected { background-color: #fee2e2; color: #991b1b; }
+
+/* 附件图片放大 */
+#attachmentImg { max-width: 100%; max-height: 70vh; object-fit: contain; }
+/* ========================================================
+   模块 G：管理员/员工列表 (Staff & Admin List Layout)
+   ======================================================== */
+.admin-card { 
+    border-radius: 12px; 
+    transition: all 0.2s; 
+    border: 1px solid var(--border-color); 
+    background-color: var(--bg-card);
+}
+.admin-card:hover { 
+    border-color: var(--primary-color); 
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+}
+
+.avatar-circle { 
+    width: 45px; height: 45px; 
+    background: var(--bg-main); 
+    border-radius: 50%; 
+    display: flex; align-items: center; justify-content: center; 
+    font-weight: bold; color: var(--text-muted); 
+}
+
+.badge-manager { background: var(--text-dark); color: #fff; }
+/* ========================================================
+   模块 H：员工目录与状态 (Staff Directory Layout)
+   ======================================================== */
+.status-badge { 
+    font-size: 0.75rem; 
+    padding: 0.25em 0.6em; 
+    border-radius: 4px; 
+    font-weight: 600; 
+    text-transform: uppercase; 
+}
+.bg-complete { background-color: #d1fae5; color: #065f46; } 
+.bg-editable { background-color: #fef3c7; color: #92400e; } 
+.bg-active { background-color: #e0f2fe; color: #0369a1; }   
+
+.action-btn-group { 
+    display: flex; 
+    gap: 8px; 
+    justify-content: flex-end; 
+}
+
+.notif-dot { 
+    position: absolute; 
+    top: -3px; 
+    right: -3px; 
+    width: 10px; 
+    height: 10px; 
+    background-color: var(--danger-color); 
+    border: 2px solid white; 
+    border-radius: 50%; 
+    display: none; 
+}
+.notif-dot.active { display: block; }
+/* ========================================================
+   模块 I：排班管理 (Schedule Planner Layout)
+   ======================================================== */
+.view-toggle .btn { 
+    border: 1px solid var(--border-color); 
+    color: var(--text-muted); 
+    font-weight: 500; 
+    font-size: 0.85rem; 
+}
+.view-toggle .btn.active { 
+    background-color: var(--bg-highlight); 
+    color: var(--primary-color); 
+    border-color: #dbeafe; 
+}
+
+.main-layout { 
+    display: grid; 
+    grid-template-columns: 1fr 320px; 
+    gap: 20px; 
+    padding: 20px; 
+    max-width: 1600px; 
+    margin: 0 auto; 
+}
+.content-card { 
+    background: var(--bg-card); 
+    padding: 15px; 
+    border-radius: 12px; 
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+    min-height: 80vh; 
+}
+.sidebar-card { 
+    background: var(--bg-card); 
+    padding: 15px; 
+    border-radius: 12px; 
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+    height: 80vh; 
+    overflow-y: auto; 
+    position: sticky; top: 80px; 
+}
+
+/* FullCalendar 覆盖 */
+#calendar { font-size: 0.85rem; }
+.fc-event { 
+    cursor: pointer; 
+    border-radius: 3px; 
+    font-weight: 600; 
+    font-size: 0.75rem; 
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1); 
+}
+
+/* 排班班次事件颜色 */
+.agg-morning { background-color: #3b82f6 !important; border-left: 4px solid #1d4ed8 !important; color: white !important; }
+.agg-evening { background-color: #a855f7 !important; border-left: 4px solid #7e22ce !important; color: white !important; }
+.holiday-bg { background-color: #fca5a5 !important; opacity: 0.6 !important; border: 1px solid #f87171; }
+.leave-bg { 
+    background-color: #fff7ed !important; opacity: 1 !important; border: 1px solid #fdba74; color: #c2410c; 
+    background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(249, 115, 22, 0.1) 10px, rgba(249, 115, 22, 0.1) 20px) !important;
+}
+
+/* 侧边栏统计与列表 */
+.stat-item { border-bottom: 1px solid var(--border-color); padding: 12px 10px; cursor: pointer; border-radius: 6px; transition: background 0.2s; }
+.stat-item:hover { background-color: var(--bg-highlight); }
+.stat-value { font-weight: 800; color: #334155; }
+
+.roster-list { max-height: 300px; overflow-y: auto; }
+.roster-item { 
+    background: var(--bg-main); 
+    border: 1px solid var(--border-color); 
+    border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; 
+    display: flex; justify-content: space-between; align-items: center; 
+}
+
+#bulkActionBar { transition: all 0.3s ease; border-left: 4px solid var(--primary-color); }
+
+/* 星期选择器 (Weekday Picker) */
+.weekday-selector { display: flex; gap: 5px; justify-content: space-between; }
+.weekday-selector input { display: none; }
+.weekday-selector label { 
+    flex: 1; text-align: center; padding: 6px 0; 
+    border: 1px solid var(--border-color); border-radius: 6px; 
+    cursor: pointer; font-size: 0.75rem; font-weight: 600; 
+    color: var(--text-muted); transition: all 0.2s; 
+}
+.weekday-selector input:checked + label { 
+    background-color: var(--primary-color); 
+    color: white; 
+    border-color: var(--primary-color); 
+}
+
+/* 预设行 */
+.preset-day-row { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; font-size: 0.8rem; }
+.preset-day-label { width: 40px; font-weight: bold; }
+.preset-preview-table td { padding: 4px 8px; font-size: 0.8rem; border-bottom: 1px solid var(--border-color); }
+.preset-preview-table th { font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); background: var(--bg-main); padding: 4px 8px; }
+/* ========================================================
+   模块 J：员工详情与表单 (Staff Details & Form Layout)
+   ======================================================== */
+
+.bg-readonly { 
+    background-color: var(--bg-main) !important; 
+    cursor: not-allowed; 
+    color: var(--text-muted); 
+}
+
+.form-control.is-invalid { 
+    border-color: var(--danger-color); 
+    background-color: #fff8f8; 
+}
+/* ========================================================
+   模块 K：表单元素与特定表格 (Forms & Specific Tables Layout)
+   ======================================================== */
+
+.section-title { 
+    font-size: 0.75rem; 
+    font-weight: 800; 
+    text-transform: uppercase; 
+    color: var(--primary-color); 
+    margin: 20px 0 10px 0; 
+    border-bottom: 1px solid var(--border-color); 
+    padding-bottom: 4px; 
+    letter-spacing: 0.5px; 
+}
+
+.form-label { 
+    font-weight: 600; 
+    font-size: 0.75rem; 
+    color: #475569; 
+    margin-bottom: 2px; 
+}
+
+.form-control, .form-select { 
+    padding: 0.35rem 0.6rem; 
+    font-size: 0.85rem; 
+    border-color: #cbd5e1; 
+}
+
+#childrenTable th { 
+    font-size: 0.7rem; 
+    background-color: var(--bg-main); 
+    text-transform: uppercase; 
+}
+
+#employeeListTable tr { 
+    cursor: pointer; 
+    transition: all 0.15s; 
+}
+#employeeListTable tr:hover { 
+    background-color: #e0f2fe; 
+}
+/* ========================================================
+   模块 L：考勤管理 (Attendance Manager Layout)
+   ======================================================== */
+
+.control-hub { 
+    background: var(--bg-card); 
+    border-bottom: 1px solid var(--border-color); 
+    padding: 16px 0; 
+    position: sticky; 
+    top: 58px; z-index: 1020; 
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.user-card {
+    border: 1px solid var(--border-color); 
+    border-radius: 12px; 
+    background: var(--bg-card);
+    transition: all 0.2s ease; margin-bottom: 12px;
+}
+.user-card:hover { 
+    transform: translateY(-1px); 
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); 
+    border-color: #cbd5e1; 
+}
+
+.card-header-custom { padding: 16px 20px; background: var(--bg-card); cursor: pointer; border-radius: 12px; }
+
+.staff-avatar { 
+    width: 42px; height: 42px; 
+    background: var(--bg-highlight); color: var(--primary-color); 
+    border-radius: 10px; display: flex; align-items: center; justify-content: center; 
+    font-weight: 700; font-size: 1.1rem; object-fit: cover; border: 1px solid #dbeafe;
+}
+
+.stat-box { text-align: center; }
+.stat-label { 
+    font-size: 0.7rem; text-transform: uppercase; 
+    letter-spacing: 0.5px; color: var(--text-muted); 
+    font-weight: 600; margin-bottom: 2px; 
+}
+.stat-value { font-size: 1rem; font-weight: 700; color: var(--text-dark); }
+
+.inner-list-item { border-bottom: 1px solid var(--border-color); padding: 12px 24px; font-size: 0.95rem; }
+.inner-list-item:last-child { border-bottom: none; }
+
+/* 考勤状态行高亮颜色 */
+.row-absent { background-color: #fef2f2 !important; border-left: 4px solid var(--danger-color) !important; }
+.row-late { background-color: #fffbeb !important; border-left: 4px solid var(--warning-color) !important; }
+.row-leave { background-color: #f0f9ff !important; border-left: 4px solid #0ea5e9 !important; }
+
+.badge-soft-secondary { background: var(--border-color); color: var(--text-muted); font-weight: 600; }
+.text-mono { font-family: 'Consolas', monospace; letter-spacing: -0.5px; }
+
+.chevron-icon { transition: transform 0.3s; }
+.collapsed .chevron-icon { transform: rotate(0deg); }
+.chevron-icon { transform: rotate(180deg); }
+
+.month-mode-hidden { display: none !important; }
+/* ========================================================
+   模块 M：照片墙与画廊 (Evidence Gallery Layout)
+   ======================================================== */
+
+.staff-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    margin-bottom: 24px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
+.staff-header {
+    background: var(--bg-main);
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.photo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+    padding: 20px;
+}
+
+.photo-card {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: transform 0.2s;
+    cursor: pointer;
+    position: relative;
+}
+
+.photo-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.photo-img {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    background: var(--bg-highlight);
+}
+
+.photo-info {
+    padding: 10px;
+    background: var(--bg-card);
+}
+
+.timestamp-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(0,0,0,0.7);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.location-text {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}

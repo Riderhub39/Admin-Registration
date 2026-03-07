@@ -6,33 +6,9 @@
     <title>Manage Staff - FieldTrack Pro</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
     <link href="style.css" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
-    
-    <style>
-        #loadingOverlay { 
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(255, 255, 255, 0.95); z-index: 9999; 
-            display: flex; flex-direction: column; justify-content: center; align-items: center; 
-        }
-
-        #statusMessage {
-            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-            padding: 12px 24px; border-radius: 8px; z-index: 9999;
-            color: white; font-weight: 500; display: none;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-        }
-
-        body { background-color: #f8fafc; font-family: 'Inter', sans-serif; }
-        .status-badge { font-size: 0.75rem; padding: 0.25em 0.6em; border-radius: 4px; font-weight: 600; text-transform: uppercase; }
-        .bg-complete { background-color: #d1fae5; color: #065f46; } 
-        .bg-editable { background-color: #fef3c7; color: #92400e; } 
-        .bg-active { background-color: #e0f2fe; color: #0369a1; }   
-        .table-hover tbody tr { transition: background-color 0.2s; }
-        .action-btn-group { display: flex; gap: 8px; justify-content: flex-end; }
-        .notif-dot { position: absolute; top: -3px; right: -3px; width: 10px; height: 10px; background-color: #dc2626; border: 2px solid white; border-radius: 50%; display: none; }
-        .notif-dot.active { display: block; }
-    </style>
 </head>
 <body>
 
@@ -48,25 +24,25 @@
     <div id="mainContainer" class="container py-4 d-none">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
-                <h4 class="fw-bold mb-1">Staff Directory</h4>
+                <h4 class="fw-bold mb-1 text-dark">Staff Directory</h4>
                 <p class="text-muted small mb-0">Manage permissions and view staff profiles.</p>
             </div>
             <div class="d-flex gap-2">
-                <button class="btn btn-outline-dark" data-bs-toggle="modal" data-bs-target="#leaveConfigModal">
+                <button class="btn btn-outline-dark fw-bold" data-bs-toggle="modal" data-bs-target="#leaveConfigModal">
                     <i data-lucide="settings" class="size-4 me-2"></i>Leave Rules
                 </button>
-                <button class="btn btn-warning text-dark fw-bold" onclick="window.recalculateAllBalances()">
+                <button class="btn btn-warning text-dark fw-bold shadow-sm" onclick="window.recalculateAllBalances()">
                     <i data-lucide="refresh-cw" class="size-4 me-2"></i>Recalculate Balances
                 </button>
-                <a href="staff_register.html" class="btn btn-primary"><i data-lucide="plus" class="size-4 me-2"></i>Add New</a>
+                <a href="staff_register.html" class="btn btn-primary fw-bold shadow-sm"><i data-lucide="plus" class="size-4 me-2"></i>Add New</a>
             </div>
         </div>
 
         <div class="row mb-3">
             <div class="col-md-6 col-lg-4">
                 <div class="input-group">
-                    <span class="input-group-text bg-white text-muted border-end-0"><i data-lucide="search" class="size-4"></i></span>
-                    <input type="text" id="searchInput" class="form-control border-start-0" placeholder="Search..." onkeyup="window.updateSearch(this.value)">
+                    <span class="input-group-text bg-white text-muted border-end-0 border-primary"><i data-lucide="search" class="size-4"></i></span>
+                    <input type="text" id="searchInput" class="form-control border-start-0 border-primary" placeholder="Search staff..." onkeyup="window.updateSearch(this.value)">
                 </div>
             </div>
         </div>
@@ -75,7 +51,7 @@
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
-                        <thead class="table-light">
+                        <thead class="table-light text-muted">
                             <tr>
                                 <th class="ps-4">Emp Code</th>
                                 <th>Full Name</th>
@@ -94,40 +70,67 @@
 
     <div class="modal fade" id="reviewModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header"><h5 class="modal-title fw-bold">Review Request</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
-                <div class="modal-body">
-                    <div class="alert alert-info small"><i data-lucide="info" class="size-4 me-1"></i>Approval unlocks profile for 5 mins.</div>
-                    <div class="mb-2"><label class="small text-muted fw-bold">REQUESTER</label><div id="modalRequesterName" class="fw-bold"></div><small id="modalRequesterId" class="text-muted"></small></div>
-                    <div><label class="small text-muted fw-bold">REASON</label><div id="modalRequestContent" class="p-2 bg-light rounded border small"></div></div>
-                    <input type="hidden" id="hiddenRequestId"><input type="hidden" id="hiddenUserId">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-light">
+                    <h5 class="modal-title fw-bold">Review Request</h5>
+                    <button class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-footer"><button class="btn btn-outline-danger" onclick="window.processDecision('reject')">Reject</button><button class="btn btn-success text-white fw-bold" onclick="window.processDecision('approve')">Approve</button></div>
+                <div class="modal-body">
+                    <div class="alert alert-info small border-info">
+                        <i data-lucide="info" class="size-4 me-1"></i>Approval unlocks profile for 5 mins.
+                    </div>
+                    <div class="mb-2">
+                        <label class="small text-muted fw-bold">REQUESTER</label>
+                        <div id="modalRequesterName" class="fw-bold text-dark"></div>
+                        <small id="modalRequesterId" class="text-muted"></small>
+                    </div>
+                    <div>
+                        <label class="small text-muted fw-bold">REASON</label>
+                        <div id="modalRequestContent" class="p-2 bg-light rounded border small text-dark"></div>
+                    </div>
+                    <input type="hidden" id="hiddenRequestId">
+                    <input type="hidden" id="hiddenUserId">
+                </div>
+                <div class="modal-footer bg-light border-0">
+                    <button class="btn btn-outline-danger fw-bold px-4" onclick="window.processDecision('reject')">Reject</button>
+                    <button class="btn btn-success text-white fw-bold px-4 shadow-sm" onclick="window.processDecision('approve')">Approve</button>
+                </div>
             </div>
         </div>
     </div>
 
     <div class="modal fade" id="leaveConfigModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header bg-light"><h6 class="modal-title fw-bold">Leave Rules</h6><button class="btn-close" data-bs-dismiss="modal"></button></div>
-                <div class="modal-body">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-light">
+                    <h6 class="modal-title fw-bold"><i data-lucide="settings" class="size-4 me-2"></i>Leave Rules Setup</h6>
+                    <button class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
                     <ul class="nav nav-tabs mb-3" role="tablist">
                         <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#annual-pane">🏖️ Annual</button></li>
                         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#medical-pane">🏥 Medical</button></li>
                     </ul>
                     <div class="tab-content">
                         <div class="tab-pane fade show active" id="annual-pane">
-                            <div class="d-flex justify-content-between mb-2"><span class="small fw-bold">Tiers</span><button class="btn btn-xs btn-outline-primary" onclick="window.addRuleRow('annual')">+ Add</button></div>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span class="small fw-bold text-muted">Tier Setup (By Years of Service)</span>
+                                <button class="btn btn-sm btn-outline-primary fw-bold" onclick="window.addRuleRow('annual')">+ Add Tier</button>
+                            </div>
                             <div id="annualRulesContainer"></div>
                         </div>
                         <div class="tab-pane fade" id="medical-pane">
-                            <div class="d-flex justify-content-between mb-2"><span class="small fw-bold">Tiers</span><button class="btn btn-xs btn-outline-danger" onclick="window.addRuleRow('medical')">+ Add</button></div>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span class="small fw-bold text-muted">Tier Setup (By Years of Service)</span>
+                                <button class="btn btn-sm btn-outline-danger fw-bold" onclick="window.addRuleRow('medical')">+ Add Tier</button>
+                            </div>
                             <div id="medicalRulesContainer"></div>
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer"><button class="btn btn-primary w-100" onclick="window.saveLeaveRules()">Save Rules</button></div>
+                <div class="modal-footer bg-light border-0">
+                    <button class="btn btn-primary w-100 fw-bold shadow-sm" onclick="window.saveLeaveRules()">Save Rules</button>
+                </div>
             </div>
         </div>
     </div>
@@ -140,7 +143,6 @@
         import { firebaseConfig } from "./firebase-config.js";
         import { requireAdmin } from "./auth-guard.js";
         
-        // 🟢 导入拆分的控制器逻辑
         import { initManageStaffApp } from "./manage-staff-app.js"; 
 
         const app = initializeApp(firebaseConfig);

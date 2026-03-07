@@ -4,37 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>New Staff - HRIS Admin</title>
+    
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
     <link href="style.css" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
-
-    <style>
-        #loadingOverlay { 
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(255, 255, 255, 0.95); z-index: 9999; 
-            display: flex; flex-direction: column; justify-content: center; align-items: center; 
-        }
-
-        /* 🟢 新增：用于全局 Toast 的样式 */
-        #statusMessage {
-            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-            padding: 12px 24px; border-radius: 8px; z-index: 9999;
-            color: white; font-weight: 500; display: none;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-        }
-        
-        .nav-tabs .nav-link { color: #64748b; font-weight: 500; padding: 0.8rem 1rem; }
-        .nav-tabs .nav-link.active { color: var(--primary); border-bottom: 3px solid var(--primary); font-weight: 600; }
-        .section-title { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: var(--primary); margin: 20px 0 10px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; letter-spacing: 0.5px; }
-        .form-label { font-weight: 600; font-size: 0.75rem; color: #475569; margin-bottom: 2px; }
-        .form-control, .form-select { padding: 0.35rem 0.6rem; font-size: 0.85rem; border-color: #cbd5e1; }
-        .bg-readonly { background-color: #f1f5f9 !important; cursor: not-allowed; color: #64748b; }
-        
-        .form-control.is-invalid { border-color: #dc3545; background-color: #fff8f8; }
-        #childrenTable th { font-size: 0.7rem; background-color: #f8fafc; text-transform: uppercase; }
-        #employeeListTable tr { cursor: pointer; transition: all 0.15s; }
-        #employeeListTable tr:hover { background-color: #e0f2fe; }
-    </style>
 </head>
 <body class="bg-light">
 
@@ -67,7 +41,7 @@
             </div>
             <div>
                 <input type="file" id="excelUpload" accept=".csv, .xlsx" class="d-none">
-                <button class="btn btn-sm btn-outline-primary" onclick="document.getElementById('excelUpload').click()">
+                <button class="btn btn-sm btn-outline-primary fw-bold" onclick="document.getElementById('excelUpload').click()">
                     <i data-lucide="upload" class="size-4 me-1"></i> Upload & Search
                 </button>
             </div>
@@ -76,17 +50,17 @@
 
     <div class="modal fade" id="employeeModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h6 class="modal-title fw-bold">Select Employee Record</h6>
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header py-2 bg-light">
+                    <h6 class="modal-title fw-bold text-dark">Select Employee Record</h6>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body">
-                    <input type="text" id="modalSearch" class="form-control mb-2" placeholder="Search by name, ID..." onkeyup="window.filterModalTable()">
-                    <div class="table-responsive" style="max-height: 400px;">
-                        <table class="table table-hover table-sm border">
-                            <thead class="table-light sticky-top">
-                                <tr><th>Code</th><th>Name</th><th>Dept</th><th class="text-end">Action</th></tr>
+                <div class="modal-body p-3">
+                    <input type="text" id="modalSearch" class="form-control mb-3 border-primary" placeholder="Search by name, ID..." onkeyup="window.filterModalTable()">
+                    <div class="table-responsive border rounded" style="max-height: 400px;">
+                        <table class="table table-hover table-sm m-0">
+                            <thead class="table-light sticky-top text-muted small text-uppercase">
+                                <tr><th class="ps-3">Code</th><th>Name</th><th>Dept</th><th class="text-end pe-3">Action</th></tr>
                             </thead>
                             <tbody id="employeeListTable"></tbody>
                         </table>
@@ -96,25 +70,25 @@
         </div>
     </div>
 
-    <div class="d-flex justify-content-between align-items-center mb-2 mx-2">
+    <div class="d-flex justify-content-between align-items-center mb-2 mx-2 mt-4">
         <h5 class="fw-bold text-dark m-0">Staff Details Form</h5>
         <div class="d-flex align-items-center gap-2">
-            <button type="button" class="btn btn-sm btn-light border" onclick="location.reload()">Clear Form</button>
-            <button type="button" id="btnSubmitFirebase" class="btn btn-sm btn-success fw-bold px-4">
+            <button type="button" class="btn btn-sm btn-light border fw-bold text-muted shadow-sm" onclick="location.reload()">Clear Form</button>
+            <button type="button" id="btnSubmitFirebase" class="btn btn-sm btn-success fw-bold px-4 shadow-sm">
                 <i data-lucide="database" class="size-4 me-2"></i> Save to DB
             </button>
         </div>
     </div>
 
-    <div class="card mx-2 shadow-sm">
-        <div class="card-header bg-white p-0 border-bottom">
+    <div class="card mx-2 shadow-sm border-0">
+        <div class="card-header bg-white p-0 border-bottom border-light">
             <ul class="nav nav-tabs card-header-tabs m-0" role="tablist">
-                <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#personal">1. Personal</a></li>
-                <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#employment">2. Employment</a></li>
-                <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#statutory">3. Statutory</a></li>
-                <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#payroll">4. Payroll</a></li>
-                <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#family">5. Family</a></li>
-                <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#address">6. Address</a></li>
+                <li class="nav-item"><a class="nav-link active fw-bold" data-bs-toggle="tab" href="#personal">1. Personal</a></li>
+                <li class="nav-item"><a class="nav-link fw-bold" data-bs-toggle="tab" href="#employment">2. Employment</a></li>
+                <li class="nav-item"><a class="nav-link fw-bold" data-bs-toggle="tab" href="#statutory">3. Statutory</a></li>
+                <li class="nav-item"><a class="nav-link fw-bold" data-bs-toggle="tab" href="#payroll">4. Payroll</a></li>
+                <li class="nav-item"><a class="nav-link fw-bold" data-bs-toggle="tab" href="#family">5. Family</a></li>
+                <li class="nav-item"><a class="nav-link fw-bold" data-bs-toggle="tab" href="#address">6. Address</a></li>
             </ul>
         </div>
 
@@ -122,19 +96,19 @@
             <form id="masterForm">
                 <div class="tab-content">
                     <div class="tab-pane fade show active" id="personal">
-                        <div class="section-title">Identity & Access</div>
+                        <div class="section-title"><i data-lucide="fingerprint" class="size-4 me-1"></i> Identity & Access</div>
                         <div class="row g-2">
-                            <div class="col-md-2"><label class="form-label">Employee Code *</label><input type="text" id="Employee Code" class="form-control fw-bold" required oninput="window.syncBio()"></div>
-                            <div class="col-md-4"><label class="form-label">Employee Name *</label><input type="text" id="Employee Name" class="form-control" required></div>
+                            <div class="col-md-2"><label class="form-label">Employee Code *</label><input type="text" id="Employee Code" class="form-control fw-bold border-primary text-primary" required oninput="window.syncBio()"></div>
+                            <div class="col-md-4"><label class="form-label">Employee Name *</label><input type="text" id="Employee Name" class="form-control fw-bold text-dark" required></div>
                             <div class="col-md-3"><label class="form-label">Short Name</label><input type="text" id="Short Name" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Bio ID</label><input type="text" id="Finger Print/Face ID" class="form-control bg-readonly" readonly></div>
                         </div>
-                        <div class="section-title">Demographics</div>
+                        <div class="section-title mt-4"><i data-lucide="users" class="size-4 me-1"></i> Demographics</div>
                         <div class="row g-2">
                             <div class="col-md-3"><label class="form-label">MyKad/Ic No </label><input type="text" id="MYKAD/IC (Malaysian or PR)" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Old Ic No</label><input type="text" id="Old Ic No" class="form-control"></div>
-                            <div class="col-md-2"><label class="form-label">Birth Date *</label><input type="date" id="Birth Date" class="form-control" required></div>
-                            <div class="col-md-2"><label class="form-label">Gender *</label><input type="text" id="Gender" class="form-control" required></div>
+                            <div class="col-md-2"><label class="form-label">Birth Date *</label><input type="date" id="Birth Date" class="form-control fw-bold" required></div>
+                            <div class="col-md-2"><label class="form-label">Gender *</label><input type="text" id="Gender" class="form-control fw-bold" required></div>
                             <div class="col-md-2"><label class="form-label">Marital Status</label><input type="text" id="Marital Status" class="form-control"></div>
                             <div class="col-md-2"><label class="form-label">Nationality</label><input type="text" id="Nationality" class="form-control"></div>
                             <div class="col-md-2"><label class="form-label">Race</label><input type="text" id="Race" class="form-control"></div>
@@ -142,7 +116,7 @@
                             <div class="col-md-3"><label class="form-label">Employment Type</label><input type="text" id="Employment Type" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Blood Type</label><input type="text" id="Blood Type" class="form-control"></div>
                         </div>
-                        <div class="section-title">Foreigner Details</div>
+                        <div class="section-title mt-4"><i data-lucide="globe" class="size-4 me-1"></i> Foreigner Details</div>
                         <div class="row g-2">
                             <div class="col-md-3"><label class="form-label">Foreign ID No</label><input type="text" id="Foreign ID No" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Passport No</label><input type="text" id="Passport No" class="form-control"></div>
@@ -152,23 +126,23 @@
                             <div class="col-md-2"><label class="form-label">FOMEMA Expiry</label><input type="date" id="FOMEMA Expiry Date" class="form-control"></div>
                             <div class="col-md-2"><label class="form-label">Issue Date</label><input type="date" id="Issue Date" class="form-control"></div>
                         </div>
-                        <div class="section-title">Contact</div>
+                        <div class="section-title mt-4"><i data-lucide="phone-call" class="size-4 me-1"></i> Contact</div>
                         <div class="row g-2">
-                            <div class="col-md-6"><label class="form-label">Email Address *</label><input type="email" id="Email Address" class="form-control" required placeholder="Login ID"></div>
+                            <div class="col-md-6"><label class="form-label text-primary">Email Address (Login ID) *</label><input type="email" id="Email Address" class="form-control border-primary fw-bold" required placeholder="Login ID"></div>
                             <div class="col-md-6"><label class="form-label">Mobile Number</label><input type="text" id="Mobile Number" class="form-control" placeholder="0123456789"></div>
                         </div>
                     </div>
                     
                     <div class="tab-pane fade" id="employment">
-                        <div class="section-title">Timeline</div>
+                        <div class="section-title"><i data-lucide="calendar" class="size-4 me-1"></i> Timeline</div>
                         <div class="row g-2">
-                            <div class="col-md-3"><label class="form-label">Join Date</label><input type="date" id="Join Date" class="form-control" required></div>
+                            <div class="col-md-3"><label class="form-label">Join Date</label><input type="date" id="Join Date" class="form-control fw-bold border-primary" required></div>
                             <div class="col-md-2"><label class="form-label">Probation (Months)</label><input type="number" id="Probation (Months)" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Confirmation</label><input type="date" id="Confirmation Date" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Termination</label><input type="date" id="Termination Date" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Contract End</label><input type="date" id="End of Contract Date" class="form-control"></div>
                         </div>
-                        <div class="section-title">Organization</div>
+                        <div class="section-title mt-4"><i data-lucide="briefcase" class="size-4 me-1"></i> Organization</div>
                         <div class="row g-2">
                             <div class="col-md-3"><label class="form-label">Department</label><input type="text" id="Department Code" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Section</label><input type="text" id="Section Code" class="form-control"></div>
@@ -178,37 +152,37 @@
                             <div class="col-md-3"><label class="form-label">Status</label><input type="text" id="Employee Status" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Holiday Grp</label><input type="text" id="Holiday Group Code" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Leave Cat</label><input type="text" id="Leave Category Code" class="form-control"></div>
-                            <div class="col-md-3"><div class="form-check pt-4"><input type="checkbox" id="isDriver" class="form-check-input"><label class="form-check-label fw-bold">Is Driver / Field Staff?</label></div></div>
+                            <div class="col-md-3"><div class="form-check pt-4"><input type="checkbox" id="isDriver" class="form-check-input"><label class="form-check-label fw-bold text-primary">Is Driver / Field Staff?</label></div></div>
                         </div>
-                        <div class="section-title">Schedule</div>
+                        <div class="section-title mt-4"><i data-lucide="clock" class="size-4 me-1"></i> Schedule</div>
                         <div class="row g-2">
                             <div class="col-md-3"><label class="form-label">Shift</label><input type="text" id="Working Hours/Shift" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Exclude Days</label><input type="text" id="Exclude Days" class="form-control"></div>
                             <div class="col-md-2"><label class="form-label">Hrs/Day</label><input type="text" id="Hours Worked /Day" class="form-control"></div>
                             <div class="col-md-2"><label class="form-label">Days/Week</label><input type="text" id="Days Worked /Week" class="form-control"></div>
                             <div class="col-md-2"><label class="form-label">Hrs/Week</label><input type="text" id="Hours Worked Per Week" class="form-control"></div>
-                            <div class="col-md-2"><div class="form-check pt-3"><input type="checkbox" id="Part Time" class="form-check-input"><label class="form-check-label">Part Time</label></div></div>
-                            <div class="col-md-2"><div class="form-check pt-3"><input type="checkbox" id="Flexi Hours" class="form-check-input"><label class="form-check-label">Flexi Hours</label></div></div>
+                            <div class="col-md-2"><div class="form-check pt-3"><input type="checkbox" id="Part Time" class="form-check-input"><label class="form-check-label fw-bold">Part Time</label></div></div>
+                            <div class="col-md-2"><div class="form-check pt-3"><input type="checkbox" id="Flexi Hours" class="form-check-input"><label class="form-check-label fw-bold">Flexi Hours</label></div></div>
                         </div>
                     </div>
                     
                     <div class="tab-pane fade" id="statutory">
-                        <div class="section-title">EPF</div>
+                        <div class="section-title"><i data-lucide="piggy-bank" class="size-4 me-1"></i> EPF</div>
                         <div class="row g-2">
                             <div class="col-md-2"><label class="form-label">Category</label><input type="text" id="EPF Category" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">EPF No</label><input type="text" id="EPF Number" class="form-control"></div>
                             <div class="col-md-4"><label class="form-label">EPF Name</label><input type="text" id="EPF Emp Name" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Employer EPF No</label><input type="text" id="Employer EPF No" class="form-control"></div>
-                            <div class="col-md-3"><label class="form-label">Contribution</label><input type="text" id="EPF Contribution" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label text-primary">Contribution</label><input type="text" id="EPF Contribution" class="form-control fw-bold border-primary text-primary"></div>
                         </div>
-                        <div class="section-title">SOCSO & EIS</div>
+                        <div class="section-title mt-4"><i data-lucide="shield-alert" class="size-4 me-1"></i> SOCSO & EIS</div>
                         <div class="row g-2">
                             <div class="col-md-2"><label class="form-label">Category</label><input type="text" id="SOCSO Category" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Security No</label><input type="text" id="SOCSO Security No" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Employer No</label><input type="text" id="Employer SOCSO No" class="form-control"></div>
-                            <div class="col-md-2"><label class="form-label">EIS Contrib</label><input type="text" id="EIS Contribution" class="form-control"></div>
+                            <div class="col-md-2"><label class="form-label text-primary">EIS Contrib</label><input type="text" id="EIS Contribution" class="form-control fw-bold border-primary text-primary"></div>
                         </div>
-                        <div class="section-title">Tax (LHDN)</div>
+                        <div class="section-title mt-4"><i data-lucide="landmark" class="size-4 me-1"></i> Tax (LHDN)</div>
                         <div class="row g-2">
                             <div class="col-md-3"><label class="form-label">Tax No</label><input type="text" id="INCOME TAX NO" class="form-control"></div>
                             <div class="col-md-2"><label class="form-label">Res. Status</label><input type="text" id="TAX Resident Status" class="form-control"></div>
@@ -217,7 +191,7 @@
                             <div class="col-md-2"><label class="form-label">Spouse Sts</label><input type="text" id="Tax Spouse Status" class="form-control"></div>
                             <div class="col-md-2"><label class="form-label">Spouse Dis?</label><input type="text" id="Tax Spouse Disabled" class="form-control"></div>
                         </div>
-                        <div class="section-title">Others</div>
+                        <div class="section-title mt-4"><i data-lucide="folder-open" class="size-4 me-1"></i> Others</div>
                         <div class="row g-2">
                             <div class="col-md-3"><label class="form-label">PTPTN No</label><input type="text" id="PTPTN Acc No" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Zakat No</label><input type="text" id="Zakat Acc No" class="form-control"></div>
@@ -226,27 +200,27 @@
                     </div>
 
                     <div class="tab-pane fade" id="payroll">
-                         <div class="section-title">Salary & Rates</div>
+                         <div class="section-title text-success border-success"><i data-lucide="wallet" class="size-4 me-1"></i> Salary & Rates</div>
                         <div class="row g-2">
-                            <div class="col-md-3"><label class="form-label">Basic Salary</label><input type="text" id="Basic Salary" class="form-control fw-bold"></div>
+                            <div class="col-md-3"><label class="form-label text-success">Basic Salary</label><input type="text" id="Basic Salary" class="form-control fw-bold border-success text-success fs-5"></div>
                             <div class="col-md-3"><label class="form-label">Pay Group</label><input type="text" id="Pay Day Group" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Daily Rate Code</label><input type="text" id="Daily Rate Code" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Paid Type</label><input type="text" id="Paid Type" class="form-control"></div>
                         </div>
-                        <div class="section-title">Overtime</div>
+                        <div class="section-title text-success border-success mt-4"><i data-lucide="clock" class="size-4 me-1"></i> Overtime</div>
                         <div class="row g-2">
                             <div class="col-md-3"><label class="form-label">OT Type</label><input type="text" id="OT Type" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Rate</label><input type="text" id="Flat/Hourly Rate" class="form-control"></div>
                         </div>
-                        <div class="section-title">Bank Details (GIRO 1)</div>
+                        <div class="section-title text-success border-success mt-4"><i data-lucide="building-2" class="size-4 me-1"></i> Bank Details (GIRO 1)</div>
                         <div class="row g-2">
-                            <div class="col-md-4"><label class="form-label">Bank Name</label><input type="text" id="bank_name_1" class="form-control"></div>
+                            <div class="col-md-4"><label class="form-label">Bank Name</label><input type="text" id="bank_name_1" class="form-control fw-bold"></div>
                             <div class="col-md-2"><label class="form-label">Branch ID</label><input type="text" id="branch_id_1" class="form-control"></div>
-                            <div class="col-md-3"><label class="form-label">Account No</label><input type="text" id="acc_no_1" class="form-control"></div>
+                            <div class="col-md-3"><label class="form-label">Account No</label><input type="text" id="acc_no_1" class="form-control fw-bold text-dark border-dark"></div>
                             <div class="col-md-1"><label class="form-label">Pay %</label><input type="text" id="pct_1" class="form-control"></div>
                             <div class="col-md-1"><label class="form-label">Chq %</label><input type="text" id="chq_pct_1" class="form-control"></div>
                         </div>
-                        <div class="section-title text-muted">Bank Details (GIRO 2)</div>
+                        <div class="section-title text-muted mt-4">Bank Details (GIRO 2)</div>
                         <div class="row g-2">
                             <div class="col-md-4"><label class="form-label">Bank Name 2</label><input type="text" id="bank_name_2" class="form-control"></div>
                             <div class="col-md-2"><label class="form-label">Branch ID 2</label><input type="text" id="branch_id_2" class="form-control"></div>
@@ -254,7 +228,7 @@
                             <div class="col-md-1"><label class="form-label">Pay %</label><input type="text" id="pct_2" class="form-control"></div>
                             <div class="col-md-1"><label class="form-label">Chq %</label><input type="text" id="chq_pct_2" class="form-control"></div>
                         </div>
-                        <div class="section-title">Split Payment</div>
+                        <div class="section-title mt-4">Split Payment</div>
                         <div class="row g-2">
                             <div class="col-md-3"><label class="form-label">Multiple Pay %</label><input type="text" id="Multiple Pay %" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Fixed Amt</label><input type="text" id="Multiple Pay Fixed Amt" class="form-control"></div>
@@ -263,7 +237,7 @@
                     </div>
 
                     <div class="tab-pane fade" id="family">
-                         <div class="section-title">Spouse</div>
+                         <div class="section-title"><i data-lucide="heart" class="size-4 me-1"></i> Spouse</div>
                         <div class="row g-2">
                             <div class="col-md-4"><label class="form-label">Spouse Name</label><input type="text" id="Spouse Name" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">ID/Passport</label><input type="text" id="Spouse MyKad/Passport" class="form-control"></div>
@@ -272,14 +246,14 @@
                             <div class="col-md-3"><label class="form-label">DOB</label><input type="date" id="Spouse DOB" class="form-control"></div>
                         </div>
 
-                        <div class="section-title d-flex justify-content-between align-items-center">
-                            <span>Children (Max 6)</span>
-                            <button type="button" class="btn btn-xs btn-outline-primary" onclick="window.addChildRow()">
+                        <div class="section-title d-flex justify-content-between align-items-center mt-4">
+                            <span><i data-lucide="baby" class="size-4 me-1"></i> Children (Max 6)</span>
+                            <button type="button" class="btn btn-xs btn-outline-primary fw-bold" onclick="window.addChildRow()">
                                 <i data-lucide="plus" class="size-3 me-1"></i> Add Child
                             </button>
                         </div>
-                        <div class="table-responsive">
-                            <table class="table table-bordered table-sm table-child" id="childrenTable">
+                        <div class="table-responsive border rounded mt-2">
+                            <table class="table table-bordered table-sm table-child m-0" id="childrenTable">
                                 <thead>
                                     <tr>
                                         <th>Name</th>
@@ -298,7 +272,7 @@
                     </div>
 
                     <div class="tab-pane fade" id="address">
-                         <div class="section-title">Local Address</div>
+                         <div class="section-title"><i data-lucide="home" class="size-4 me-1"></i> Local Address</div>
                         <div class="row g-2">
                             <div class="col-md-2"><label class="form-label">Door No</label><input type="text" id="Local Address Door No" class="form-control"></div>
                             <div class="col-md-4"><label class="form-label">Location</label><input type="text" id="Local Address Location" class="form-control"></div>
@@ -308,7 +282,7 @@
                             <div class="col-md-3"><label class="form-label">Country</label><input type="text" id="Local Address Country" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Pincode</label><input type="text" id="Local Address Pincode" class="form-control"></div>
                         </div>
-                        <div class="section-title">Foreign Address</div>
+                        <div class="section-title mt-4"><i data-lucide="plane" class="size-4 me-1"></i> Foreign Address</div>
                         <div class="row g-2">
                             <div class="col-md-2"><label class="form-label">Door No</label><input type="text" id="Foreign Address Door No" class="form-control"></div>
                             <div class="col-md-4"><label class="form-label">Location</label><input type="text" id="Foreign Address Location" class="form-control"></div>
@@ -318,12 +292,12 @@
                             <div class="col-md-3"><label class="form-label">Country</label><input type="text" id="Foreign Address Country" class="form-control"></div>
                             <div class="col-md-3"><label class="form-label">Pincode</label><input type="text" id="Foreign Address Pincode" class="form-control"></div>
                         </div>
-                        <div class="section-title">Emergency Contact</div>
+                        <div class="section-title text-danger border-danger mt-4"><i data-lucide="siren" class="size-4 me-1"></i> Emergency Contact</div>
                         <div class="row g-2">
-                            <div class="col-md-4"><label class="form-label">Name</label><input type="text" id="Emergency Contact Person" class="form-control"></div>
-                            <div class="col-md-3"><label class="form-label">Relationship</label><input type="text" id="Emergency Contact Relationship" class="form-control"></div>
-                            <div class="col-md-3"><label class="form-label">Number</label><input type="text" id="Emergency Contact Number" class="form-control"></div>
-                            <div class="col-md-2"><label class="form-label">ID/Passport</label><input type="text" id="Emergency Contact MYKAD/IC OR Passport No" class="form-control"></div>
+                            <div class="col-md-4"><label class="form-label text-danger">Name</label><input type="text" id="Emergency Contact Person" class="form-control border-danger-subtle"></div>
+                            <div class="col-md-3"><label class="form-label text-danger">Relationship</label><input type="text" id="Emergency Contact Relationship" class="form-control border-danger-subtle"></div>
+                            <div class="col-md-3"><label class="form-label text-danger">Number</label><input type="text" id="Emergency Contact Number" class="form-control border-danger text-danger fw-bold"></div>
+                            <div class="col-md-2"><label class="form-label text-danger">ID/Passport</label><input type="text" id="Emergency Contact MYKAD/IC OR Passport No" class="form-control border-danger-subtle"></div>
                         </div>
                     </div>
 

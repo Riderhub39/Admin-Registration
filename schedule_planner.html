@@ -6,71 +6,12 @@
     <title>Schedule Planner - FieldTrack Pro</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
     <link href="style.css" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
-
-    <style>
-        #loadingOverlay { 
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(255, 255, 255, 0.95); z-index: 9999; 
-            display: flex; flex-direction: column; justify-content: center; align-items: center; 
-        }
-
-        /* 🟢 新增：用于全局 Toast 的样式 */
-        #statusMessage {
-            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-            padding: 12px 24px; border-radius: 8px; z-index: 9999;
-            color: white; font-weight: 500; display: none;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-        }
-
-        :root { --primary: #2563eb; --bg: #f8fafc; }
-        body { font-family: 'Inter', sans-serif; background-color: var(--bg); min-height: 100vh; overflow-x: hidden; }
-        
-        .view-toggle .btn { border: 1px solid #e2e8f0; color: #64748b; font-weight: 500; font-size: 0.85rem; }
-        .view-toggle .btn.active { background-color: #eff6ff; color: var(--primary); border-color: #dbeafe; }
-
-        .main-layout { display: grid; grid-template-columns: 1fr 320px; gap: 20px; padding: 20px; max-width: 1600px; margin: 0 auto; }
-        .content-card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-height: 80vh; }
-        .sidebar-card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); height: 80vh; overflow-y: auto; position: sticky; top: 80px; }
-
-        #calendar { font-size: 0.85rem; }
-        .fc-event { cursor: pointer; border-radius: 3px; font-weight: 600; font-size: 0.75rem; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
-        
-        .agg-morning { background-color: #3b82f6 !important; border-left: 4px solid #1d4ed8 !important; color: white !important; }
-        .agg-evening { background-color: #a855f7 !important; border-left: 4px solid #7e22ce !important; color: white !important; }
-        
-        .holiday-bg { background-color: #fca5a5 !important; opacity: 0.6 !important; border: 1px solid #f87171; }
-        .leave-bg { 
-            background-color: #fff7ed !important; opacity: 1 !important; border: 1px solid #fdba74; color: #c2410c; 
-            background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(249, 115, 22, 0.1) 10px, rgba(249, 115, 22, 0.1) 20px) !important;
-        }
-
-        .stat-item { border-bottom: 1px solid #f1f5f9; padding: 12px 10px; cursor: pointer; border-radius: 6px; transition: background 0.2s; }
-        .stat-item:hover { background-color: #eff6ff; }
-        .stat-value { font-weight: 800; color: #334155; }
-        .roster-list { max-height: 300px; overflow-y: auto; }
-        .roster-item { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
-        
-        #bulkActionBar { transition: all 0.3s ease; border-left: 4px solid var(--primary); }
-        
-        /* Weekday Picker */
-        .weekday-selector { display: flex; gap: 5px; justify-content: space-between; }
-        .weekday-selector input { display: none; }
-        .weekday-selector label { flex: 1; text-align: center; padding: 6px 0; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-weight: 600; color: #64748b; transition: all 0.2s; }
-        .weekday-selector input:checked + label { background-color: var(--primary); color: white; border-color: var(--primary); }
-
-        /* Preset Day Row */
-        .preset-day-row { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; font-size: 0.8rem; }
-        .preset-day-label { width: 40px; font-weight: bold; }
-
-        /* Preset Preview */
-        .preset-preview-table td { padding: 4px 8px; font-size: 0.8rem; border-bottom: 1px solid #f1f5f9; }
-        .preset-preview-table th { font-size: 0.75rem; text-transform: uppercase; color: #64748b; background: #f8fafc; padding: 4px 8px; }
-    </style>
 </head>
-<body>
+<body class="overflow-x-hidden">
 
 <div id="statusMessage"></div>
 
@@ -88,12 +29,12 @@
             <div><h6 class="fw-bold mb-0">Schedule Planner</h6><span class="text-muted small">Day Manager & Analytics</span></div>
         </div>
         <div class="d-flex gap-2">
-            <a href="holiday.html" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"><i data-lucide="calendar-off" class="size-3"></i> Holidays</a>
+            <a href="holiday.html" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1 fw-bold"><i data-lucide="calendar-off" class="size-3"></i> Holidays</a>
             <div class="btn-group view-toggle">
-                <button class="btn btn-sm active" id="btnCalendarView" onclick="window.switchView('calendar')"><i data-lucide="calendar" class="size-3 me-1"></i> Calendar</button>
-                <button class="btn btn-sm" id="btnListView" onclick="window.switchView('list')"><i data-lucide="list" class="size-3 me-1"></i> List</button>
+                <button class="btn btn-sm active fw-bold" id="btnCalendarView" onclick="window.switchView('calendar')"><i data-lucide="calendar" class="size-3 me-1"></i> Calendar</button>
+                <button class="btn btn-sm fw-bold" id="btnListView" onclick="window.switchView('list')"><i data-lucide="list" class="size-3 me-1"></i> List</button>
             </div>
-            <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" onclick="window.openBulkModal()"><i data-lucide="layers" class="size-3"></i> Bulk Schedule</button>
+            <button class="btn btn-primary btn-sm d-flex align-items-center gap-1 fw-bold shadow-sm" onclick="window.openBulkModal()"><i data-lucide="layers" class="size-3"></i> Bulk Schedule</button>
         </div>
     </div>
 
@@ -105,8 +46,8 @@
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h6 class="fw-bold text-muted small m-0">Detailed Shift List</h6>
                     <div class="d-flex gap-2">
-                        <input type="date" id="searchDate" class="form-control form-control-sm" style="width: 150px;" onchange="window.filterTable()">
-                        <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Search staff..." style="width: 200px;" onkeyup="window.filterTable()">
+                        <input type="date" id="searchDate" class="form-control form-control-sm border-primary" style="width: 150px;" onchange="window.filterTable()">
+                        <input type="text" id="searchInput" class="form-control form-control-sm border-primary" placeholder="Search staff..." style="width: 200px;" onkeyup="window.filterTable()">
                         <button class="btn btn-sm btn-outline-secondary" onclick="window.clearFilters()"><i data-lucide="x" class="size-4"></i></button>
                     </div>
                 </div>
@@ -116,7 +57,7 @@
                 </div>
                 <div class="table-responsive">
                     <table class="table table-hover table-sm align-middle" style="font-size: 0.85rem;">
-                        <thead class="table-light"><tr><th style="width: 30px;"><input type="checkbox" id="selectAllList" class="form-check-input" onchange="window.toggleListSelectAll()"></th><th>Date</th><th>Staff Name</th><th>Time</th><th>Break</th><th>Type</th><th>Notes</th><th class="text-end">Action</th></tr></thead>
+                        <thead class="table-light text-muted"><tr><th style="width: 30px;"><input type="checkbox" id="selectAllList" class="form-check-input" onchange="window.toggleListSelectAll()"></th><th>Date</th><th>Staff Name</th><th>Time</th><th>Break</th><th>Type</th><th>Notes</th><th class="text-end">Action</th></tr></thead>
                         <tbody id="scheduleTableBody"><tr><td colspan="8" class="text-center text-muted">Loading...</td></tr></tbody>
                     </table>
                 </div>
@@ -124,10 +65,10 @@
         </div>
 
         <div class="sidebar-card">
-            <div class="d-flex align-items-center gap-2 mb-3"><i data-lucide="bar-chart-2" class="size-5 text-primary"></i><h6 class="fw-bold m-0">Workload Analytics</h6></div>
+            <div class="d-flex align-items-center gap-2 mb-3"><i data-lucide="bar-chart-2" class="size-5 text-primary"></i><h6 class="fw-bold m-0 text-dark">Workload Analytics</h6></div>
             <div class="filter-section mb-3">
-                <div class="mb-2"><label class="form-label x-small fw-bold text-muted mb-1">FILTER TYPE</label><select class="form-select form-select-sm" id="filterType" onchange="window.updateFilterUI()"><option value="month" selected>Monthly</option><option value="week">Weekly</option><option value="year">Yearly</option></select></div>
-                <div><label class="form-label x-small fw-bold text-muted mb-1">SELECT PERIOD</label><input type="month" id="filterMonth" class="form-control form-control-sm" onchange="window.renderAnalytics()"><input type="week" id="filterWeek" class="form-control form-control-sm d-none" onchange="window.renderAnalytics()"><select id="filterYear" class="form-select form-select-sm d-none" onchange="window.renderAnalytics()"></select></div>
+                <div class="mb-2"><label class="form-label x-small fw-bold text-muted mb-1">FILTER TYPE</label><select class="form-select form-select-sm border-primary" id="filterType" onchange="window.updateFilterUI()"><option value="month" selected>Monthly</option><option value="week">Weekly</option><option value="year">Yearly</option></select></div>
+                <div><label class="form-label x-small fw-bold text-muted mb-1">SELECT PERIOD</label><input type="month" id="filterMonth" class="form-control form-control-sm border-primary" onchange="window.renderAnalytics()"><input type="week" id="filterWeek" class="form-control form-control-sm d-none border-primary" onchange="window.renderAnalytics()"><select id="filterYear" class="form-select form-select-sm d-none border-primary" onchange="window.renderAnalytics()"></select></div>
             </div>
             <div class="d-flex justify-content-between align-items-center mb-2 px-1"><small class="text-muted fw-bold">STAFF LIST (Click to View)</small></div>
             <div id="analyticsList"><div class="text-center text-muted small py-4">Loading stats...</div></div>
@@ -137,8 +78,8 @@
 
 <div class="modal fade" id="dayManagerModal" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-centered"> 
-        <div class="modal-content">
-            <div class="modal-header py-2 bg-light">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header py-2 bg-light border-0">
                 <h6 class="modal-title fw-bold" id="dayManagerTitle">Manage Schedule</h6>
                 <button type="button" class="btn-close small" data-bs-dismiss="modal"></button>
             </div>
@@ -150,15 +91,15 @@
                     </div>
                     <div class="col-md-5 p-3 bg-light">
                         <h6 class="fw-bold text-primary mb-3">Add Staff</h6>
-                        <div class="mb-2"><label class="form-label x-small fw-bold text-muted mb-1">PRESET</label><select id="dmPresetSelect" class="form-select form-select-sm" onchange="window.applyDMPreset(this.value)"><option value="" selected>Custom</option></select></div>
-                        <div class="mb-2"><label class="form-label x-small fw-bold text-muted mb-1">AVAILABLE STAFF</label><select id="dmStaffSelect" class="form-select form-select-sm" multiple size="5"></select></div>
+                        <div class="mb-2"><label class="form-label x-small fw-bold text-muted mb-1">PRESET</label><select id="dmPresetSelect" class="form-select form-select-sm border-primary" onchange="window.applyDMPreset(this.value)"><option value="" selected>Custom</option></select></div>
+                        <div class="mb-2"><label class="form-label x-small fw-bold text-muted mb-1">AVAILABLE STAFF</label><select id="dmStaffSelect" class="form-select form-select-sm border-primary" multiple size="5"></select></div>
                         <div class="row g-2 mb-2">
                             <div class="col-4"><label class="form-label x-small fw-bold text-muted mb-1">START</label><input type="time" id="dmStartTime" class="form-control form-control-sm"></div>
                             <div class="col-4"><label class="form-label x-small fw-bold text-muted mb-1">END</label><input type="time" id="dmEndTime" class="form-control form-control-sm"></div>
                             <div class="col-4"><label class="form-label x-small fw-bold text-muted mb-1">BREAK (MIN)</label><input type="number" id="dmBreak" class="form-control form-control-sm" value="60" min="0"></div>
                         </div>
                         <div class="mb-3"><input type="text" id="dmNotes" class="form-control form-control-sm" placeholder="Notes..."></div>
-                        <button class="btn btn-primary btn-sm w-100 fw-bold" onclick="window.addShiftToDay()"><i data-lucide="plus" class="size-3 me-1"></i> Add to Roster</button>
+                        <button class="btn btn-primary btn-sm w-100 fw-bold shadow-sm" onclick="window.addShiftToDay()"><i data-lucide="plus" class="size-3 me-1"></i> Add to Roster</button>
                     </div>
                 </div>
             </div>
@@ -168,17 +109,17 @@
 
 <div class="modal fade" id="bulkModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered"> 
-        <div class="modal-content">
-            <div class="modal-header py-2 bg-primary bg-opacity-10">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header py-2 bg-primary bg-opacity-10 border-0">
                 <h6 class="modal-title fw-bold text-primary">Bulk Schedule</h6>
                 <button type="button" class="btn-close small" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body p-4">
                 <form id="bulkForm">
                     <div class="mb-3 border-bottom pb-3">
                         <label class="form-label small fw-bold text-muted m-0">STEP 1: SELECT PRESET (OPTIONAL)</label>
                         <div class="d-flex gap-2 mt-1">
-                            <select id="bulkPresetSelect" class="form-select form-select-sm border-primary" onchange="window.handleBulkPresetChange(this.value)">
+                            <select id="bulkPresetSelect" class="form-select form-select-sm border-primary fw-bold text-primary" onchange="window.handleBulkPresetChange(this.value)">
                                 <option value="" selected>Custom (Use settings below)</option>
                             </select>
                             <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.openPresetModal()"><i data-lucide="settings" class="size-4"></i></button>
@@ -195,82 +136,82 @@
                         </div>
                     </div>
 
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold mb-1">STEP 2: DATE RANGE</label>
-                        <div class="btn-group w-100 mb-2" role="group">
+                    <div class="mb-3 border-bottom pb-3">
+                        <label class="form-label small fw-bold mb-1 text-dark">STEP 2: DATE RANGE</label>
+                        <div class="btn-group w-100 mb-2 shadow-sm" role="group">
                             <input type="radio" class="btn-check" name="dateMode" id="modeRange" autocomplete="off" checked onchange="window.toggleDateMode()">
-                            <label class="btn btn-sm btn-outline-primary" for="modeRange">Specific Range</label>
+                            <label class="btn btn-sm btn-outline-primary fw-bold" for="modeRange">Specific Range</label>
                             
                             <input type="radio" class="btn-check" name="dateMode" id="modeMonth" autocomplete="off" onchange="window.toggleDateMode()">
-                            <label class="btn btn-sm btn-outline-primary" for="modeMonth">Whole Month</label>
+                            <label class="btn btn-sm btn-outline-primary fw-bold" for="modeMonth">Whole Month</label>
                         </div>
                         
                         <div class="row g-2" id="rangeInputs">
-                            <div class="col-6"><label class="form-label small fw-bold">From</label><input type="date" id="bulkStartDate" class="form-control form-control-sm"></div>
-                            <div class="col-6"><label class="form-label small fw-bold">To</label><input type="date" id="bulkEndDate" class="form-control form-control-sm"></div>
+                            <div class="col-6"><label class="form-label small fw-bold text-muted">From</label><input type="date" id="bulkStartDate" class="form-control form-control-sm border-primary"></div>
+                            <div class="col-6"><label class="form-label small fw-bold text-muted">To</label><input type="date" id="bulkEndDate" class="form-control form-control-sm border-primary"></div>
                         </div>
 
                         <div class="d-none" id="monthInputs">
-                            <input type="month" id="bulkMonthPicker" class="form-control form-control-sm">
-                            <div class="form-text text-success"><i data-lucide="info" class="size-3"></i> Auto-detects staff Join Date!</div>
+                            <input type="month" id="bulkMonthPicker" class="form-control form-control-sm border-primary fw-bold text-primary">
+                            <div class="form-text text-success fw-bold"><i data-lucide="info" class="size-3"></i> Auto-detects staff Join Date!</div>
                         </div>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label small fw-bold mb-1">STEP 3: SELECT STAFF</label>
-                        <input type="text" id="bulkStaffSearch" class="form-control form-control-sm mb-1" placeholder="Filter staff..." onkeyup="window.filterBulkStaff()">
-                        <select id="bulkStaffSelect" class="form-select form-select-sm" multiple size="5"></select>
+                        <label class="form-label small fw-bold mb-1 text-dark">STEP 3: SELECT STAFF</label>
+                        <input type="text" id="bulkStaffSearch" class="form-control form-control-sm mb-1 border-primary" placeholder="Filter staff..." onkeyup="window.filterBulkStaff()">
+                        <select id="bulkStaffSelect" class="form-select form-select-sm border-primary" multiple size="5"></select>
                     </div>
                     
-                    <div id="manualSettingsBlock">
-                        <div class="mb-3"><label class="form-label small fw-bold">Repeat On</label><div class="weekday-selector"><input type="checkbox" id="bd1" value="1" checked><label for="bd1">M</label><input type="checkbox" id="bd2" value="2" checked><label for="bd2">T</label><input type="checkbox" id="bd3" value="3" checked><label for="bd3">W</label><input type="checkbox" id="bd4" value="4" checked><label for="bd4">T</label><input type="checkbox" id="bd5" value="5" checked><label for="bd5">F</label><input type="checkbox" id="bd6" value="6"><label for="bd6">S</label><input type="checkbox" id="bd0" value="0"><label for="bd0">S</label></div></div>
+                    <div id="manualSettingsBlock" class="bg-light p-3 rounded border">
+                        <div class="mb-3"><label class="form-label small fw-bold text-dark">Repeat On</label><div class="weekday-selector"><input type="checkbox" id="bd1" value="1" checked><label for="bd1">M</label><input type="checkbox" id="bd2" value="2" checked><label for="bd2">T</label><input type="checkbox" id="bd3" value="3" checked><label for="bd3">W</label><input type="checkbox" id="bd4" value="4" checked><label for="bd4">T</label><input type="checkbox" id="bd5" value="5" checked><label for="bd5">F</label><input type="checkbox" id="bd6" value="6"><label for="bd6">S</label><input type="checkbox" id="bd0" value="0"><label for="bd0">S</label></div></div>
                         <div class="row g-2 mb-2">
-                            <div class="col-4"><label class="form-label small fw-bold">Start</label><input type="time" id="bulkStartTime" class="form-control form-control-sm"></div>
-                            <div class="col-4"><label class="form-label small fw-bold">End</label><input type="time" id="bulkEndTime" class="form-control form-control-sm"></div>
-                            <div class="col-4"><label class="form-label small fw-bold">Break</label><input type="number" id="bulkBreak" class="form-control form-control-sm" value="60" min="0"></div>
+                            <div class="col-4"><label class="form-label small fw-bold text-muted">Start</label><input type="time" id="bulkStartTime" class="form-control form-control-sm"></div>
+                            <div class="col-4"><label class="form-label small fw-bold text-muted">End</label><input type="time" id="bulkEndTime" class="form-control form-control-sm"></div>
+                            <div class="col-4"><label class="form-label small fw-bold text-muted">Break</label><input type="number" id="bulkBreak" class="form-control form-control-sm" value="60" min="0"></div>
                         </div>
                     </div>
                 </form>
             </div>
-            <div class="modal-footer bg-light py-2"><button type="button" id="btnRunBulk" class="btn btn-primary btn-sm w-100" onclick="window.runBulkSchedule()">Run Bulk Schedule</button></div>
+            <div class="modal-footer bg-light py-3 border-0"><button type="button" id="btnRunBulk" class="btn btn-primary btn-sm w-100 fw-bold shadow-sm" onclick="window.runBulkSchedule()">Run Bulk Schedule</button></div>
         </div>
     </div>
 </div>
 
 <div class="modal fade" id="listEditModal" tabindex="-1">
     <div class="modal-dialog modal-sm modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header py-2 bg-warning bg-opacity-10">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header py-2 bg-warning bg-opacity-10 border-0">
                 <h6 class="modal-title fw-bold text-dark">Edit Selected Shifts</h6>
                 <button type="button" class="btn-close small" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-3">
-                <p class="small text-muted mb-2">Updating <b id="listEditCount">0</b> shifts.</p>
-                <div class="row g-2 mb-2"><div class="col-6"><label class="form-label small fw-bold">Start</label><input type="time" id="leStart" class="form-control form-control-sm"></div><div class="col-6"><label class="form-label small fw-bold">End</label><input type="time" id="leEnd" class="form-control form-control-sm"></div></div>
+                <p class="small text-muted mb-2">Updating <b id="listEditCount" class="text-dark">0</b> shifts.</p>
+                <div class="row g-2 mb-2"><div class="col-6"><label class="form-label small fw-bold text-muted">Start</label><input type="time" id="leStart" class="form-control form-control-sm border-warning"></div><div class="col-6"><label class="form-label small fw-bold text-muted">End</label><input type="time" id="leEnd" class="form-control form-control-sm border-warning"></div></div>
             </div>
-            <div class="modal-footer bg-light py-2"><button type="button" id="btnSubmitListEdit" class="btn btn-primary btn-sm w-100" onclick="window.submitListEdit()">Update</button></div>
+            <div class="modal-footer bg-light py-2 border-0"><button type="button" id="btnSubmitListEdit" class="btn btn-primary btn-sm w-100 fw-bold shadow-sm" onclick="window.submitListEdit()">Update All</button></div>
         </div>
     </div>
 </div>
 
 <div class="modal fade" id="presetModal" tabindex="-1">
     <div class="modal-dialog modal-md modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header py-2 bg-light">
-                <h6 class="modal-title fw-bold">Manage Advanced Presets</h6>
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header py-2 bg-light border-0">
+                <h6 class="modal-title fw-bold text-dark">Manage Advanced Presets</h6>
                 <button type="button" class="btn-close small" onclick="window.closePresetModal()"></button>
             </div>
             <div class="modal-body p-3">
                 <div class="mb-3 border-bottom pb-3">
                     <input type="hidden" id="editingPresetIndex" value="-1">
-                    <input type="text" id="newPresetName" class="form-control form-control-sm mb-3 font-weight-bold" placeholder="Preset Name (e.g., Standard Week)" style="font-weight: bold;">
+                    <input type="text" id="newPresetName" class="form-control form-control-sm mb-3 border-primary text-primary" placeholder="Preset Name (e.g., Standard Week)" style="font-weight: bold;">
                     
                     <div id="presetDaysContainer"></div>
 
-                    <button id="btnSavePreset" class="btn btn-primary btn-sm w-100 mt-2" onclick="window.savePreset()">Add Preset</button>
-                    <button id="btnCancelEdit" class="btn btn-secondary btn-sm w-100 mt-1 d-none" onclick="window.resetPresetForm()">Cancel Edit</button>
+                    <button id="btnSavePreset" class="btn btn-primary btn-sm w-100 mt-3 fw-bold shadow-sm" onclick="window.savePreset()">Add Preset</button>
+                    <button id="btnCancelEdit" class="btn btn-secondary btn-sm w-100 mt-1 fw-bold d-none" onclick="window.resetPresetForm()">Cancel Edit</button>
                 </div>
-                <h6 class="small fw-bold text-muted">Saved Presets</h6>
+                <h6 class="small fw-bold text-muted mb-2">Saved Presets</h6>
                 <div id="presetListContainer" class="d-flex flex-column gap-2" style="max-height: 250px; overflow-y: auto;"></div>
             </div>
         </div>
@@ -279,21 +220,21 @@
 
 <div class="modal fade" id="staffAnalyticsModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header py-2 bg-primary bg-opacity-10">
-                <div><h6 class="modal-title fw-bold text-primary" id="analyticsName">Staff Name</h6><small class="text-muted" id="analyticsPeriod">Selected Period</small></div>
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header py-3 bg-primary bg-opacity-10 border-0">
+                <div><h6 class="modal-title fw-bold text-primary mb-1" id="analyticsName">Staff Name</h6><small class="text-muted fw-bold" id="analyticsPeriod">Selected Period</small></div>
                 <button type="button" class="btn-close small" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-0">
                 <div class="table-responsive" style="max-height: 400px;">
-                    <table class="table table-sm table-striped m-0 align-middle" style="font-size: 0.85rem;">
-                        <thead class="table-light sticky-top"><tr><th class="ps-3">Date</th><th>Day</th><th>Time</th><th class="text-end pe-3">Hrs</th></tr></thead>
-                        <tbody id="staffShiftsBody"></tbody>
+                    <table class="table table-sm table-striped m-0 align-middle border-0" style="font-size: 0.85rem;">
+                        <thead class="table-light sticky-top text-muted"><tr><th class="ps-3 border-0">Date</th><th class="border-0">Day</th><th class="border-0">Time</th><th class="text-end pe-3 border-0">Hrs</th></tr></thead>
+                        <tbody id="staffShiftsBody" class="border-0"></tbody>
                     </table>
                 </div>
             </div>
-            <div class="modal-footer bg-light py-2">
-                <div class="d-flex w-100 justify-content-between fw-bold small"><span>Total Shifts: <span id="modalTotalShifts">0</span></span><span>Total Hours: <span id="modalTotalHours">0</span></span></div>
+            <div class="modal-footer bg-light py-3 border-0">
+                <div class="d-flex w-100 justify-content-between fw-bold small text-dark"><span>Total Shifts: <span id="modalTotalShifts" class="text-primary">0</span></span><span>Total Hours: <span id="modalTotalHours" class="text-primary">0</span></span></div>
             </div>
         </div>
     </div>

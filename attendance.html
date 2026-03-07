@@ -6,68 +6,11 @@
     <title>Attendance Manager - FieldTrack Pro</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
     <link href="style.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
-    <style>
-        #loadingOverlay { 
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(255, 255, 255, 0.95); z-index: 9999; 
-            display: flex; flex-direction: column; justify-content: center; align-items: center; 
-        }
-
-        /* 全局 Toast 的样式 */
-        #statusMessage {
-            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-            padding: 12px 24px; border-radius: 8px; z-index: 9999;
-            color: white; font-weight: 500; display: none;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-        }
-
-        .control-hub { 
-            background: white; border-bottom: 1px solid #e2e8f0; 
-            padding: 16px 0; position: sticky; 
-            top: 58px; z-index: 1020; 
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-        }
-
-        .user-card {
-            border: 1px solid #e2e8f0; border-radius: 12px; background: white;
-            transition: all 0.2s ease; margin-bottom: 12px;
-        }
-        .user-card:hover { transform: translateY(-1px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); border-color: #cbd5e1; }
-        
-        .card-header-custom { padding: 16px 20px; background: white; cursor: pointer; border-radius: 12px; }
-
-        .staff-avatar { 
-            width: 42px; height: 42px; background: #eff6ff; color: #3b82f6; 
-            border-radius: 10px; display: flex; align-items: center; justify-content: center; 
-            font-weight: 700; font-size: 1.1rem; object-fit: cover; border: 1px solid #dbeafe;
-        }
-
-        .stat-box { text-align: center; }
-        .stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600; margin-bottom: 2px; }
-        .stat-value { font-size: 1rem; font-weight: 700; color: var(--text-main); }
-
-        .inner-list-item { border-bottom: 1px solid #f1f5f9; padding: 12px 24px; font-size: 0.95rem; }
-        .inner-list-item:last-child { border-bottom: none; }
-        
-        .row-absent { background-color: #fef2f2 !important; border-left: 4px solid #ef4444 !important; }
-        .row-late { background-color: #fffbeb; border-left: 4px solid #f59e0b; }
-        .row-leave { background-color: #f0f9ff !important; border-left: 4px solid #0ea5e9 !important; }
-
-        .badge-soft-secondary { background: #e2e8f0; color: #475569; font-weight: 600; }
-        .text-mono { font-family: 'Consolas', monospace; letter-spacing: -0.5px; }
-        
-        .stat-card { background: white; border-radius: 12px; padding: 20px; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-        .nav-link.active { color: var(--primary-blue); font-weight: 600; }
-        .chevron-icon { transition: transform 0.3s; }
-        .collapsed .chevron-icon { transform: rotate(0deg); }
-        .chevron-icon { transform: rotate(180deg); }
-        .month-mode-hidden { display: none !important; }
-    </style>
 </head>
 <body class="bg-light">
 
@@ -85,23 +28,23 @@
         <div class="control-hub px-4">
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <div class="btn-group" role="group">
+                    <div class="btn-group shadow-sm" role="group">
                         <input type="radio" class="btn-check" name="viewMode" id="modeDay" autocomplete="off" checked onchange="window.toggleMode('day')">
-                        <label class="btn btn-outline-primary" for="modeDay">Day View</label>
+                        <label class="btn btn-outline-primary fw-bold" for="modeDay">Day View</label>
 
                         <input type="radio" class="btn-check" name="viewMode" id="modeMonth" autocomplete="off" onchange="window.toggleMode('month')">
-                        <label class="btn btn-outline-primary" for="modeMonth">Month View</label>
+                        <label class="btn btn-outline-primary fw-bold" for="modeMonth">Month View</label>
                     </div>
 
                     <div id="dayControls" class="d-flex align-items-center gap-2">
-                        <button class="btn btn-light border" onclick="window.changeDate(-1)"><i data-lucide="chevron-left"></i></button>
-                        <input type="date" id="dateFilter" class="form-control fw-bold" style="width: 150px;" onchange="window.loadData()">
-                        <button class="btn btn-light border" onclick="window.changeDate(1)"><i data-lucide="chevron-right"></i></button>
+                        <button class="btn btn-light border shadow-sm" onclick="window.changeDate(-1)"><i data-lucide="chevron-left"></i></button>
+                        <input type="date" id="dateFilter" class="form-control fw-bold border-primary text-primary" style="width: 150px;" onchange="window.loadData()">
+                        <button class="btn btn-light border shadow-sm" onclick="window.changeDate(1)"><i data-lucide="chevron-right"></i></button>
                     </div>
 
                     <div id="monthControls" class="d-flex align-items-center gap-2 d-none">
-                        <input type="month" id="monthFilter" class="form-control fw-bold" style="width: 160px;" onchange="window.loadData()">
-                        <select id="monthStatusFilter" class="form-select fw-bold" style="width: 180px;" onchange="window.loadData()">
+                        <input type="month" id="monthFilter" class="form-control fw-bold border-primary text-primary" style="width: 160px;" onchange="window.loadData()">
+                        <select id="monthStatusFilter" class="form-select fw-bold border-primary" style="width: 180px;" onchange="window.loadData()">
                             <option value="all">Show All Status</option>
                             <option value="late">Show Late Only</option>
                             <option value="absent">Show Absent Only</option>
@@ -110,17 +53,17 @@
                     </div>
 
                     <div class="position-relative ms-2">
-                        <input type="text" id="searchInput" class="form-control ps-5" placeholder="Search staff..." style="width: 200px;" onkeyup="window.handleSearch()">
+                        <input type="text" id="searchInput" class="form-control ps-5 border-primary" placeholder="Search staff..." style="width: 200px;" onkeyup="window.handleSearch()">
                         <i data-lucide="search" class="position-absolute top-50 start-0 translate-middle-y ms-3 text-muted size-4"></i>
                     </div>
 
-                    <button class="btn btn-primary ms-2" onclick="window.loadData()">
+                    <button class="btn btn-primary ms-2 fw-bold shadow-sm" onclick="window.loadData()">
                         <i data-lucide="refresh-cw" class="size-4 me-2"></i> Load
                     </button>
                 </div>
 
                 <div class="d-flex gap-2">
-                    <button class="btn btn-outline-success d-flex align-items-center gap-2" onclick="window.exportData()">
+                    <button class="btn btn-outline-success fw-bold d-flex align-items-center gap-2 shadow-sm" onclick="window.exportData()">
                         <i data-lucide="download" class="size-4"></i> Export Excel
                     </button>
                 </div>
@@ -130,18 +73,18 @@
         <div class="container-fluid px-4 pt-3">
             <ul class="nav nav-tabs mb-4" id="attendanceTabs" role="tablist">
                 <li class="nav-item" id="navItemDashboard">
-                    <button class="nav-link active" id="tab-dashboard" data-bs-toggle="tab" data-bs-target="#content-dashboard">
+                    <button class="nav-link active fw-bold" id="tab-dashboard" data-bs-toggle="tab" data-bs-target="#content-dashboard">
                         <i data-lucide="pie-chart" class="size-4 me-2"></i>Dashboard
                     </button>
                 </li>
                 <li class="nav-item">
-                    <button class="nav-link" id="tab-logs" data-bs-toggle="tab" data-bs-target="#content-logs">
+                    <button class="nav-link fw-bold" id="tab-logs" data-bs-toggle="tab" data-bs-target="#content-logs">
                         <i data-lucide="list" class="size-4 me-2"></i>Detailed Records
                         <span id="tabVerifyBadge" class="badge bg-warning text-dark rounded-pill ms-1 d-none">0</span>
                     </button>
                 </li>
                 <li class="nav-item">
-                    <button class="nav-link" id="tab-corrections" data-bs-toggle="tab" data-bs-target="#content-corrections">
+                    <button class="nav-link fw-bold" id="tab-corrections" data-bs-toggle="tab" data-bs-target="#content-corrections">
                         <i data-lucide="alert-circle" class="size-4 me-2"></i>Corrections 
                         <span id="tabCorrectionBadge" class="badge bg-danger rounded-pill ms-1 d-none">0</span>
                     </button>
@@ -159,13 +102,13 @@
                     <div class="row">
                         <div class="col-md-6">
                             <div class="card border-0 shadow-sm rounded-4">
-                                <div class="card-header bg-white py-3 fw-bold text-danger">Absent List</div>
+                                <div class="card-header bg-white py-3 fw-bold text-danger border-bottom-0"><i data-lucide="user-x" class="size-4 me-2"></i>Absent List</div>
                                 <div class="card-body p-0"><ul class="list-group list-group-flush" id="absentList"></ul></div>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="card border-0 shadow-sm rounded-4">
-                                <div class="card-header bg-white py-3 fw-bold text-dark">Late / Undertime</div>
+                                <div class="card-header bg-white py-3 fw-bold text-warning border-bottom-0"><i data-lucide="clock" class="size-4 me-2"></i>Late / Undertime</div>
                                 <div class="card-body p-0"><ul class="list-group list-group-flush" id="lateList"></ul></div>
                             </div>
                         </div>
@@ -174,7 +117,7 @@
 
                 <div class="tab-pane fade" id="content-logs">
                     <div id="loadingState" class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
-                    <div id="emptyState" class="text-center py-5 d-none"><p class="text-muted">No records found.</p></div>
+                    <div id="emptyState" class="text-center py-5 d-none"><p class="text-muted fw-bold">No records found.</p></div>
                     <div id="attendanceList" class="d-flex flex-column gap-3 pb-5"></div>
                 </div>
 
@@ -186,7 +129,7 @@
                                 <tbody id="correctionListBody"></tbody>
                             </table>
                         </div>
-                        <div id="noCorrectionsMsg" class="text-center py-5 text-muted d-none">No pending corrections.</div>
+                        <div id="noCorrectionsMsg" class="text-center py-5 text-muted d-none fw-bold">No pending corrections.</div>
                     </div>
                 </div>
             </div>
@@ -195,16 +138,16 @@
 
     <div class="modal fade" id="manualActionModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header bg-primary bg-opacity-10">
-                    <h6 class="modal-title fw-bold text-primary">Admin Override</h6>
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-primary bg-opacity-10 border-0">
+                    <h6 class="modal-title fw-bold text-primary"><i data-lucide="edit-3" class="size-4 me-2"></i>Admin Override</h6>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body">
+                <div class="modal-body p-4">
                     <input type="hidden" id="manualUid"><input type="hidden" id="manualDate">
                     <div class="mb-3">
-                        <label class="form-label small fw-bold">Select Action</label>
-                        <select id="manualActionType" class="form-select" onchange="window.toggleManualInputs()">
+                        <label class="form-label small fw-bold text-dark">Select Action</label>
+                        <select id="manualActionType" class="form-select border-primary fw-bold text-primary" onchange="window.toggleManualInputs()">
                             <option value="">-- Choose --</option>
                             <optgroup label="Partial Adjustment (Safe)">
                                 <option value="Add Clock In">➕ Add Missing Clock In</option>
@@ -222,58 +165,58 @@
                         </select>
                     </div>
 
-                    <div id="boxSingleTime" class="d-none p-3 bg-light rounded border mb-3">
+                    <div id="boxSingleTime" class="d-none p-3 bg-light rounded border border-primary mb-3">
                         <label class="small fw-bold text-primary" id="singleTimeLabel">Time</label>
-                        <input type="time" id="manualSingleTime" class="form-control">
+                        <input type="time" id="manualSingleTime" class="form-control fw-bold border-primary">
                         <small class="text-muted mt-1 d-block"><i data-lucide="info" class="size-3"></i> This adds a record without deleting existing ones.</small>
                     </div>
 
-                    <div id="boxPresent" class="d-none p-3 bg-light rounded border mb-3">
+                    <div id="boxPresent" class="d-none p-3 bg-light rounded border border-primary mb-3">
                         <div class="row g-2 mb-2">
-                            <div class="col-6"><label class="small fw-bold text-primary">Clock In</label><input type="time" id="manualClockIn" class="form-control"></div>
-                            <div class="col-6"><label class="small fw-bold text-primary">Clock Out</label><input type="time" id="manualClockOut" class="form-control"></div>
+                            <div class="col-6"><label class="small fw-bold text-primary">Clock In</label><input type="time" id="manualClockIn" class="form-control border-primary fw-bold"></div>
+                            <div class="col-6"><label class="small fw-bold text-primary">Clock Out</label><input type="time" id="manualClockOut" class="form-control border-primary fw-bold"></div>
                         </div>
                         <div class="row g-2">
-                            <div class="col-6"><label class="small text-muted">Break Out (Optional)</label><input type="time" id="manualBreakOut" class="form-control"></div>
-                            <div class="col-6"><label class="small text-muted">Break In (Optional)</label><input type="time" id="manualBreakIn" class="form-control"></div>
+                            <div class="col-6"><label class="small text-muted fw-bold">Break Out (Optional)</label><input type="time" id="manualBreakOut" class="form-control"></div>
+                            <div class="col-6"><label class="small text-muted fw-bold">Break In (Optional)</label><input type="time" id="manualBreakIn" class="form-control"></div>
                         </div>
-                        <small class="text-muted mt-2 d-block"><i data-lucide="help-circle" class="size-3"></i> Clock In & Out will default to the employee's shift hours if available.</small>
+                        <small class="text-muted mt-2 d-block"><i data-lucide="help-circle" class="size-3"></i> Defaults to the employee's shift hours.</small>
                     </div>
                     
-                    <div id="boxLeave" class="d-none alert alert-info small mb-3">1 Day will be assigned.</div>
+                    <div id="boxLeave" class="d-none alert alert-info small mb-3 border-info fw-bold">1 Day will be assigned.</div>
                     
-                    <div id="archiveWarning" class="d-none alert alert-danger small mb-3">
+                    <div id="archiveWarning" class="d-none alert alert-danger small mb-3 border-danger">
                         <b>⚠️ Warning:</b> Existing records for this date will be permanently archived and replaced.
                     </div>
 
                     <div class="mt-2">
-                        <label class="small">Reason / Remarks</label>
-                        <input type="text" id="manualReason" class="form-control" placeholder="Optional...">
+                        <label class="small fw-bold text-dark">Reason / Remarks</label>
+                        <input type="text" id="manualReason" class="form-control border-secondary" placeholder="Optional...">
                     </div>
                 </div>
-                <div class="modal-footer"><button class="btn btn-primary btn-sm px-4 fw-bold" onclick="window.submitManualAction()">Confirm</button></div>
+                <div class="modal-footer bg-light border-0"><button class="btn btn-primary btn-sm w-100 fw-bold shadow-sm" onclick="window.submitManualAction()">Confirm Changes</button></div>
             </div>
         </div>
     </div>
 
     <div class="modal fade" id="editRecordModal" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header bg-light"><h6 class="modal-title fw-bold">Edit Record</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-                <div class="modal-body">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-warning bg-opacity-10 border-0"><h6 class="modal-title fw-bold text-dark">Edit Single Record</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body p-3">
                     <input type="hidden" id="editDocId"><input type="hidden" id="editSessionType"><input type="hidden" id="editRecordDate">
-                    <div class="mb-3"><label class="form-label small fw-bold">New Time</label><input type="time" id="editTimeInput" class="form-control"></div>
-                    <div class="alert alert-warning small">Saving will archive the original record to preserve evidence.</div>
+                    <div class="mb-3"><label class="form-label small fw-bold text-dark">New Time</label><input type="time" id="editTimeInput" class="form-control border-warning fw-bold text-dark"></div>
+                    <div class="alert alert-warning small border-warning" style="font-size: 0.75rem;">Saving will archive the original record to preserve evidence.</div>
                 </div>
-                <div class="modal-footer justify-content-between">
-                    <button class="btn btn-outline-danger btn-sm" onclick="window.deleteSingleRecord()">Delete</button>
-                    <button class="btn btn-primary btn-sm fw-bold" onclick="window.saveSingleRecord()">Save Changes</button>
+                <div class="modal-footer justify-content-between bg-light border-0">
+                    <button class="btn btn-outline-danger btn-sm fw-bold" onclick="window.deleteSingleRecord()">Delete</button>
+                    <button class="btn btn-warning text-dark btn-sm fw-bold shadow-sm" onclick="window.saveSingleRecord()">Save Changes</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="modal fade" id="photoModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content bg-dark p-0"><img id="modalImg" src="" class="img-fluid"></div></div></div>
+    <div class="modal fade" id="photoModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content bg-dark border-0 p-0 shadow-lg"><img id="modalImg" src="" class="img-fluid rounded"></div></div></div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -283,16 +226,12 @@
         import { firebaseConfig } from "./firebase-config.js";
         import { requireAdmin } from "./auth-guard.js";
         
-        // 🟢 导入拆分出去的核心应用逻辑
         import { initAttendanceApp } from "./attendance-app.js"; 
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
-        // 这里不直接实例化 auth，因为 requireAdmin 内部会处理
 
-        // 验证身份后初始化应用
         requireAdmin(app, db, async (user) => {
-            // 将控制器初始化交接给 attendance-app.js
             await initAttendanceApp();
         });
     </script>

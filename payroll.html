@@ -6,54 +6,10 @@
     <title>Payroll Management - FieldTrack Pro</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <link href="style.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    
-    <style>
-        #loadingOverlay { 
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(255, 255, 255, 0.95); z-index: 9999; 
-            display: flex; flex-direction: column; justify-content: center; align-items: center; 
-        }
-
-        /* 🟢 全局 Toast 样式 */
-        #statusMessage {
-            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-            padding: 12px 24px; border-radius: 8px; z-index: 9999;
-            color: white; font-weight: 500; display: none;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-        }
-
-        @media print {
-            body * { visibility: hidden; }
-            #printArea, #printArea * { visibility: visible; }
-            #printArea { position: absolute; left: 0; top: 0; width: 100%; font-family: 'Courier New', Courier, monospace; }
-            .no-print { display: none !important; }
-            .modal-dialog { max-width: 100%; margin: 0; }
-            .modal-content { border: none; box-shadow: none; }
-        }
-        .payslip-preview { font-family: 'Courier New', Courier, monospace; border: 1px solid #ccc; padding: 40px; background: white; max-width: 800px; margin: 0 auto; }
-        .payslip-header { text-align: left; margin-bottom: 20px; }
-        .company-name { font-weight: bold; font-size: 1.2rem; }
-        .company-address { font-size: 0.8rem; margin-bottom: 10px; }
-        
-        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9rem; margin-bottom: 20px; border-bottom: 1px dashed #000; padding-bottom: 10px;}
-        .info-row { display: flex; justify-content: space-between; }
-        
-        .finance-table { width: 100%; border-top: 2px solid #000; border-bottom: 2px solid #000; margin-bottom: 10px; font-size: 0.9rem; }
-        .finance-table th { text-align: left; padding: 5px; border-bottom: 1px solid #000; }
-        .finance-table td { padding: 5px; vertical-align: top; }
-        
-        .total-section { border-top: 1px dashed #000; padding-top: 10px; margin-top: 10px; }
-        .status-Draft { border-left: 4px solid #fbbf24; background-color: #fffbeb; }
-        .status-Published { border-left: 4px solid #22c55e; background-color: #f0fdf4; }
-        .form-section-title { font-size: 0.8rem; font-weight: bold; text-transform: uppercase; color: #64748b; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-top: 15px;}
-        .bg-calc { background-color: #f8fafc; }
-        
-        .stats-box { background: #f1f5f9; padding: 10px; border-radius: 6px; font-size: 0.8rem; border: 1px solid #e2e8f0; text-align: center; }
-        .stats-label { color: #64748b; display: block; margin-bottom: 2px; font-size: 0.7rem; text-transform: uppercase; }
-        .stats-val { font-weight: bold; color: #0f172a; font-size: 1.1rem; }
-    </style>
 </head>
 <body class="bg-light">
 
@@ -81,7 +37,7 @@
                     <i data-lucide="settings" class="size-4"></i> Settings
                 </button>
 
-                <input id="globalMonthPicker" class="form-control fw-bold text-primary border-primary" style="width: 150px; cursor: pointer; background: #eff6ff;" type="month" onchange="window.loadPayroll()">
+                <input id="globalMonthPicker" class="form-control fw-bold text-primary border-primary" style="width: 150px; cursor: pointer; background: var(--bg-highlight);" type="month" onchange="window.loadPayroll()">
                 
                 <button onclick="window.generateAllDrafts()" class="btn btn-warning fw-bold d-flex align-items-center gap-2 shadow-sm text-dark">
                     <i data-lucide="zap" class="size-4"></i> Auto Generate All
