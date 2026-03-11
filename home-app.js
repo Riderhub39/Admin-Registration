@@ -263,7 +263,7 @@ async function loadAttendanceStats() {
             } else if (schedStart) absent++;
         });
 
-        document.getElementById('countPresent').innerText = present;
+        document.getElementById('countPresent').innerText = Math.max(0, present - late);
         document.getElementById('countLate').innerText = late;
         document.getElementById('countAbsent').innerText = absent;
         const total = Math.max(Object.keys(scheduleMap).length, present);
