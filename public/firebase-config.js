@@ -5,10 +5,15 @@ import { getFirestore } from "https://www.gstatic.com/firebasejs/10.7.1/firebase
 import { getStorage } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 
+// firebase-config.js
+
 export const firebaseConfig = {
     apiKey: "AIzaSyB_NOJgB425rk89CVwVeqvqsXe9sMZymFk",
     authDomain: "fieldtrack-pro-a16b4.firebaseapp.com",
     projectId: "fieldtrack-pro-a16b4",
+    // 🟢 核心修复：添加数据库地址
+    // 如果你在新加坡区域，通常是这个格式：
+    databaseURL: "https://fieldtrack-pro-a16b4-default-rtdb.asia-southeast1.firebasedatabase.app", 
     storageBucket: "fieldtrack-pro-a16b4.firebasestorage.app",
     messagingSenderId: "73078824026",
     appId: "1:73078824026:web:1215f9a74fc7cd4d5..." 

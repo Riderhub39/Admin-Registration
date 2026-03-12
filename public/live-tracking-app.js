@@ -2,13 +2,15 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-// 🟢 修复 1：移除了无效的 off，因为 v9 是通过直接调用返回的函数来取消监听的
 import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 import { firebaseConfig } from "./firebase-config.js";
 import { showLoading, hideLoading, showStatusAlert } from "./utils.js"; 
 
+// ==========================================
+// 全局变量定义
+// ==========================================
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const rtdb = getDatabase(app); 
@@ -18,20 +20,15 @@ const STORE_LOCATION = { lat: 4.5975, lng: 101.0901 };
 const STORE_RADIUS_METERS = 500; 
 
 let map, currentMarker, storeCircle;
-
-// 🟢 修复 2：用真实轨迹线 (Polyline) 替代导航路线
 let routePolyline; 
-
-let activeStaffMap = {}; 
 let usersMap = {}; 
 let lastKnownPosition = null;
 
-// 🟢 修复 3：独立管理列表和个人的监听器，彻底解决内存泄漏
 let unsubscribeListListener = null;
 let unsubscribeStaffListener = null;
 
 // ==========================================
-// 1. Google Maps 初始化
+// 1. 初始化入口
 // ==========================================
 export async function initLiveTrackingApp() {
     showLoading();
@@ -39,21 +36,17 @@ export async function initLiveTrackingApp() {
     
     await fetchUsers(); 
 
-    if (!window.initMap) {
-        window.initMap = function() { setupMapAndUI(); };
+    if (typeof google !== 'undefined' && google.maps) {
+        setupMapAndUI();
     } else {
-        if (typeof google !== 'undefined' && google.maps) {
-            setupMapAndUI();
-        } else {
-            window.initMap = function() { setupMapAndUI(); };
-        }
+        window.initMap = () => setupMapAndUI();
     }
 }
 
 function setupMapAndUI() {
     if(typeof google === 'undefined' || !google.maps) {
         hideLoading();
-        showStatusAlert('statusMessage', 'Google Maps failed to load. Please check your key.', false);
+        showStatusAlert('statusMessage', 'Google Maps failed to load.', false);
         return;
     }
 
@@ -61,7 +54,6 @@ function setupMapAndUI() {
         center: STORE_LOCATION,
         zoom: 12,
         disableDefaultUI: false,
-        zoomControl: true,
         styles: [ { "featureType": "poi", "stylers": [{ "visibility": "off" }] } ]
     });
 
@@ -94,13 +86,12 @@ function setupMapAndUI() {
 }
 
 function resetMapView() {
-    // 🟢 安全取消个人实时监听，防止幽灵跳动
     if(unsubscribeStaffListener) { 
         unsubscribeStaffListener(); 
         unsubscribeStaffListener = null; 
     }
     if(currentMarker) currentMarker.setMap(null);
-    if(routePolyline) routePolyline.setMap(null); // 清除轨迹线
+    if(routePolyline) routePolyline.setMap(null);
     
     document.getElementById('statusOverlay').classList.add('d-none');
     window.selectedUid = null;
@@ -108,20 +99,29 @@ function resetMapView() {
 }
 
 // ==========================================
-// 2. 数据获取
+// 2. 数据获取逻辑
 // ==========================================
+
 async function fetchUsers() {
     try {
         const snap = await getDocs(collection(db, "users"));
+        usersMap = {}; 
         snap.forEach(doc => {
             const d = doc.data();
-            usersMap[d.authUid || doc.id] = d.personal?.name || d.name || "Unknown Staff";
+            const displayName = d.personal?.shortName || d.personal?.name || d.name || "Staff";
+            
+            // 同时支持通过 Document ID 和 authUid 查找名字
+            usersMap[doc.id] = displayName;
+            if (d.authUid) {
+                usersMap[d.authUid] = displayName;
+            }
         });
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error("Error fetching users:", e); 
+    }
 }
 
 async function loadDriverListForSelectedDate() {
-    // 🟢 安全取消旧的列表监听
     if(unsubscribeListListener) { 
         unsubscribeListListener(); 
         unsubscribeListListener = null; 
@@ -134,9 +134,9 @@ async function loadDriverListForSelectedDate() {
 
     if (dateStr === todayStr) {
         const liveRef = ref(rtdb, 'live_locations');
-        // 🟢 记录返回的取消函数
         unsubscribeListListener = onValue(liveRef, (snapshot) => {
             const data = snapshot.val();
+            
             if (!data) {
                 listDiv.innerHTML = '<div class="text-center text-muted small py-4">No active drivers today.</div>';
                 return;
@@ -144,16 +144,17 @@ async function loadDriverListForSelectedDate() {
 
             let html = '';
             Object.entries(data).forEach(([uid, val]) => {
-                const realName = usersMap[uid] || "Staff";
+                const realName = usersMap[uid] || `User (${uid.substring(0, 5)})`;
                 const lastUpdate = new Date(val.lastUpdate);
-                
                 const isOnline = (new Date() - lastUpdate) < 1000 * 60 * 15; 
+                
                 const statusBadge = isOnline 
                     ? '<div class="d-flex align-items-center gap-1"><span class="status-dot dot-online"></span> <small class="text-success" style="font-size:10px">Active</small></div>'
                     : '<span class="badge bg-secondary bg-opacity-10 text-secondary border" style="font-size:10px">Offline</span>';
 
                 html += buildUserListItem(uid, realName, lastUpdate.toLocaleTimeString(), statusBadge);
             });
+
             listDiv.innerHTML = html;
             if (typeof lucide !== 'undefined') lucide.createIcons();
         });
@@ -170,12 +171,13 @@ async function loadDriverListForSelectedDate() {
 
             let html = '';
             users.forEach(uid => {
-                html += buildUserListItem(uid, usersMap[uid] || "Staff", "Archived Data", '<span class="badge bg-light text-secondary border" style="font-size:10px">History</span>');
+                const realName = usersMap[uid] || `Staff (${uid.substring(0, 5)})`;
+                html += buildUserListItem(uid, realName, "Archived Data", '<span class="badge bg-light text-secondary border" style="font-size:10px">History</span>');
             });
             listDiv.innerHTML = html;
             if (typeof lucide !== 'undefined') lucide.createIcons();
         } catch(e) {
-            listDiv.innerHTML = '<div class="text-center text-danger small py-4">Error loading data.</div>';
+            listDiv.innerHTML = '<div class="text-center text-danger small py-4">Error loading history.</div>';
         }
     }
 }
@@ -209,7 +211,6 @@ window.viewStaffRoute = async function(uid, realName) {
 
     if (dateStr === todayStr) {
         const singleRef = ref(rtdb, `live_locations/${uid}`);
-        // 🟢 记录单人追踪的取消函数，防止点击别人时内存泄漏
         unsubscribeStaffListener = onValue(singleRef, (snapshot) => {
             const val = snapshot.val();
             if (val && window.selectedUid === uid) {
@@ -220,7 +221,6 @@ window.viewStaffRoute = async function(uid, realName) {
 
     try {
         const snap = await getDocs(query(collection(db, "tracking_batches"), where("uid", "==", uid), where("date", "==", dateStr)));
-        
         let allPoints = [];
         const batches = snap.docs.map(d => d.data());
         batches.sort((a, b) => (a.uploadedAt?.seconds || 0) - (b.uploadedAt?.seconds || 0));
@@ -232,7 +232,7 @@ window.viewStaffRoute = async function(uid, realName) {
         });
 
         if (allPoints.length > 0) {
-            drawRoute(allPoints, realName); // 🟢 改进后的无损画线
+            drawRoute(allPoints, realName);
         } else if (dateStr !== todayStr) {
             showNoRecordState();
         }
@@ -248,14 +248,10 @@ function showNoRecordState() {
     document.getElementById('overlayStatusTag').className = "badge bg-secondary";
 }
 
-// 🟢 修复：改用 Polyline 画纯粹的 GPS 轨迹线，不受 25 个点的限制，100% 还原真实路况
 function drawRoute(logs, realName) {
     if(routePolyline) routePolyline.setMap(null);
-    
-    // 提取所有有效的经纬度点
     const pathCoordinates = logs.map(log => new google.maps.LatLng(log.lat, log.lng));
 
-    // 绘制高清轨迹蓝线
     routePolyline = new google.maps.Polyline({
         path: pathCoordinates,
         geodesic: true,
@@ -265,7 +261,6 @@ function drawRoute(logs, realName) {
         map: map
     });
 
-    // 将最后已知点更新为当前标记
     const lastLog = logs[logs.length - 1];
     const isToday = document.getElementById('datePicker').value === new Date().toLocaleDateString('en-CA');
     
@@ -306,7 +301,6 @@ function updateCarMarker(data, realName) {
         currentMarker.setPosition(pos);
     }
     
-    // 🟢 修复：防止 GPS 返回负数速度 (-1)
     const rawSpeed = data.speed || 0;
     const finalSpeed = rawSpeed > 0 ? (rawSpeed * 3.6).toFixed(1) : 0;
     document.getElementById('overlaySpeed').innerText = finalSpeed;
@@ -317,7 +311,6 @@ function updateCarMarker(data, realName) {
     } else {
         document.getElementById('overlayTime').innerText = '-';
     }
-    
     updateStatusCard(data);
 }
 
