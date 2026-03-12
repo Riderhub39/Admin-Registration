@@ -48,7 +48,6 @@ function initListeners() {
         fullHistoryList = list;
         window.filterHistory();
         
-        // 数据加载完后隐藏 loading 遮罩
         hideLoading();
         document.getElementById('mainContainer').classList.remove('d-none');
     });
@@ -92,7 +91,7 @@ function renderPending(list) {
             </td>
             <td class="text-end pe-4">
                 <button class="btn btn-sm btn-outline-danger me-1" onclick="window.openRejectModal('${item.id}')">Reject</button>
-                <button class="btn btn-sm btn-success fw-bold text-white" onclick="window.handleApprove('${item.id}', '${item.authUid || item.uid}')">Approve</button>
+                <button class="btn btn-sm btn-success fw-bold text-white" onclick="window.handleApprove('${item.id}', '${item.uid}')">Approve</button>
             </td>`;
         tbody.appendChild(tr);
     });
@@ -117,7 +116,8 @@ function renderHistory(list) {
             ? `<button class="btn btn-xs btn-light border text-primary mt-1" onclick="window.viewAttachment('${item.attachmentUrl}')"><i data-lucide="paperclip" class="size-3 me-1"></i> Proof</button>` 
             : '';
 
-        const editBtn = `<button class="btn btn-xs btn-outline-secondary ms-2" onclick="window.openEditStatusModal('${item.id}', '${item.status}', '${item.authUid || item.uid}')" title="Edit Status"><i data-lucide="edit-2" class="size-3"></i></button>`;
+        // 🟢 这里确保传给 Modal 的是 item.uid
+        const editBtn = `<button class="btn btn-xs btn-outline-secondary ms-2" onclick="window.openEditStatusModal('${item.id}', '${item.status}', '${item.uid}')" title="Edit Status"><i data-lucide="edit-2" class="size-3"></i></button>`;
 
         const tr = document.createElement('tr');
         tr.innerHTML = `
@@ -158,7 +158,7 @@ function getBadgeClass(type) {
     return 'badge-leave-annual';
 }
 
-// --- 暴露给 window 的方法 ---
+// --- Window Methods ---
 
 window.toggleCustomDate = function() {
     const period = document.getElementById('filterPeriod').value;
@@ -222,10 +222,10 @@ window.resetFilters = function() {
     window.filterHistory();
 }
 
-window.openEditStatusModal = function(id, status, authUid) {
+window.openEditStatusModal = function(id, status, targetUid) {
     document.getElementById('editLeaveId').value = id;
     document.getElementById('editCurrentStatus').value = status;
-    document.getElementById('editAuthUid').value = authUid;
+    document.getElementById('editAuthUid').value = targetUid; // HTML ID 没改，但存的是 UID (44)
     
     const sel = document.getElementById('editNewStatus');
     sel.value = status; 
@@ -242,7 +242,7 @@ window.submitStatusChange = async function() {
     const id = document.getElementById('editLeaveId').value;
     const oldStatus = document.getElementById('editCurrentStatus').value;
     const newStatus = document.getElementById('editNewStatus').value;
-    const authUid = document.getElementById('editAuthUid').value;
+    const targetUid = document.getElementById('editAuthUid').value;
     const reason = document.getElementById('editStatusReason').value;
 
     if (oldStatus === newStatus) { editStatusModal.hide(); return; }
@@ -257,51 +257,59 @@ window.submitStatusChange = async function() {
     try {
         await runTransaction(db, async (transaction) => {
             const leaveRef = doc(db, "leaves", id);
-            const userRef = doc(db, "users", authUid);
+            const userRef = doc(db, "users", targetUid);
             
             const leaveDoc = await transaction.get(leaveRef);
             if (!leaveDoc.exists()) throw new Error("Leave record not found.");
+            
             const leaveData = leaveDoc.data();
             const days = leaveData.days;
             const type = leaveData.type;
-
-            const userDoc = await transaction.get(userRef);
-            if (!userDoc.exists()) throw new Error("User not found for balance update.");
-            
-            const userData = userDoc.data();
-            const currentBalance = userData.leave_balance?.annual || 0;
-            let newBalance = currentBalance;
             const isAnnual = (type === 'Annual Leave');
 
-            // 1. REVERT OLD EFFECT
-            if (oldStatus === 'Approved' && isAnnual) newBalance += days;
+            let currentBalance = 0;
+            let newBalance = 0;
 
-            // 2. APPLY NEW EFFECT
-            if (newStatus === 'Approved' && isAnnual) {
-                if (newBalance < days) throw new Error("Cannot approve: User has insufficient balance.");
-                newBalance -= days;
+            // 🟢 只有年假需要读取并处理余额
+            if (isAnnual) {
+                const userDoc = await transaction.get(userRef);
+                if (!userDoc.exists()) throw new Error(`User document (ID: ${targetUid}) not found for balance update.`);
+                
+                const userData = userDoc.data();
+                currentBalance = userData.leave_balance?.annual || 0;
+                newBalance = currentBalance;
+
+                // 1. 回滚旧状态的影响
+                if (oldStatus === 'Approved') newBalance += days;
+
+                // 2. 应用新状态的影响
+                if (newStatus === 'Approved') {
+                    if (newBalance < days) throw new Error("Insufficient balance to approve.");
+                    newBalance -= days;
+                }
+
+                // 3. 更新数据库中的余额
+                if (newBalance !== currentBalance) {
+                    transaction.update(userRef, { "leave_balance.annual": newBalance });
+                }
             }
 
-            // 3. Update User Balance (Only if Annual)
-            if (isAnnual && newBalance !== currentBalance) {
-                transaction.update(userRef, { "leave_balance.annual": newBalance });
-            }
-
-            // 4. Update Leave Doc
+            // 4. 更新请假单文档
             const updateData = { status: newStatus, reviewedAt: serverTimestamp(), reviewer: auth.currentUser.email };
             if (newStatus === 'Rejected') updateData.rejectionReason = reason;
             if (type === 'Unpaid Leave') updateData.isPayrollDeductible = (newStatus === 'Approved');
 
             transaction.update(leaveRef, updateData);
             
-            logAdminAction(db, auth.currentUser, "MODIFY_LEAVE_STATUS", authUid, 
+            logAdminAction(db, auth.currentUser, "MODIFY_LEAVE_STATUS", targetUid, 
                 { leaveId: id, oldStatus: oldStatus, oldBalance: currentBalance }, 
                 { newStatus: newStatus, newBalance: newBalance, reason: reason }
             );
         });
+        
         if(editStatusModal) editStatusModal.hide();
         hideLoading();
-        showStatusAlert('statusMessage', 'Status updated and balance recalculated successfully!', true); 
+        showStatusAlert('statusMessage', 'Status updated successfully!', true); 
     } catch (e) {
         console.error(e); 
         hideLoading();
@@ -349,7 +357,7 @@ window.submitRejection = async function() {
     }
 }
 
-window.handleApprove = async function(leaveId, userId) {
+window.handleApprove = async function(leaveId, targetUid) {
     if(!confirm(`Confirm APPROVE this leave request?`)) return;
     
     showLoading(); 
@@ -357,7 +365,7 @@ window.handleApprove = async function(leaveId, userId) {
     try {
         await runTransaction(db, async (transaction) => {
             const leaveRef = doc(db, "leaves", leaveId);
-            const userRef = doc(db, "users", userId);
+            const userRef = doc(db, "users", targetUid);
             
             const leaveDoc = await transaction.get(leaveRef);
             if (!leaveDoc.exists()) throw new Error(`Leave request not found.`);
@@ -367,16 +375,19 @@ window.handleApprove = async function(leaveId, userId) {
             
             const days = leaveData.days;
             const type = leaveData.type;
-
-            const userDoc = await transaction.get(userRef);
-            if (!userDoc.exists()) throw new Error(`User document ${userId} not found.`);
-            
-            const userData = userDoc.data();
             const isAnnual = (type === 'Annual Leave');
-            const currentBalance = userData.leave_balance?.annual !== undefined ? userData.leave_balance.annual : 14; 
+
+            let currentBalance = 0;
             
+            // 🟢 如果是年假，必须检查用户文档
             if (isAnnual) {
-                if (currentBalance < days) throw new Error(`Insufficient Annual Leave Balance! Current: ${currentBalance}, Required: ${days}`);
+                const userDoc = await transaction.get(userRef);
+                if (!userDoc.exists()) throw new Error(`User (ID: ${targetUid}) not found. Cannot deduct balance.`);
+                
+                const userData = userDoc.data();
+                currentBalance = userData.leave_balance?.annual !== undefined ? userData.leave_balance.annual : 14; 
+                
+                if (currentBalance < days) throw new Error(`Insufficient Balance! Current: ${currentBalance}, Required: ${days}`);
                 transaction.update(userRef, { "leave_balance.annual": currentBalance - days });
             } 
             
@@ -388,7 +399,7 @@ window.handleApprove = async function(leaveId, userId) {
                 deductibleDays: days 
             });
 
-            logAdminAction(db, auth.currentUser, "APPROVE_LEAVE", userId, 
+            logAdminAction(db, auth.currentUser, "APPROVE_LEAVE", targetUid, 
                 { leaveId: leaveId, oldBalance: currentBalance }, 
                 { daysDeducted: isAnnual ? days : 0, type: type }
             );
