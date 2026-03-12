@@ -40,6 +40,13 @@
                         <button class="btn btn-light border shadow-sm" onclick="window.changeDate(-1)"><i data-lucide="chevron-left"></i></button>
                         <input type="date" id="dateFilter" class="form-control fw-bold border-primary text-primary" style="width: 150px;" onchange="window.loadData()">
                         <button class="btn btn-light border shadow-sm" onclick="window.changeDate(1)"><i data-lucide="chevron-right"></i></button>
+                        
+                        <select id="dayStatusFilter" class="form-select fw-bold border-primary text-primary" style="width: 170px;" onchange="window.loadData()">
+                            <option value="all">All Status</option>
+                            <option value="clockedIn">Clocked In Only</option>
+                            <option value="unverified">Unverified Only</option>
+                            <option value="missingOut">Missing Out</option>
+                        </select>
                     </div>
 
                     <div id="monthControls" class="d-flex align-items-center gap-2 d-none">
@@ -63,6 +70,10 @@
                 </div>
 
                 <div class="d-flex gap-2">
+                    <button id="bulkVerifyBtn" class="btn btn-success fw-bold d-flex align-items-center gap-2 shadow-sm d-none" onclick="window.bulkVerify()">
+                        <i data-lucide="check-circle" class="size-4"></i> Bulk Verify
+                    </button>
+
                     <button class="btn btn-outline-success fw-bold d-flex align-items-center gap-2 shadow-sm" onclick="window.exportData()">
                         <i data-lucide="download" class="size-4"></i> Export Excel
                     </button>

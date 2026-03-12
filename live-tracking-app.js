@@ -2,8 +2,8 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-// 🟢 引入 RTDB
-import { getDatabase, ref, onValue, off } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+// 🟢 修复 1：移除了无效的 off，因为 v9 是通过直接调用返回的函数来取消监听的
+import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 import { firebaseConfig } from "./firebase-config.js";
@@ -18,16 +18,20 @@ const STORE_LOCATION = { lat: 4.5975, lng: 101.0901 };
 const STORE_RADIUS_METERS = 500; 
 
 let map, currentMarker, storeCircle;
-let directionsService, directionsRenderer; 
+
+// 🟢 修复 2：用真实轨迹线 (Polyline) 替代导航路线
+let routePolyline; 
 
 let activeStaffMap = {}; 
 let usersMap = {}; 
-
 let lastKnownPosition = null;
-let activeRTDBListener = null;
+
+// 🟢 修复 3：独立管理列表和个人的监听器，彻底解决内存泄漏
+let unsubscribeListListener = null;
+let unsubscribeStaffListener = null;
 
 // ==========================================
-// 1. Google Maps 动态加载机制 (防止 initMap 报错)
+// 1. Google Maps 初始化
 // ==========================================
 export async function initLiveTrackingApp() {
     showLoading();
@@ -35,20 +39,13 @@ export async function initLiveTrackingApp() {
     
     await fetchUsers(); 
 
-    // 如果 HTML 中还没挂载 initMap，就在这里接管
     if (!window.initMap) {
-        window.initMap = function() {
-            setupMapAndUI();
-        };
+        window.initMap = function() { setupMapAndUI(); };
     } else {
-        // 如果 API 已经加载完了
         if (typeof google !== 'undefined' && google.maps) {
             setupMapAndUI();
         } else {
-            // 重写占位的 initMap
-            window.initMap = function() {
-                setupMapAndUI();
-            };
+            window.initMap = function() { setupMapAndUI(); };
         }
     }
 }
@@ -66,14 +63,6 @@ function setupMapAndUI() {
         disableDefaultUI: false,
         zoomControl: true,
         styles: [ { "featureType": "poi", "stylers": [{ "visibility": "off" }] } ]
-    });
-
-    directionsService = new google.maps.DirectionsService();
-    directionsRenderer = new google.maps.DirectionsRenderer({
-        map: map,
-        suppressMarkers: true,
-        preserveViewport: true,
-        polylineOptions: { strokeColor: "#2563eb", strokeOpacity: 0.8, strokeWeight: 6 }
     });
 
     storeCircle = new google.maps.Circle({
@@ -105,9 +94,14 @@ function setupMapAndUI() {
 }
 
 function resetMapView() {
-    if(activeRTDBListener) { off(activeRTDBListener); activeRTDBListener = null; }
+    // 🟢 安全取消个人实时监听，防止幽灵跳动
+    if(unsubscribeStaffListener) { 
+        unsubscribeStaffListener(); 
+        unsubscribeStaffListener = null; 
+    }
     if(currentMarker) currentMarker.setMap(null);
-    if(directionsRenderer) directionsRenderer.setDirections({routes: []});
+    if(routePolyline) routePolyline.setMap(null); // 清除轨迹线
+    
     document.getElementById('statusOverlay').classList.add('d-none');
     window.selectedUid = null;
     lastKnownPosition = null;
@@ -127,7 +121,11 @@ async function fetchUsers() {
 }
 
 async function loadDriverListForSelectedDate() {
-    if(activeRTDBListener) { off(activeRTDBListener); activeRTDBListener = null; }
+    // 🟢 安全取消旧的列表监听
+    if(unsubscribeListListener) { 
+        unsubscribeListListener(); 
+        unsubscribeListListener = null; 
+    }
 
     const dateStr = document.getElementById('datePicker').value;
     const todayStr = new Date().toLocaleDateString('en-CA');
@@ -135,9 +133,9 @@ async function loadDriverListForSelectedDate() {
     listDiv.innerHTML = '<div class="text-center text-muted small py-4">Syncing...</div>';
 
     if (dateStr === todayStr) {
-        // 🟢 今天：监听 RTDB
         const liveRef = ref(rtdb, 'live_locations');
-        activeRTDBListener = onValue(liveRef, (snapshot) => {
+        // 🟢 记录返回的取消函数
+        unsubscribeListListener = onValue(liveRef, (snapshot) => {
             const data = snapshot.val();
             if (!data) {
                 listDiv.innerHTML = '<div class="text-center text-muted small py-4">No active drivers today.</div>';
@@ -149,7 +147,6 @@ async function loadDriverListForSelectedDate() {
                 const realName = usersMap[uid] || "Staff";
                 const lastUpdate = new Date(val.lastUpdate);
                 
-                // 15分钟内算在线
                 const isOnline = (new Date() - lastUpdate) < 1000 * 60 * 15; 
                 const statusBadge = isOnline 
                     ? '<div class="d-flex align-items-center gap-1"><span class="status-dot dot-online"></span> <small class="text-success" style="font-size:10px">Active</small></div>'
@@ -161,7 +158,6 @@ async function loadDriverListForSelectedDate() {
             if (typeof lucide !== 'undefined') lucide.createIcons();
         });
     } else {
-        // 🟢 历史：解析 tracking_batches 
         try {
             const snap = await getDocs(query(collection(db, "tracking_batches"), where("date", "==", dateStr)));
             const users = new Set();
@@ -212,9 +208,9 @@ window.viewStaffRoute = async function(uid, realName) {
     const todayStr = new Date().toLocaleDateString('en-CA');
 
     if (dateStr === todayStr) {
-        // 🟢 RTDB 实时跟随模式
         const singleRef = ref(rtdb, `live_locations/${uid}`);
-        onValue(singleRef, (snapshot) => {
+        // 🟢 记录单人追踪的取消函数，防止点击别人时内存泄漏
+        unsubscribeStaffListener = onValue(singleRef, (snapshot) => {
             const val = snapshot.val();
             if (val && window.selectedUid === uid) {
                 updateCarMarker(val, realName);
@@ -222,13 +218,11 @@ window.viewStaffRoute = async function(uid, realName) {
         });
     }
 
-    // 🟢 加载历史轨迹批次 (tracking_batches)
     try {
         const snap = await getDocs(query(collection(db, "tracking_batches"), where("uid", "==", uid), where("date", "==", dateStr)));
         
         let allPoints = [];
         const batches = snap.docs.map(d => d.data());
-        // 按照上传时间排序，确保路线是顺的
         batches.sort((a, b) => (a.uploadedAt?.seconds || 0) - (b.uploadedAt?.seconds || 0));
 
         batches.forEach(b => {
@@ -238,7 +232,7 @@ window.viewStaffRoute = async function(uid, realName) {
         });
 
         if (allPoints.length > 0) {
-            drawRoute(allPoints, realName);
+            drawRoute(allPoints, realName); // 🟢 改进后的无损画线
         } else if (dateStr !== todayStr) {
             showNoRecordState();
         }
@@ -254,72 +248,36 @@ function showNoRecordState() {
     document.getElementById('overlayStatusTag').className = "badge bg-secondary";
 }
 
+// 🟢 修复：改用 Polyline 画纯粹的 GPS 轨迹线，不受 25 个点的限制，100% 还原真实路况
 function drawRoute(logs, realName) {
-    if(directionsRenderer) directionsRenderer.setDirections({routes: []});
+    if(routePolyline) routePolyline.setMap(null);
     
-    const filteredLogs = [];
-    let lastAddedLatLng = null;
+    // 提取所有有效的经纬度点
+    const pathCoordinates = logs.map(log => new google.maps.LatLng(log.lat, log.lng));
 
-    logs.forEach((log, index) => {
-        const latLng = new google.maps.LatLng(log.lat, log.lng);
-        let shouldAdd = false;
-
-        if (index === 0 || index === logs.length - 1) {
-            shouldAdd = true;
-        } else {
-            const distFromLast = google.maps.geometry.spherical.computeDistanceBetween(lastAddedLatLng, latLng);
-            if (distFromLast > 200) { 
-                shouldAdd = true;
-            }
-        }
-
-        if (shouldAdd) {
-            filteredLogs.push({ location: latLng }); 
-            lastAddedLatLng = latLng;
-        }
+    // 绘制高清轨迹蓝线
+    routePolyline = new google.maps.Polyline({
+        path: pathCoordinates,
+        geodesic: true,
+        strokeColor: "#2563eb",
+        strokeOpacity: 0.8,
+        strokeWeight: 5,
+        map: map
     });
 
-    if (filteredLogs.length < 2) {
-        return; 
+    // 将最后已知点更新为当前标记
+    const lastLog = logs[logs.length - 1];
+    const isToday = document.getElementById('datePicker').value === new Date().toLocaleDateString('en-CA');
+    
+    if(!isToday) {
+       updateCarMarker({
+           lat: lastLog.lat, 
+           lng: lastLog.lng,
+           lastUpdate: lastLog.timestamp,
+           speed: 0
+       }, realName);
+       updateStatusCard(lastLog);
     }
-
-    const maxWaypoints = 23;
-    const waypoints = [];
-    const origin = filteredLogs[0].location;
-    const destination = filteredLogs[filteredLogs.length - 1].location;
-    const intermediatePoints = filteredLogs.slice(1, filteredLogs.length - 1);
-
-    if (intermediatePoints.length > maxWaypoints) {
-        const step = Math.ceil(intermediatePoints.length / maxWaypoints);
-        for (let i = 0; i < intermediatePoints.length; i += step) {
-            waypoints.push({ location: intermediatePoints[i].location, stopover: false });
-        }
-    } else {
-        intermediatePoints.forEach(pt => waypoints.push({ location: pt.location, stopover: false }));
-    }
-
-    directionsService.route({
-        origin: origin,
-        destination: destination,
-        waypoints: waypoints,
-        travelMode: google.maps.TravelMode.DRIVING,
-    }, (response, status) => {
-        if (status === "OK") {
-            directionsRenderer.setDirections(response);
-            
-            // 历史模式下，如果当天没有 RTDB 实时更新，则用最后一个批次点的信息
-            const isToday = document.getElementById('datePicker').value === new Date().toLocaleDateString('en-CA');
-            if(!isToday) {
-               updateCarMarker({
-                   lat: logs[logs.length-1].lat, 
-                   lng: logs[logs.length-1].lng,
-                   lastUpdate: logs[logs.length-1].timestamp,
-                   speed: 0
-               }, realName);
-               updateStatusCard(logs[logs.length - 1]);
-            }
-        }
-    });
 }
 
 function updateStatusCard(lastLog) {
@@ -348,10 +306,12 @@ function updateCarMarker(data, realName) {
         currentMarker.setPosition(pos);
     }
     
-    document.getElementById('overlaySpeed').innerText = ((data.speed || 0) * 3.6).toFixed(1);
+    // 🟢 修复：防止 GPS 返回负数速度 (-1)
+    const rawSpeed = data.speed || 0;
+    const finalSpeed = rawSpeed > 0 ? (rawSpeed * 3.6).toFixed(1) : 0;
+    document.getElementById('overlaySpeed').innerText = finalSpeed;
     
     if (data.lastUpdate) {
-        // 如果是 RTDB 的毫秒级时间戳或者是 Batch 的 ISO 字符串
         const t = new Date(data.lastUpdate);
         document.getElementById('overlayTime').innerText = t.toLocaleTimeString();
     } else {

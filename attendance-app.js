@@ -24,6 +24,14 @@ let attendanceData = [];
 let currentMode = 'day'; 
 
 let photoModal, manualActionModal, editRecordModal;
+let unsubscribeAttendance = null; // 🟢 用于存储实时监听器
+let unverifiedRecordsCache = []; // 🟢 用于批量Verify
+
+// 🟢 获取本地当天的标准化日期字符串 YYYY-MM-DD
+function getLocalTodayStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export async function initAttendanceApp() {
     document.getElementById('loadingText').innerText = "Loading Attendance...";
@@ -34,7 +42,7 @@ export async function initAttendanceApp() {
         editRecordModal = new bootstrap.Modal(document.getElementById('editRecordModal'));
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalTodayStr();
     document.getElementById('dateFilter').value = todayStr;
     document.getElementById('monthFilter').value = todayStr.substring(0,7);
 
@@ -60,12 +68,10 @@ async function fetchUsers() {
     });
 }
 
+// 🟢 优化1: 拆分 loadData，将 attendance 设为实时监听
 window.loadData = async function() {
-    const listContainer = document.getElementById('attendanceList');
-    const statusFilter = document.getElementById('monthStatusFilter').value; 
     document.getElementById('loadingState').classList.remove('d-none');
     document.getElementById('emptyState').classList.add('d-none');
-    listContainer.innerHTML = '';
 
     try {
         let startDate, endDate;
@@ -78,8 +84,8 @@ window.loadData = async function() {
             endDate = mVal + "-" + new Date(mVal.split('-')[0], mVal.split('-')[1], 0).getDate();
         }
 
-        const [attSnap, schedSnap, leaveSnap] = await Promise.all([
-            getDocs(query(collection(db, "attendance"), where("date", ">=", startDate), where("date", "<=", endDate))),
+        // 获取 Schedules 和 Leaves
+        const [schedSnap, leaveSnap] = await Promise.all([
             getDocs(query(collection(db, "schedules"), where("date", ">=", startDate), where("date", "<=", endDate))),
             getDocs(query(collection(db, "leaves"), where("status", "==", "Approved"), where("endDate", ">=", startDate)))
         ]);
@@ -103,68 +109,139 @@ window.loadData = async function() {
             }
         });
 
-        attendanceData = [];
-        let presentUids = new Set();
-        let unverified = 0;
-        let missingOutData = []; // 🟢 用于记录缺少 Clock Out 的员工
-        
-        attSnap.forEach(d => {
-            const data = d.data();
-            let eUid = usersMap[data.uid] ? data.uid : docIdToAuthMap[data.uid];
-            
-            if(eUid && !['Rejected', 'Archived'].includes(data.verificationStatus)) {
-                attendanceData.push({ id: d.id, ...data, uid: eUid, date: normalizeDate(data.date) });
-                if(currentMode === 'day') presentUids.add(eUid);
-                if(data.verificationStatus !== 'Verified') unverified++;
-            }
+        // 🟢 停止之前的监听，防止重复
+        if (unsubscribeAttendance) {
+            unsubscribeAttendance();
+        }
+
+        // 🟢 建立实时监听 Attendance (Auto-Refresh)
+        const attQuery = query(collection(db, "attendance"), where("date", ">=", startDate), where("date", "<=", endDate));
+        unsubscribeAttendance = onSnapshot(attQuery, (attSnap) => {
+            processAndRenderAttendance(attSnap, startDate, endDate);
+        }, (error) => {
+            console.error("Error listening to attendance:", error);
         });
 
-        document.getElementById('tabVerifyBadge').innerText = unverified;
-        document.getElementById('tabVerifyBadge').classList.toggle('d-none', unverified === 0);
-        document.getElementById('loadingState').classList.add('d-none');
-
-        const grouped = {};
-        attendanceData.forEach(r => { if(!grouped[r.uid]) grouped[r.uid] = []; grouped[r.uid].push(r); });
-
-        // 🟢 计算当天 Missing Clock Out 的人员
-        if(currentMode === 'day') {
-             Object.keys(grouped).forEach(uid => {
-                 const dayRecords = grouped[uid];
-                 const hasIn = dayRecords.some(r => r.session === 'Clock In');
-                 const hasOut = dayRecords.some(r => r.session === 'Clock Out');
-                 if (hasIn && !hasOut) {
-                     missingOutData.push(usersMap[uid].name);
-                 }
-             });
-        }
-
-        let count = 0;
-        const sortedUids = Object.keys(usersMap).sort((a,b) => usersMap[a].name.localeCompare(usersMap[b].name));
-
-        if(currentMode === 'day') {
-            sortedUids.forEach(uid => { if(renderDayUserCard(uid, grouped[uid] || [], listContainer, normalizeDate(startDate))) count++; });
-            renderDashboard(attendanceData, presentUids, missingOutData); // 🟢 传入 missingOutData
-        } else {
-            sortedUids.forEach(uid => { if(renderMonthUserCard(uid, grouped[uid] || [], listContainer, statusFilter)) count++; });
-        }
-        
-        if(count === 0) document.getElementById('emptyState').classList.remove('d-none');
-        
-        hideLoading();
-        document.getElementById('mainContainer').classList.remove('d-none');
-        
-        lucide.createIcons();
     } catch(e) { 
         console.error(e); 
         hideLoading();
-        showStatusAlert('statusMessage', 'Failed to load attendance data.', false);
+        showStatusAlert('statusMessage', 'Failed to load data.', false);
     }
 };
 
-function renderDayUserCard(uid, records, container, targetDate) {
+// 🟢 新增：处理监听器回传的打卡数据并渲染界面
+function processAndRenderAttendance(attSnap, startDate, endDate) {
+    const listContainer = document.getElementById('attendanceList');
+    listContainer.innerHTML = '';
+    const currentTodayStr = getLocalTodayStr();
+
+    attendanceData = [];
+    let presentUids = new Set();
+    let unverified = 0;
+    let missingOutData = []; 
+    unverifiedRecordsCache = []; // 清空待批量验证池
+    
+    attSnap.forEach(d => {
+        const data = d.data();
+        let eUid = usersMap[data.uid] ? data.uid : docIdToAuthMap[data.uid];
+        
+        if(eUid && !['Rejected', 'Archived'].includes(data.verificationStatus)) {
+            const record = { id: d.id, ...data, uid: eUid, date: normalizeDate(data.date) };
+            attendanceData.push(record);
+            if(currentMode === 'day') presentUids.add(eUid);
+            if(data.verificationStatus !== 'Verified') unverified++;
+        }
+    });
+
+    document.getElementById('tabVerifyBadge').innerText = unverified;
+    document.getElementById('tabVerifyBadge').classList.toggle('d-none', unverified === 0);
+    document.getElementById('loadingState').classList.add('d-none');
+
+    const grouped = {};
+    attendanceData.forEach(r => { if(!grouped[r.uid]) grouped[r.uid] = []; grouped[r.uid].push(r); });
+
+    // 🟢 优化2: 获取 Filter 并筛选
+    const dayFilter = document.getElementById('dayStatusFilter') ? document.getElementById('dayStatusFilter').value : 'all';
+    let recordsToRender = [];
+
+    if(currentMode === 'day') {
+         Object.keys(usersMap).forEach(uid => {
+             if(usersMap[uid].status === 'disabled') return;
+
+             const dayRecords = grouped[uid] || [];
+             const hasIn = dayRecords.some(r => r.session === 'Clock In');
+             const hasOut = dayRecords.some(r => r.session === 'Clock Out');
+             const hasUnverified = dayRecords.some(r => r.verificationStatus !== 'Verified');
+             
+             // 🟢 优化3: Missing Out 判定逻辑修改 (仅包含过去日期)
+             const targetDate = startDate; 
+             const isMissingOut = hasIn && !hasOut && (targetDate < currentTodayStr);
+
+             if (isMissingOut) {
+                 missingOutData.push(usersMap[uid].name);
+             }
+
+             // 判断该员工是否符合 Filter 条件
+             let showUser = false;
+             if (dayFilter === 'all') showUser = true;
+             else if (dayFilter === 'clockedIn' && hasIn) showUser = true; // 有打卡记录就显示
+             else if (dayFilter === 'unverified' && hasUnverified) showUser = true;
+             else if (dayFilter === 'missingOut' && isMissingOut) showUser = true;
+
+             if (showUser) {
+                 recordsToRender.push(uid);
+                 // 筛选出来的名单中，如果包含未验证的，加入到批量处理池中
+                 dayRecords.forEach(r => {
+                     if (r.verificationStatus !== 'Verified') unverifiedRecordsCache.push(r);
+                 });
+             }
+         });
+    }
+
+    let count = 0;
+    const sortedUids = Object.keys(usersMap).sort((a,b) => usersMap[a].name.localeCompare(usersMap[b].name));
+
+    if(currentMode === 'day') {
+        recordsToRender.sort((a,b) => usersMap[a].name.localeCompare(usersMap[b].name)).forEach(uid => {
+            if(renderDayUserCard(uid, grouped[uid] || [], listContainer, normalizeDate(startDate), currentTodayStr)) count++; 
+        });
+        renderDashboard(attendanceData, presentUids, missingOutData);
+
+        // 🟢 控制批量 Verify 按钮的显示状态
+        const bulkBtn = document.getElementById('bulkVerifyBtn');
+        if (bulkBtn) {
+            if (unverifiedRecordsCache.length > 0) {
+                bulkBtn.classList.remove('d-none');
+                bulkBtn.innerHTML = `<i data-lucide="check-circle" class="size-4"></i> Bulk Verify (${unverifiedRecordsCache.length})`;
+            } else {
+                bulkBtn.classList.add('d-none');
+            }
+        }
+    } else {
+        const statusFilter = document.getElementById('monthStatusFilter').value; 
+        sortedUids.forEach(uid => { 
+            if(usersMap[uid].status !== 'disabled' && renderMonthUserCard(uid, grouped[uid] || [], listContainer, statusFilter, currentTodayStr)) count++; 
+        });
+        
+        const bulkBtn = document.getElementById('bulkVerifyBtn');
+        if(bulkBtn) bulkBtn.classList.add('d-none'); // 月视图暂时隐藏批量操作
+    }
+    
+    if(count === 0 && recordsToRender.length === 0) document.getElementById('emptyState').classList.remove('d-none');
+    else document.getElementById('emptyState').classList.add('d-none');
+    
+    hideLoading();
+    document.getElementById('mainContainer').classList.remove('d-none');
+    
+    lucide.createIcons();
+}
+
+function renderDayUserCard(uid, records, container, targetDate, currentTodayStr) {
     const user = usersMap[uid];
     const sched = schedulesMap[uid + "_" + targetDate];
     const leave = leavesMap[uid + "_" + targetDate];
+    
+    // 如果没有排班、没有打卡、也没有请假，就不显示
     if (!sched && records.length === 0 && !leave) return false;
 
     let inT = "--:--", outT = "--:--", pending = 0;
@@ -177,19 +254,30 @@ function renderDayUserCard(uid, records, container, targetDate) {
 
     records.forEach(r => {
         if(r.verificationStatus !== 'Verified') pending++;
-        else {
-            if(r.session === 'Clock In' && inT === "--:--") inT = formatTime(r.timestamp);
-            if(r.session === 'Clock Out') outT = formatTime(r.timestamp);
-        }
+        if(r.session === 'Clock In' && inT === "--:--") inT = formatTime(r.timestamp);
+        if(r.session === 'Clock Out') outT = formatTime(r.timestamp);
     });
 
-    const isAbsent = (targetDate <= new Date().toISOString().split('T')[0]) && inT === "--:--" && sched && !leave;
+    const isAbsent = (targetDate <= currentTodayStr) && inT === "--:--" && sched && !leave;
+    const isMissingOut = inT !== "--:--" && outT === "--:--" && targetDate < currentTodayStr;
+    const isClockedInToday = inT !== "--:--" && outT === "--:--" && targetDate === currentTodayStr;
+
     const card = document.createElement('div');
     card.className = `user-card user-card-container ${isAbsent ? 'row-absent' : (leave ? 'row-leave' : '')}`;
     card.setAttribute('data-name', user.name);
-    let statusColor = isAbsent ? "bg-danger" : (leave ? "bg-info" : (pending > 0 ? "bg-warning" : (inT !== "--:--" ? "bg-success" : "bg-secondary")));
+    
+    // 🟢 修改状态颜色
+    let statusColor = isAbsent ? "bg-danger" : 
+                      (leave ? "bg-info" : 
+                      (isMissingOut ? "bg-danger" : 
+                      (isClockedInToday ? "bg-warning" : 
+                      (pending > 0 ? "bg-warning" : 
+                      (inT !== "--:--" ? "bg-success" : "bg-secondary")))));
 
-    const statusLabel = isAbsent ? `<span class="badge bg-danger">ABSENT</span>` : (leave && inT === '--:--' ? `<span class="badge bg-info">ON LEAVE</span>` : "");
+    const statusLabel = isAbsent ? `<span class="badge bg-danger">ABSENT</span>` : 
+                        (leave && inT === '--:--' ? `<span class="badge bg-info">ON LEAVE</span>` : 
+                        (isMissingOut ? `<span class="badge bg-danger">MISSING OUT</span>` : 
+                        (isClockedInToday ? `<span class="badge bg-warning text-dark">CLOCKED IN</span>` : "")));
 
     card.innerHTML = `
         <div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-${uid}">
@@ -215,12 +303,11 @@ function renderDayUserCard(uid, records, container, targetDate) {
     return true;
 }
 
-function renderMonthUserCard(uid, allRecords, container, filterType) {
+function renderMonthUserCard(uid, allRecords, container, filterType, currentTodayStr) {
     const user = usersMap[uid];
     const mVal = document.getElementById('monthFilter').value;
     const [y, m] = mVal.split('-');
     const days = new Date(y, m, 0).getDate();
-    const today = new Date().toISOString().split('T')[0];
     
     let present = 0;
     let rowsHtml = "";
@@ -232,14 +319,24 @@ function renderMonthUserCard(uid, allRecords, container, filterType) {
         const dayRecords = allRecords.filter(r => r.date === dateStr && r.verificationStatus === 'Verified');
 
         let inT = null;
-        dayRecords.forEach(r => { if(r.session === 'Clock In') inT = formatTime(r.timestamp); });
+        let hasOut = false;
+        dayRecords.forEach(r => { 
+            if(r.session === 'Clock In') inT = formatTime(r.timestamp); 
+            if(r.session === 'Clock Out') hasOut = true; 
+        });
         if(inT) present++;
 
         if (dayRecords.length > 0 || sched || leave) {
-            const statusLabel = inT ? '<b>Verified Present</b>' : (leave ? '<span class="text-info fw-bold">ON LEAVE</span>' : (dateStr <= today && sched ? '<span class="text-danger fw-bold">ABSENT</span>' : 'Off'));
+            let statusHtml = '';
+            if (leave && !inT) statusHtml = '<span class="text-info fw-bold">ON LEAVE</span>';
+            else if (inT && !hasOut && dateStr < currentTodayStr) statusHtml = '<span class="text-danger fw-bold">MISSING OUT</span>';
+            else if (inT) statusHtml = '<b>Verified Present</b>';
+            else if (dateStr <= currentTodayStr && sched) statusHtml = '<span class="text-danger fw-bold">ABSENT</span>';
+            else statusHtml = 'Off';
+
             rowsHtml += `<li class="inner-list-item d-flex justify-content-between">
                 <div><span class="badge badge-soft-secondary text-mono me-3">${dateStr}</span></div>
-                <div class="text-end">${statusLabel}</div>
+                <div class="text-end">${statusHtml}</div>
             </li>`;
         }
     }
@@ -269,7 +366,6 @@ function renderRecordItem(item) {
     </div>`;
 }
 
-// 🟢 修改签名，增加 missingOutData 参数
 function renderDashboard(data, pUids, missingOutData = []) {
     const target = document.getElementById('dateFilter').value;
     let active=0, leave=0, absent=0;
@@ -287,7 +383,7 @@ function renderDashboard(data, pUids, missingOutData = []) {
     document.getElementById('statLeave').innerText = leave;
     document.getElementById('absentList').innerHTML = aList.map(n => `<li class="list-group-item d-flex justify-content-between align-items-center fw-bold">${n} <span class="badge bg-danger">ABSENT</span></li>`).join('') || '<li class="list-group-item text-center text-success py-3">All scheduled staff accounted for.</li>';
 
-    // 🟢 渲染缺少 Clock Out 的员工警告
+    // 🟢 渲染缺少 Clock Out 的列表
     const lateListContainer = document.getElementById('lateList');
     if (missingOutData.length > 0) {
         let warningHtml = missingOutData.map(n => 
@@ -301,6 +397,34 @@ function renderDashboard(data, pUids, missingOutData = []) {
         lateListContainer.innerHTML = '<li class="list-group-item text-center text-muted py-3">No anomalies detected.</li>';
     }
 }
+
+// 🟢 优化2: 实现批量 Verify 功能
+window.bulkVerify = async () => {
+    if (unverifiedRecordsCache.length === 0) {
+        alert("当前没有可验证的记录。");
+        return;
+    }
+    
+    if (!confirm(`确定要一次性验证当前显示的 ${unverifiedRecordsCache.length} 条打卡记录吗？`)) {
+        return;
+    }
+
+    showLoading();
+    try {
+        const batch = writeBatch(db);
+        unverifiedRecordsCache.forEach(record => {
+            const recordRef = doc(db, "attendance", record.id);
+            batch.update(recordRef, { verificationStatus: "Verified" });
+        });
+
+        await batch.commit();
+        showStatusAlert('statusMessage', `成功批量验证 ${unverifiedRecordsCache.length} 条记录！`, true);
+        // 注意：由于引入了 onSnapshot，Firestore 成功更新后界面会自动重新渲染，不需要手动调用 loadData
+    } catch (e) {
+        hideLoading();
+        showStatusAlert('statusMessage', `批量验证失败: ${e.message}`, false);
+    }
+};
 
 window.openManualAction = (uid, targetDate) => {
     document.getElementById('manualUid').value = uid;
@@ -451,7 +575,6 @@ window.submitManualAction = async () => {
         manualActionModal.hide(); 
         hideLoading();
         showStatusAlert('statusMessage', 'Record successfully updated.', true); 
-        window.loadData();
     } catch(e) { 
         hideLoading();
         showStatusAlert('statusMessage', `Error: ${e.message}`, false); 
@@ -492,7 +615,6 @@ window.saveSingleRecord = async () => {
         editRecordModal.hide(); 
         hideLoading();
         showStatusAlert('statusMessage', 'Time adjusted successfully.', true);
-        window.loadData();
     } catch(e) { 
         hideLoading();
         showStatusAlert('statusMessage', `Error: ${e.message}`, false); 
@@ -511,7 +633,6 @@ window.deleteSingleRecord = async () => {
         editRecordModal.hide(); 
         hideLoading();
         showStatusAlert('statusMessage', 'Record deleted.', true);
-        window.loadData();
     } catch(e) { 
         hideLoading();
         showStatusAlert('statusMessage', `Error: ${e.message}`, false); 
@@ -522,7 +643,6 @@ window.quickVerify = async (id) => {
     try {
         await updateDoc(doc(db, "attendance", id), { verificationStatus: "Verified" });
         showStatusAlert('statusMessage', 'Record Verified.', true);
-        window.loadData();
     } catch(e) {
         showStatusAlert('statusMessage', `Error verifying: ${e.message}`, false);
     }
