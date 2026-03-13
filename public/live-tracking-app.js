@@ -162,7 +162,7 @@ async function loadDriverListForSelectedDate() {
                 }
 
                 const realName = usersMap[uid] || `User (${uid.substring(0, 5)})`;
-                const isOnline = (new Date() - lastUpdate) < 1000 * 60 * 15; 
+                const isOnline = val.isTracking !== false && (new Date() - lastUpdate) < 1000 * 60 * 10;
                 
                 const statusBadge = isOnline 
                     ? '<div class="d-flex align-items-center gap-1"><span class="status-dot dot-online"></span> <small class="text-success" style="font-size:10px">Active</small></div>'
