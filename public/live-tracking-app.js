@@ -153,8 +153,15 @@ async function loadDriverListForSelectedDate() {
 
             let html = '';
             Object.entries(data).forEach(([uid, val]) => {
-                const realName = usersMap[uid] || `User (${uid.substring(0, 5)})`;
                 const lastUpdate = new Date(val.lastUpdate);
+                
+                // 🚀 核心修复：检查这个“最后的实时位置”是不是属于今天的
+                const updateDateStr = lastUpdate.toLocaleDateString('en-CA');
+                if (updateDateStr !== todayStr) {
+                    return; // 如果是昨天或更早以前的遗留数据，直接跳过，不在列表中显示！
+                }
+
+                const realName = usersMap[uid] || `User (${uid.substring(0, 5)})`;
                 const isOnline = (new Date() - lastUpdate) < 1000 * 60 * 15; 
                 
                 const statusBadge = isOnline 
@@ -164,7 +171,13 @@ async function loadDriverListForSelectedDate() {
                 html += buildUserListItem(uid, realName, lastUpdate.toLocaleTimeString(), statusBadge);
             });
 
-            listDiv.innerHTML = html;
+            // 🟢 如果过滤完发现今天其实没人打卡，显示空提示
+            if (html === '') {
+                listDiv.innerHTML = '<div class="text-center text-muted small py-4">No active drivers today.</div>';
+            } else {
+                listDiv.innerHTML = html;
+            }
+            
             if (typeof lucide !== 'undefined') lucide.createIcons();
         });
     } else {
