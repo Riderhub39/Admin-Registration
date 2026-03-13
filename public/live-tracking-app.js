@@ -90,8 +90,17 @@ function resetMapView() {
         unsubscribeStaffListener(); 
         unsubscribeStaffListener = null; 
     }
-    if(currentMarker) currentMarker.setMap(null);
-    if(routePolyline) routePolyline.setMap(null);
+    
+    // 🚀 核心修复 1：将旧的 marker 彻底销毁，而不仅仅是隐藏
+    if(currentMarker) {
+        currentMarker.setMap(null);
+        currentMarker = null; 
+    }
+    // 🚀 核心修复 2：彻底销毁旧路线
+    if(routePolyline) {
+        routePolyline.setMap(null);
+        routePolyline = null;
+    }
     
     document.getElementById('statusOverlay').classList.add('d-none');
     window.selectedUid = null;
@@ -299,6 +308,7 @@ function updateCarMarker(data, realName) {
         });
     } else {
         currentMarker.setPosition(pos);
+        currentMarker.setMap(map); // 🚀 核心修复 3：即使之前可能被 detached，更新位置时强制再次 attach 回地图
     }
     
     const rawSpeed = data.speed || 0;
