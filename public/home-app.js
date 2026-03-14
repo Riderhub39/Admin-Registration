@@ -3,17 +3,20 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, collection, query, where, getDocs, onSnapshot, addDoc, serverTimestamp, doc, getDoc, setDoc, updateDoc, deleteDoc, orderBy, limit, startAfter, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+// 🚀 ADDED: Import RTDB functions for Live Tracking Stats
+import { getDatabase, ref as rtdbRef, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 import { firebaseConfig } from "./firebase-config.js";
 
-// 🟢 导入 utils 的公用方法
+// 🟢 Import utils public methods
 import { normalizeDate, logAdminAction, showLoading, hideLoading, showStatusAlert } from "./utils.js"; 
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 const storage = getStorage(app); 
+const rtdb = getDatabase(app); // 🚀 ADDED: Initialize RTDB
 
 let attChartInstance = null;
 let announceModal, officeModal, driverModal, auditModal, photoModal;
@@ -39,7 +42,7 @@ export async function initHomeApp(userData) {
 
     initDashboard(); 
     
-    hideLoading(); // 🟢
+    hideLoading(); 
     document.getElementById('mainContainer').classList.remove('d-none');
     lucide.createIcons();
 }
@@ -287,15 +290,38 @@ function updateChart(present, absent, late) {
 
 window.goToAttendance = (filter) => window.location.href = `attendance.html?filter=${filter}`;
 
+// 🚀 REWRITTEN: Now correctly reads from RTDB `live_locations` exactly like the Live Tracking page
 function loadTrackingStats() {
-    onSnapshot(collection(db, "user_last_locations"), (snap) => {
-        let online = 0, offline = 0, now = new Date();
-        snap.forEach(doc => {
-            const ts = doc.data().timestamp?.toDate();
-            if (ts && (now - ts) / 60000 <= 15) online++; else offline++;
-        });
-        document.getElementById('trackOnline').innerText = online;
-        document.getElementById('trackOffline').innerText = offline;
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    const liveRef = rtdbRef(rtdb, 'live_locations');
+    
+    onValue(liveRef, (snapshot) => {
+        let onlineCount = 0;
+        let offlineCount = 0;
+        const data = snapshot.val();
+        
+        if (data) {
+            Object.values(data).forEach(val => {
+                if (!val.lastUpdate) return;
+                
+                const lastUpdateDate = new Date(val.lastUpdate);
+                const updateDateStr = lastUpdateDate.toLocaleDateString('en-CA');
+                
+                // Only count drivers who have logged a location TODAY
+                if (updateDateStr === todayStr) {
+                    // Same logic: Must not be explicitly marked false, and must be within 15 minutes
+                    const isOnline = val.isTracking !== false && (new Date() - lastUpdateDate) < 1000 * 60 * 15; 
+                    if (isOnline) {
+                        onlineCount++;
+                    } else {
+                        offlineCount++;
+                    }
+                }
+            });
+        }
+        
+        document.getElementById('trackOnline').innerText = onlineCount;
+        document.getElementById('trackOffline').innerText = offlineCount;
     });
 }
 
@@ -358,7 +384,7 @@ window.addWifiToList = () => {
 window.removeWifi = (i) => { currentWifiList.splice(i, 1); window.renderWifiList(); };
 
 window.saveOfficeSettings = async () => {
-    showLoading(); // 🟢
+    showLoading(); 
     try {
         const newData = { 
             latitude: parseFloat(document.getElementById('officeLat').value), 
@@ -384,8 +410,6 @@ window.saveOfficeSettings = async () => {
 window.openAnnouncementModal = () => { window.resetAnnounceForm(); announceModal.show(); window.loadAnnouncements(); };
 let announceUnsubscribe = null;
 
-// File input handler attached safely inside initialization or exported function if needed
-// We can just rely on the HTML inline event or attach it globally here
 export function setupAnnounceFileListener() {
     const fileInput = document.getElementById('announceFile');
     if (fileInput) {
@@ -451,7 +475,7 @@ window.submitAnnouncement = async () => {
 
         if (fileInput.files.length > 0) {
             const file = fileInput.files[0];
-            const storageReference = ref(storage, `announcements/${Date.now()}_${file.name}`);
+            const storageReference = storageRef(storage, `announcements/${Date.now()}_${file.name}`);
             await uploadBytes(storageReference, file);
             attachmentUrl = await getDownloadURL(storageReference);
         }
