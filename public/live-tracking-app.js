@@ -19,8 +19,7 @@ const auth = getAuth(app);
 const STORE_LOCATION = { lat: 4.5975, lng: 101.0901 }; 
 const STORE_RADIUS_METERS = 500; 
 
-let map, currentMarker, storeCircle;
-// 🚀 修改 1：改用数组来存储被拆分的多段“贴合道路”路线
+let map, currentMarker, storeCircle, startMarker; 
 let routePolylines = []; 
 let usersMap = {}; 
 let lastKnownPosition = null;
@@ -96,8 +95,14 @@ function resetMapView() {
         currentMarker.setMap(null);
         currentMarker = null; 
     }
+
+    // 清空起点 Marker
+    if(startMarker) {
+        startMarker.setMap(null);
+        startMarker = null;
+    }
     
-    // 🚀 修改 2：清空所有存在的路线段
+    // 清空所有存在的路线段
     if(routePolylines && routePolylines.length > 0) {
         routePolylines.forEach(p => p.setMap(null));
         routePolylines = [];
@@ -263,11 +268,78 @@ function showNoRecordState() {
     document.getElementById('overlayStatusTag').className = "badge bg-secondary";
 }
 
-// 🚀 修改 3：全新重写的 drawRoute，使用 Directions API 纠偏
-async function drawRoute(logs, realName) {
+// ==========================================
+// 全新重写：清洗毛线团、贴合道路、带方向箭头
+// ==========================================
+async function drawRoute(rawLogs, realName) {
     if(routePolylines.length > 0) {
         routePolylines.forEach(p => p.setMap(null));
         routePolylines = [];
+    }
+
+    if (rawLogs.length === 0) return;
+
+    // 🧹 第一步：“防毛线团” GPS 数据清洗算法
+    let logs = [];
+    logs.push(rawLogs[0]); 
+    let lastValidPoint = rawLogs[0];
+
+    for (let i = 1; i < rawLogs.length; i++) {
+        let currentPoint = rawLogs[i];
+        
+        let p1 = new google.maps.LatLng(lastValidPoint.lat, lastValidPoint.lng);
+        let p2 = new google.maps.LatLng(currentPoint.lat, currentPoint.lng);
+        let distanceMeters = google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+
+        // 🛑 规则 1 (防原地抖动)：距离小于 30 米，直接忽略
+        if (distanceMeters < 30) {
+            continue;
+        }
+
+        // 🛑 规则 2 (防超人瞬移)：速度大于 120 km/h (约 33.33 m/s)，直接剔除
+        let timeDiffSeconds = Math.abs(currentPoint.timestamp - lastValidPoint.timestamp) / 1000; 
+        
+        // 避免时间差为 0 导致除以 0 的错误
+        if (timeDiffSeconds <= 0) {
+            continue; 
+        }
+
+        let speedMetersPerSecond = distanceMeters / timeDiffSeconds;
+        
+        if (speedMetersPerSecond > 33.33) { // 120 km/h
+            console.warn(`[剔除异常点] 速度达到 ${(speedMetersPerSecond * 3.6).toFixed(1)} km/h, 距离: ${distanceMeters.toFixed(1)}m`);
+            continue;
+        }
+
+        // 通过所有检测，加入干净的数组，并更新参考点
+        logs.push(currentPoint);
+        lastValidPoint = currentPoint;
+    }
+
+    // 如果清洗后没剩下什么有效移动数据，直接跳出
+    if (logs.length < 2) {
+        console.log("清洗后无足够有效移动轨迹。");
+        return; 
+    }
+
+    // 🗺️ 第二步：绘制起点标点 (绿色标点)
+    const firstLog = logs[0];
+    if (!startMarker) {
+        startMarker = new google.maps.Marker({
+            position: { lat: firstLog.lat, lng: firstLog.lng },
+            map: map,
+            title: "Start Point",
+            label: { text: "起", color: "white", fontSize: "12px", fontWeight: "bold" },
+            icon: { 
+                path: google.maps.SymbolPath.CIRCLE, 
+                scale: 12, 
+                fillColor: "#10b981", 
+                fillOpacity: 1, 
+                strokeWeight: 2, 
+                strokeColor: "white" 
+            },
+            zIndex: 100 
+        });
     }
 
     const lastLog = logs[logs.length - 1];
@@ -284,27 +356,36 @@ async function drawRoute(logs, realName) {
        updateStatusCard(lastLog);
     }
 
-    // 实例化导航服务
+    // 🚗 第三步：实例化导航服务，绘制路线
     const directionsService = new google.maps.DirectionsService();
-    const MAX_WAYPOINTS = 23; // Google 每批次限制最大途经点数
+    const MAX_WAYPOINTS = 23; 
     const CHUNK_SIZE = MAX_WAYPOINTS + 2; 
+
+    // 定义方向箭头样式
+    const lineSymbol = {
+        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+        scale: 2.5,
+        strokeColor: "#ffffff", 
+        strokeOpacity: 1,
+        fillColor: "#ffffff",
+        fillOpacity: 1
+    };
 
     let promises = [];
 
-    // 将散乱的 GPS 点按照每 25 个一组切块，向谷歌请求真实的马路路径
+    // 将散乱的 GPS 点按照每组切块，向谷歌请求真实的马路路径
     for (let i = 0; i < logs.length - 1; i += CHUNK_SIZE - 1) {
         let chunk = logs.slice(i, i + CHUNK_SIZE);
         if (chunk.length < 2) continue;
 
         let origin = new google.maps.LatLng(chunk[0].lat, chunk[0].lng);
-        let destination = new google.maps.LatLng(chunk[chunk.length - 1].lat, chunk[chunk.length - 1].lat);
         let destinationFixed = new google.maps.LatLng(chunk[chunk.length - 1].lat, chunk[chunk.length - 1].lng);
 
         let waypoints = [];
         for (let j = 1; j < chunk.length - 1; j++) {
             waypoints.push({
                 location: new google.maps.LatLng(chunk[j].lat, chunk[j].lng),
-                stopover: false // 设为 false 让路线更圆滑平顺
+                stopover: false 
             });
         }
 
@@ -317,37 +398,39 @@ async function drawRoute(logs, realName) {
 
         let p = new Promise((resolve) => {
             directionsService.route(request, (result, status) => {
+                let currentPath, color, weight;
+
                 if (status === google.maps.DirectionsStatus.OK) {
-                    // 成功获取马路路线
-                    let path = result.routes[0].overview_path;
-                    let polyline = new google.maps.Polyline({
-                        path: path,
-                        geodesic: true,
-                        strokeColor: "#2563eb",
-                        strokeOpacity: 0.8,
-                        strokeWeight: 5,
-                        map: map
-                    });
-                    routePolylines.push(polyline);
+                    currentPath = result.routes[0].overview_path;
+                    color = "#2563eb"; // 蓝色马路路线
+                    weight = 5;
                 } else {
-                    // 降级机制：如果遇到死胡同、野外没路、或者 API 限制，优雅退回到直接连线
-                    console.warn("Snap to road failed for a segment: " + status + " -> Using fallback line.");
-                    let fallbackPath = chunk.map(c => new google.maps.LatLng(c.lat, c.lng));
-                    let polyline = new google.maps.Polyline({
-                        path: fallbackPath,
-                        strokeColor: "#2563eb",
-                        strokeOpacity: 0.6,
-                        strokeWeight: 5,
-                        map: map
-                    });
-                    routePolylines.push(polyline);
+                    console.warn("Snap to road failed: " + status + " -> Using fallback line.");
+                    currentPath = chunk.map(c => new google.maps.LatLng(c.lat, c.lng));
+                    color = "#64748b"; // 如果降级成直线，用灰蓝色
+                    weight = 4;
                 }
+
+                let polyline = new google.maps.Polyline({
+                    path: currentPath,
+                    geodesic: true,
+                    strokeColor: color,
+                    strokeOpacity: 0.8,
+                    strokeWeight: weight,
+                    icons: [{
+                        icon: lineSymbol,
+                        offset: "20px",
+                        repeat: "100px" 
+                    }],
+                    map: map
+                });
+                routePolylines.push(polyline);
+                
                 resolve();
             });
         });
         
         promises.push(p);
-        // 添加 150 毫秒延迟，防止路线极长时瞬间请求过多导致 Google API 报错 (Rate Limit)
         await new Promise(r => setTimeout(r, 150)); 
     }
 
@@ -374,7 +457,17 @@ function updateCarMarker(data, realName) {
     if(!currentMarker) {
         currentMarker = new google.maps.Marker({
             position: pos, map: map, title: realName,
-            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: "#2563eb", fillOpacity: 1, strokeWeight: 2, strokeColor: "white" }
+            // 红色标点代表当前车的位置或路线终点
+            label: { text: "终", color: "white", fontSize: "12px", fontWeight: "bold" },
+            icon: { 
+                path: google.maps.SymbolPath.CIRCLE, 
+                scale: 12, 
+                fillColor: "#ef4444", 
+                fillOpacity: 1, 
+                strokeWeight: 2, 
+                strokeColor: "white" 
+            },
+            zIndex: 200 // 保持最上层
         });
     } else {
         currentMarker.setPosition(pos);
