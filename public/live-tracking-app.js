@@ -20,7 +20,8 @@ const STORE_LOCATION = { lat: 4.5975, lng: 101.0901 };
 const STORE_RADIUS_METERS = 500; 
 
 let map, currentMarker, storeCircle;
-let routePolyline; 
+// 🚀 修改 1：改用数组来存储被拆分的多段“贴合道路”路线
+let routePolylines = []; 
 let usersMap = {}; 
 let lastKnownPosition = null;
 
@@ -91,15 +92,15 @@ function resetMapView() {
         unsubscribeStaffListener = null; 
     }
     
-    // 🚀 核心修复 1：将旧的 marker 彻底销毁，而不仅仅是隐藏
     if(currentMarker) {
         currentMarker.setMap(null);
         currentMarker = null; 
     }
-    // 🚀 核心修复 2：彻底销毁旧路线
-    if(routePolyline) {
-        routePolyline.setMap(null);
-        routePolyline = null;
+    
+    // 🚀 修改 2：清空所有存在的路线段
+    if(routePolylines && routePolylines.length > 0) {
+        routePolylines.forEach(p => p.setMap(null));
+        routePolylines = [];
     }
     
     document.getElementById('statusOverlay').classList.add('d-none');
@@ -118,8 +119,6 @@ async function fetchUsers() {
         snap.forEach(doc => {
             const d = doc.data();
             const displayName = d.personal?.shortName || d.personal?.name || d.name || "Staff";
-            
-            // 同时支持通过 Document ID 和 authUid 查找名字
             usersMap[doc.id] = displayName;
             if (d.authUid) {
                 usersMap[d.authUid] = displayName;
@@ -154,12 +153,8 @@ async function loadDriverListForSelectedDate() {
             let html = '';
             Object.entries(data).forEach(([uid, val]) => {
                 const lastUpdate = new Date(val.lastUpdate);
-                
-                // 🚀 核心修复：检查这个“最后的实时位置”是不是属于今天的
                 const updateDateStr = lastUpdate.toLocaleDateString('en-CA');
-                if (updateDateStr !== todayStr) {
-                    return; // 如果是昨天或更早以前的遗留数据，直接跳过，不在列表中显示！
-                }
+                if (updateDateStr !== todayStr) return; 
 
                 const realName = usersMap[uid] || `User (${uid.substring(0, 5)})`;
                 const isOnline = val.isTracking !== false && (new Date() - lastUpdate) < 1000 * 60 * 10;
@@ -171,13 +166,11 @@ async function loadDriverListForSelectedDate() {
                 html += buildUserListItem(uid, realName, lastUpdate.toLocaleTimeString(), statusBadge);
             });
 
-            // 🟢 如果过滤完发现今天其实没人打卡，显示空提示
             if (html === '') {
                 listDiv.innerHTML = '<div class="text-center text-muted small py-4">No active drivers today.</div>';
             } else {
                 listDiv.innerHTML = html;
             }
-            
             if (typeof lucide !== 'undefined') lucide.createIcons();
         });
     } else {
@@ -270,22 +263,17 @@ function showNoRecordState() {
     document.getElementById('overlayStatusTag').className = "badge bg-secondary";
 }
 
-function drawRoute(logs, realName) {
-    if(routePolyline) routePolyline.setMap(null);
-    const pathCoordinates = logs.map(log => new google.maps.LatLng(log.lat, log.lng));
-
-    routePolyline = new google.maps.Polyline({
-        path: pathCoordinates,
-        geodesic: true,
-        strokeColor: "#2563eb",
-        strokeOpacity: 0.8,
-        strokeWeight: 5,
-        map: map
-    });
+// 🚀 修改 3：全新重写的 drawRoute，使用 Directions API 纠偏
+async function drawRoute(logs, realName) {
+    if(routePolylines.length > 0) {
+        routePolylines.forEach(p => p.setMap(null));
+        routePolylines = [];
+    }
 
     const lastLog = logs[logs.length - 1];
     const isToday = document.getElementById('datePicker').value === new Date().toLocaleDateString('en-CA');
     
+    // 先把历史记录的 Marker 定位好，避免等待 API 请求时界面卡顿
     if(!isToday) {
        updateCarMarker({
            lat: lastLog.lat, 
@@ -295,6 +283,75 @@ function drawRoute(logs, realName) {
        }, realName);
        updateStatusCard(lastLog);
     }
+
+    // 实例化导航服务
+    const directionsService = new google.maps.DirectionsService();
+    const MAX_WAYPOINTS = 23; // Google 每批次限制最大途经点数
+    const CHUNK_SIZE = MAX_WAYPOINTS + 2; 
+
+    let promises = [];
+
+    // 将散乱的 GPS 点按照每 25 个一组切块，向谷歌请求真实的马路路径
+    for (let i = 0; i < logs.length - 1; i += CHUNK_SIZE - 1) {
+        let chunk = logs.slice(i, i + CHUNK_SIZE);
+        if (chunk.length < 2) continue;
+
+        let origin = new google.maps.LatLng(chunk[0].lat, chunk[0].lng);
+        let destination = new google.maps.LatLng(chunk[chunk.length - 1].lat, chunk[chunk.length - 1].lat);
+        let destinationFixed = new google.maps.LatLng(chunk[chunk.length - 1].lat, chunk[chunk.length - 1].lng);
+
+        let waypoints = [];
+        for (let j = 1; j < chunk.length - 1; j++) {
+            waypoints.push({
+                location: new google.maps.LatLng(chunk[j].lat, chunk[j].lng),
+                stopover: false // 设为 false 让路线更圆滑平顺
+            });
+        }
+
+        let request = {
+            origin: origin,
+            destination: destinationFixed,
+            waypoints: waypoints,
+            travelMode: google.maps.TravelMode.DRIVING
+        };
+
+        let p = new Promise((resolve) => {
+            directionsService.route(request, (result, status) => {
+                if (status === google.maps.DirectionsStatus.OK) {
+                    // 成功获取马路路线
+                    let path = result.routes[0].overview_path;
+                    let polyline = new google.maps.Polyline({
+                        path: path,
+                        geodesic: true,
+                        strokeColor: "#2563eb",
+                        strokeOpacity: 0.8,
+                        strokeWeight: 5,
+                        map: map
+                    });
+                    routePolylines.push(polyline);
+                } else {
+                    // 降级机制：如果遇到死胡同、野外没路、或者 API 限制，优雅退回到直接连线
+                    console.warn("Snap to road failed for a segment: " + status + " -> Using fallback line.");
+                    let fallbackPath = chunk.map(c => new google.maps.LatLng(c.lat, c.lng));
+                    let polyline = new google.maps.Polyline({
+                        path: fallbackPath,
+                        strokeColor: "#2563eb",
+                        strokeOpacity: 0.6,
+                        strokeWeight: 5,
+                        map: map
+                    });
+                    routePolylines.push(polyline);
+                }
+                resolve();
+            });
+        });
+        
+        promises.push(p);
+        // 添加 150 毫秒延迟，防止路线极长时瞬间请求过多导致 Google API 报错 (Rate Limit)
+        await new Promise(r => setTimeout(r, 150)); 
+    }
+
+    await Promise.all(promises);
 }
 
 function updateStatusCard(lastLog) {
@@ -321,7 +378,7 @@ function updateCarMarker(data, realName) {
         });
     } else {
         currentMarker.setPosition(pos);
-        currentMarker.setMap(map); // 🚀 核心修复 3：即使之前可能被 detached，更新位置时强制再次 attach 回地图
+        currentMarker.setMap(map); 
     }
     
     const rawSpeed = data.speed || 0;
