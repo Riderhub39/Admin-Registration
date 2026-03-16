@@ -70,6 +70,11 @@ function initNotificationSystem(db) {
         missingClockOuts: 0 
     };
 
+    // 🟢 提前定义昨天的日期，以便在 updateUI 中拼接到 URL 中
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const yStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
     const updateUI = () => {
         const total = counts.leaves + counts.attendanceCorrections + counts.attendancePending + counts.edits + counts.missingClockOuts;
 
@@ -87,15 +92,15 @@ function initNotificationSystem(db) {
                     <small>All caught up!</small>
                 </li>`;
         } else {
-            // 1. Missing Clock Outs (Yesterday) 🟢 新增的警告通知
+            // 1. Missing Clock Outs (Yesterday) 🟢 附加 ?date=昨天的日期 和 filter=missingOut
             if (counts.missingClockOuts > 0) {
                 html += `
                     <li>
-                        <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="attendance.html">
+                        <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="attendance.html?date=${yStr}&filter=missingOut">
                             <div class="bg-dark bg-opacity-10 text-dark p-1 rounded"><i data-lucide="user-minus" class="size-4"></i></div>
                             <div>
                                 <div class="fw-bold small text-warning">${counts.missingClockOuts} Missing Clock Out${counts.missingClockOuts > 1 ? 's' : ''}</div>
-                                <div class="text-muted" style="font-size: 0.75rem;">From yesterday's shift</div>
+                                <div class="text-muted" style="font-size: 0.75rem;">From ${yStr}</div>
                             </div>
                         </a>
                     </li>`;
@@ -115,11 +120,11 @@ function initNotificationSystem(db) {
                     </li>`;
             }
 
-            // 3. 考勤修正申请 
+            // 3. 考勤修正申请 🟢 附加 ?tab=corrections
             if (counts.attendanceCorrections > 0) {
                 html += `
                     <li>
-                        <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="attendance.html">
+                        <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="attendance.html?tab=corrections">
                             <div class="bg-danger bg-opacity-10 text-danger p-1 rounded"><i data-lucide="alert-circle" class="size-4"></i></div>
                             <div>
                                 <div class="fw-bold small">${counts.attendanceCorrections} Correction Request${counts.attendanceCorrections > 1 ? 's' : ''}</div>
@@ -129,11 +134,11 @@ function initNotificationSystem(db) {
                     </li>`;
             }
 
-            // 4. 待验证日常打卡
+            // 4. 待验证日常打卡 🟢 附加 ?filter=unverified
             if (counts.attendancePending > 0) {
                 html += `
                     <li>
-                        <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="attendance.html">
+                        <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="attendance.html?filter=unverified">
                             <div class="bg-primary bg-opacity-10 text-primary p-1 rounded"><i data-lucide="clock" class="size-4"></i></div>
                             <div>
                                 <div class="fw-bold small">${counts.attendancePending} Unverified Log${counts.attendancePending > 1 ? 's' : ''}</div>
@@ -163,12 +168,8 @@ function initNotificationSystem(db) {
     };
 
     // --- Listeners ---
-
-    // 🟢 监听昨天的异常打卡 (Missing Clock Out)
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    const yStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     
+    // 监听昨天的异常打卡 (yStr 已经在顶部定义)
     onSnapshot(query(collection(db, "attendance"), where("date", "==", yStr)), (snap) => {
         const userRecords = {};
         snap.forEach(doc => {

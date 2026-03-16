@@ -42,9 +42,33 @@ export async function initAttendanceApp() {
         editRecordModal = new bootstrap.Modal(document.getElementById('editRecordModal'));
     }
 
+    // 🟢 解析 URL 参数
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlDate = urlParams.get('date');
+    const urlFilter = urlParams.get('filter');
+    const urlTab = urlParams.get('tab');
+
+    // 🟢 如果 URL 提供了日期，则使用 URL 上的日期；否则使用今天
     const todayStr = getLocalTodayStr();
-    document.getElementById('dateFilter').value = todayStr;
-    document.getElementById('monthFilter').value = todayStr.substring(0,7);
+    document.getElementById('dateFilter').value = urlDate || todayStr;
+    document.getElementById('monthFilter').value = (urlDate || todayStr).substring(0,7);
+
+    // 🟢 如果 URL 提供了过滤器 (比如 filter=missingOut)
+    if (urlFilter) {
+        const filterEl = document.getElementById('dayStatusFilter');
+        if (filterEl) {
+            filterEl.value = urlFilter;
+        }
+    }
+
+    // 🟢 如果 URL 提供了具体的 Tab 跳转 (比如 tab=corrections)
+    if (urlTab) {
+        const tabBtn = document.getElementById(`tab-${urlTab}`);
+        if (tabBtn && typeof bootstrap !== 'undefined') {
+            const tab = new bootstrap.Tab(tabBtn);
+            tab.show();
+        }
+    }
 
     await fetchUsers();
     window.loadData();
