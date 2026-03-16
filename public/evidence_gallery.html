@@ -20,33 +20,39 @@
 <div id="header-placeholder"></div>
 
 <div id="mainContainer" class="container py-4 d-none">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+    <div class="d-flex justify-content-between align-items-end flex-wrap gap-3 mb-4">
         <div>
-            <h4 class="fw-bold m-0 text-dark"><i data-lucide="image" class="me-2 text-primary"></i>Evidence Gallery</h4>
-            <div class="text-muted small">View photos uploaded by field staff</div>
+            <h4 class="fw-bold m-0 text-dark"><i data-lucide="briefcase" class="me-2 text-primary"></i>Case Evidence</h4>
+            <div class="text-muted small mt-1">Grouped by Case No. & Client</div>
         </div>
 
-        <div class="d-flex gap-2 align-items-center">
-            <button class="btn btn-outline-secondary bg-white shadow-sm" onclick="window.changeDate(-1)">
-                <i data-lucide="chevron-left" class="size-4"></i>
-            </button>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <div class="input-group shadow-sm" style="width: auto;">
+                <button class="btn btn-white border bg-white" onclick="window.changeDate(-1)"><i data-lucide="chevron-left" class="size-4"></i></button>
+                <input type="date" id="filterDate" class="form-control border fw-bold text-center text-primary" style="width: 140px;" onchange="window.loadEvidence()">
+                <button class="btn btn-white border bg-white" onclick="window.changeDate(1)"><i data-lucide="chevron-right" class="size-4"></i></button>
+            </div>
+            
+            <div class="position-relative">
+                <i data-lucide="hash" class="position-absolute top-50 start-0 translate-middle-y ms-2 text-muted size-4"></i>
+                <input type="text" id="filterCase" class="form-control ps-4 shadow-sm fw-bold" placeholder="Search Case No..." style="width: 160px;" onkeyup="window.handleEnter(event)">
+            </div>
 
-            <input type="date" id="dateFilter" class="form-control border-primary fw-bold text-center text-primary" style="width: 150px;" onchange="window.loadEvidence()">
-            
-            <button class="btn btn-outline-secondary bg-white shadow-sm" onclick="window.changeDate(1)">
-                <i data-lucide="chevron-right" class="size-4"></i>
+            <div class="position-relative">
+                <i data-lucide="user" class="position-absolute top-50 start-0 translate-middle-y ms-2 text-muted size-4"></i>
+                <input type="text" id="filterClient" class="form-control ps-4 shadow-sm fw-bold" placeholder="Search Client..." style="width: 160px;" onkeyup="window.handleEnter(event)">
+            </div>
+
+            <button class="btn btn-primary shadow-sm fw-bold" onclick="window.loadEvidence()">
+                <i data-lucide="search" class="size-4 me-1"></i> Filter
             </button>
-            
-            <select id="staffFilter" class="form-select border-primary ms-2 fw-bold" style="width: 200px;" onchange="window.loadEvidence()">
-                <option value="all">All Staff</option>
-            </select>
         </div>
     </div>
 
     <div id="galleryContainer">
         <div class="text-center py-5">
             <div class="spinner-border text-primary" role="status"></div>
-            <p class="text-muted mt-2 fw-bold">Loading logs...</p>
+            <p class="text-muted mt-2 fw-bold">Loading cases...</p>
         </div>
     </div>
 </div>
@@ -60,10 +66,11 @@
             <div class="modal-body p-0 text-center">
                 <img id="modalFullImage" src="" class="img-fluid rounded shadow-lg" style="max-height: 80vh;">
                 <div class="bg-white p-3 rounded-bottom mt-0 text-start shadow">
-                    <h6 class="fw-bold mb-1 text-dark" id="modalStaffName">-</h6>
-                    <div class="d-flex justify-content-between text-muted small">
+                    <h6 class="fw-bold mb-1 text-dark" id="modalCaseNo">-</h6>
+                    <div class="text-muted small mb-2"><i data-lucide="user" class="size-3 me-1"></i><span id="modalClientStaff">-</span></div>
+                    <div class="d-flex justify-content-between text-muted small bg-light p-2 rounded">
                         <span id="modalTime" class="fw-bold text-primary">-</span>
-                        <span id="modalLocation">-</span>
+                        <span id="modalLocation" class="text-end" style="max-width: 60%;">-</span>
                     </div>
                 </div>
             </div>
@@ -74,19 +81,13 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-    
-    import { firebaseConfig } from "./firebase-config.js";
+    // 🟢 极其干净的导入方式：直接拿 config 里的现成实例，不调 initializeApp
+    import { auth, db } from "./firebase-config.js";
     import { requireAdmin } from "./auth-guard.js";
-    
     import { initEvidenceGalleryApp } from "./evidence-gallery-app.js";
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-
-    requireAdmin(app, db, async (user) => {
-        // 【关键修改】：把初始化好的 db 传给应用逻辑
+    // auth-guard 需要 app 和 db，直接传 auth.app 进去
+    requireAdmin(auth.app, db, async (user) => {
         await initEvidenceGalleryApp(db);
     });
 </script>
