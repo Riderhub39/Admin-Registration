@@ -1,18 +1,14 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, query, where, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+// 文件: evidence-gallery-app.js
+import { collection, query, where, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-import { firebaseConfig } from "./firebase-config.js";
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
-
+let db; // 声明内部数据库实例变量
 let imageModal;
 let dateInput;
 
-// 初始化函数：供 HTML 验证身份后调用
-export async function initEvidenceGalleryApp() {
+// 初始化函数：供 HTML 验证身份后调用，并接收 db 实例
+export async function initEvidenceGalleryApp(dbInstance) {
+    db = dbInstance; // 赋值传入的数据库实例
+
     document.getElementById('loadingText').innerText = "Loading Gallery...";
     imageModal = new bootstrap.Modal(document.getElementById('imageModal'));
     

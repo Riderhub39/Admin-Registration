@@ -86,7 +86,8 @@
     const db = getFirestore(app);
 
     requireAdmin(app, db, async (user) => {
-        await initEvidenceGalleryApp();
+        // 【关键修改】：把初始化好的 db 传给应用逻辑
+        await initEvidenceGalleryApp(db);
     });
 </script>
 </body>
