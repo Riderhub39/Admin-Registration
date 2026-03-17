@@ -229,6 +229,41 @@
 
     <div class="modal fade" id="photoModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content bg-dark border-0 p-0 shadow-lg"><img id="modalImg" src="" class="img-fluid rounded"></div></div></div>
 
+    <div class="modal fade" id="bulkVerifyModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-success bg-opacity-10 border-0">
+                    <h6 class="modal-title fw-bold text-success"><i data-lucide="check-circle" class="size-4 me-2"></i>Review Bulk Verification</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-hover mb-0 align-middle text-center">
+                            <thead class="bg-light text-secondary small fw-bold sticky-top">
+                                <tr>
+                                    <th class="text-start ps-4">Employee</th>
+                                    <th>Clock In</th>
+                                    <th>Break Out</th>
+                                    <th>Break In</th>
+                                    <th>Clock Out</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bulkVerifyListBody">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light border-0 justify-content-between">
+                    <div class="small text-muted fw-bold" id="bulkVerifyTotalCount">Total: 0 records</div>
+                    <div>
+                        <button type="button" class="btn btn-light fw-bold shadow-sm border me-2" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-success fw-bold shadow-sm" onclick="window.confirmBulkVerify()">Confirm Verification</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";

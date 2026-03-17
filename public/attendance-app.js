@@ -23,11 +23,11 @@ let docIdToAuthMap = {};
 let attendanceData = []; 
 let currentMode = 'day'; 
 
-let photoModal, manualActionModal, editRecordModal;
-let unsubscribeAttendance = null; // 🟢 用于存储实时监听器
-let unverifiedRecordsCache = []; // 🟢 用于批量Verify
+let photoModal, manualActionModal, editRecordModal, bulkVerifyModalInst; // 🟢 新增 bulkVerifyModalInst
+let unsubscribeAttendance = null; 
+let unverifiedRecordsCache = []; 
 
-// 🟢 获取本地当天的标准化日期字符串 YYYY-MM-DD
+// 获取本地当天的标准化日期字符串 YYYY-MM-DD
 function getLocalTodayStr() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -40,20 +40,18 @@ export async function initAttendanceApp() {
         photoModal = new bootstrap.Modal(document.getElementById('photoModal'));
         manualActionModal = new bootstrap.Modal(document.getElementById('manualActionModal'));
         editRecordModal = new bootstrap.Modal(document.getElementById('editRecordModal'));
+        bulkVerifyModalInst = new bootstrap.Modal(document.getElementById('bulkVerifyModal')); // 🟢 初始化批量验证弹窗
     }
 
-    // 🟢 解析 URL 参数
     const urlParams = new URLSearchParams(window.location.search);
     const urlDate = urlParams.get('date');
     const urlFilter = urlParams.get('filter');
     const urlTab = urlParams.get('tab');
 
-    // 🟢 如果 URL 提供了日期，则使用 URL 上的日期；否则使用今天
     const todayStr = getLocalTodayStr();
     document.getElementById('dateFilter').value = urlDate || todayStr;
     document.getElementById('monthFilter').value = (urlDate || todayStr).substring(0,7);
 
-    // 🟢 如果 URL 提供了过滤器 (比如 filter=missingOut)
     if (urlFilter) {
         const filterEl = document.getElementById('dayStatusFilter');
         if (filterEl) {
@@ -61,7 +59,6 @@ export async function initAttendanceApp() {
         }
     }
 
-    // 🟢 如果 URL 提供了具体的 Tab 跳转 (比如 tab=corrections)
     if (urlTab) {
         const tabBtn = document.getElementById(`tab-${urlTab}`);
         if (tabBtn && typeof bootstrap !== 'undefined') {
@@ -87,12 +84,12 @@ async function fetchUsers() {
             email: d.personal?.email,
             status: d.status || 'active',
             docId: docSnap.id,
-            authUid: d.authUid
+            authUid: d.authUid,
+            empCode: d.empCode // 确保用户文档中有 empCode 字段，如果没有下方有 fallback 处理
         };
     });
 }
 
-// 🟢 优化1: 拆分 loadData，将 attendance 设为实时监听
 window.loadData = async function() {
     document.getElementById('loadingState').classList.remove('d-none');
     document.getElementById('emptyState').classList.add('d-none');
@@ -108,7 +105,6 @@ window.loadData = async function() {
             endDate = mVal + "-" + new Date(mVal.split('-')[0], mVal.split('-')[1], 0).getDate();
         }
 
-        // 获取 Schedules 和 Leaves
         const [schedSnap, leaveSnap] = await Promise.all([
             getDocs(query(collection(db, "schedules"), where("date", ">=", startDate), where("date", "<=", endDate))),
             getDocs(query(collection(db, "leaves"), where("status", "==", "Approved"), where("endDate", ">=", startDate)))
@@ -133,12 +129,10 @@ window.loadData = async function() {
             }
         });
 
-        // 🟢 停止之前的监听，防止重复
         if (unsubscribeAttendance) {
             unsubscribeAttendance();
         }
 
-        // 🟢 建立实时监听 Attendance (Auto-Refresh)
         const attQuery = query(collection(db, "attendance"), where("date", ">=", startDate), where("date", "<=", endDate));
         unsubscribeAttendance = onSnapshot(attQuery, (attSnap) => {
             processAndRenderAttendance(attSnap, startDate, endDate);
@@ -153,7 +147,6 @@ window.loadData = async function() {
     }
 };
 
-// 🟢 新增：处理监听器回传的打卡数据并渲染界面
 function processAndRenderAttendance(attSnap, startDate, endDate) {
     const listContainer = document.getElementById('attendanceList');
     listContainer.innerHTML = '';
@@ -163,7 +156,7 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
     let presentUids = new Set();
     let unverified = 0;
     let missingOutData = []; 
-    unverifiedRecordsCache = []; // 清空待批量验证池
+    unverifiedRecordsCache = []; 
     
     attSnap.forEach(d => {
         const data = d.data();
@@ -184,7 +177,6 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
     const grouped = {};
     attendanceData.forEach(r => { if(!grouped[r.uid]) grouped[r.uid] = []; grouped[r.uid].push(r); });
 
-    // 🟢 优化2: 获取 Filter 并筛选
     const dayFilter = document.getElementById('dayStatusFilter') ? document.getElementById('dayStatusFilter').value : 'all';
     let recordsToRender = [];
 
@@ -197,7 +189,6 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
              const hasOut = dayRecords.some(r => r.session === 'Clock Out');
              const hasUnverified = dayRecords.some(r => r.verificationStatus !== 'Verified');
              
-             // 🟢 优化3: Missing Out 判定逻辑修改 (仅包含过去日期)
              const targetDate = startDate; 
              const isMissingOut = hasIn && !hasOut && (targetDate < currentTodayStr);
 
@@ -205,16 +196,14 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
                  missingOutData.push(usersMap[uid].name);
              }
 
-             // 判断该员工是否符合 Filter 条件
              let showUser = false;
              if (dayFilter === 'all') showUser = true;
-             else if (dayFilter === 'clockedIn' && hasIn) showUser = true; // 有打卡记录就显示
+             else if (dayFilter === 'clockedIn' && hasIn) showUser = true; 
              else if (dayFilter === 'unverified' && hasUnverified) showUser = true;
              else if (dayFilter === 'missingOut' && isMissingOut) showUser = true;
 
              if (showUser) {
                  recordsToRender.push(uid);
-                 // 筛选出来的名单中，如果包含未验证的，加入到批量处理池中
                  dayRecords.forEach(r => {
                      if (r.verificationStatus !== 'Verified') unverifiedRecordsCache.push(r);
                  });
@@ -231,7 +220,6 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
         });
         renderDashboard(attendanceData, presentUids, missingOutData);
 
-        // 🟢 控制批量 Verify 按钮的显示状态
         const bulkBtn = document.getElementById('bulkVerifyBtn');
         if (bulkBtn) {
             if (unverifiedRecordsCache.length > 0) {
@@ -248,7 +236,7 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
         });
         
         const bulkBtn = document.getElementById('bulkVerifyBtn');
-        if(bulkBtn) bulkBtn.classList.add('d-none'); // 月视图暂时隐藏批量操作
+        if(bulkBtn) bulkBtn.classList.add('d-none'); 
     }
     
     if(count === 0 && recordsToRender.length === 0) document.getElementById('emptyState').classList.remove('d-none');
@@ -265,7 +253,6 @@ function renderDayUserCard(uid, records, container, targetDate, currentTodayStr)
     const sched = schedulesMap[uid + "_" + targetDate];
     const leave = leavesMap[uid + "_" + targetDate];
     
-    // 如果没有排班、没有打卡、也没有请假，就不显示
     if (!sched && records.length === 0 && !leave) return false;
 
     let inT = "--:--", outT = "--:--", pending = 0;
@@ -290,7 +277,6 @@ function renderDayUserCard(uid, records, container, targetDate, currentTodayStr)
     card.className = `user-card user-card-container ${isAbsent ? 'row-absent' : (leave ? 'row-leave' : '')}`;
     card.setAttribute('data-name', user.name);
     
-    // 🟢 修改状态颜色
     let statusColor = isAbsent ? "bg-danger" : 
                       (leave ? "bg-info" : 
                       (isMissingOut ? "bg-danger" : 
@@ -407,7 +393,6 @@ function renderDashboard(data, pUids, missingOutData = []) {
     document.getElementById('statLeave').innerText = leave;
     document.getElementById('absentList').innerHTML = aList.map(n => `<li class="list-group-item d-flex justify-content-between align-items-center fw-bold">${n} <span class="badge bg-danger">ABSENT</span></li>`).join('') || '<li class="list-group-item text-center text-success py-3">All scheduled staff accounted for.</li>';
 
-    // 🟢 渲染缺少 Clock Out 的列表
     const lateListContainer = document.getElementById('lateList');
     if (missingOutData.length > 0) {
         let warningHtml = missingOutData.map(n => 
@@ -422,17 +407,64 @@ function renderDashboard(data, pUids, missingOutData = []) {
     }
 }
 
-// 🟢 优化2: 实现批量 Verify 功能
-window.bulkVerify = async () => {
+// 🟢 优化4: 打开 Bulk Verify 弹窗并渲染表格数据
+window.bulkVerify = () => {
     if (unverifiedRecordsCache.length === 0) {
-        alert("当前没有可验证的记录。");
-        return;
-    }
-    
-    if (!confirm(`确定要一次性验证当前显示的 ${unverifiedRecordsCache.length} 条打卡记录吗？`)) {
+        alert("No unverified records available.");
         return;
     }
 
+    // 将未验证的数据按照员工分组归类
+    const groupedData = {};
+    unverifiedRecordsCache.forEach(record => {
+        if (!groupedData[record.uid]) {
+            const user = usersMap[record.uid] || {};
+            groupedData[record.uid] = {
+                name: user.name || "Unknown Staff",
+                empCode: user.empCode || `EMP-${record.uid.substring(0, 5).toUpperCase()}`, // Fallback 处理
+                records: []
+            };
+        }
+        groupedData[record.uid].records.push(record);
+    });
+
+    // 填充弹窗中的表格
+    const tbody = document.getElementById('bulkVerifyListBody');
+    tbody.innerHTML = '';
+
+    Object.values(groupedData).forEach(emp => {
+        let cin = '--:--', cout = '--:--', bout = '--:--', bin = '--:--';
+        
+        // 匹配各类打卡的时间
+        emp.records.forEach(r => {
+            const timeStr = r.timestamp ? formatTime(r.timestamp) : "--:--";
+            if (r.session === 'Clock In') cin = timeStr;
+            else if (r.session === 'Clock Out') cout = timeStr;
+            else if (r.session === 'Break Out') bout = timeStr;
+            else if (r.session === 'Break In') bin = timeStr;
+        });
+
+        // 拼接表格行
+        tbody.innerHTML += `
+            <tr>
+                <td class="text-start ps-4">
+                    <div class="fw-bold text-dark">${emp.empCode}</div>
+                    <div class="small text-muted">${emp.name}</div>
+                </td>
+                <td><span class="badge ${cin !== '--:--' ? 'bg-success bg-opacity-10 text-success border border-success' : 'bg-light text-muted border'}">${cin}</span></td>
+                <td><span class="badge ${bout !== '--:--' ? 'bg-warning bg-opacity-10 text-warning border border-warning' : 'bg-light text-muted border'}">${bout}</span></td>
+                <td><span class="badge ${bin !== '--:--' ? 'bg-info bg-opacity-10 text-info border border-info' : 'bg-light text-muted border'}">${bin}</span></td>
+                <td><span class="badge ${cout !== '--:--' ? 'bg-success bg-opacity-10 text-success border border-success' : 'bg-light text-muted border'}">${cout}</span></td>
+            </tr>
+        `;
+    });
+
+    document.getElementById('bulkVerifyTotalCount').innerText = `Total: ${unverifiedRecordsCache.length} pending records`;
+    bulkVerifyModalInst.show();
+};
+
+// 🟢 优化5: 确认提交批量 Verify 的后台写入
+window.confirmBulkVerify = async () => {
     showLoading();
     try {
         const batch = writeBatch(db);
@@ -442,11 +474,13 @@ window.bulkVerify = async () => {
         });
 
         await batch.commit();
-        showStatusAlert('statusMessage', `成功批量验证 ${unverifiedRecordsCache.length} 条记录！`, true);
-        // 注意：由于引入了 onSnapshot，Firestore 成功更新后界面会自动重新渲染，不需要手动调用 loadData
+        bulkVerifyModalInst.hide();
+        showStatusAlert('statusMessage', `Successfully verified ${unverifiedRecordsCache.length} records!`, true);
+        // 注意：由于 onSnapshot 实时监听，Firestore 写入成功后前端会自动触发渲染，不需要手动刷新。
     } catch (e) {
+        bulkVerifyModalInst.hide();
         hideLoading();
-        showStatusAlert('statusMessage', `批量验证失败: ${e.message}`, false);
+        showStatusAlert('statusMessage', `Bulk verification failed: ${e.message}`, false);
     }
 };
 
