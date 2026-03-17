@@ -111,7 +111,6 @@ function resetMapView() {
         routePolylines = [];
     }
     
-    // 🟢 清理回放状态
     if(window.replayInterval) {
         clearInterval(window.replayInterval);
         window.replayInterval = null;
@@ -133,7 +132,6 @@ function resetMapView() {
 // ==========================================
 // 2. 数据获取逻辑
 // ==========================================
-
 async function fetchUsers() {
     try {
         const snap = await getDocs(collection(db, "users"));
@@ -180,7 +178,6 @@ async function loadDriverListForSelectedDate() {
 
                 const realName = usersMap[uid] || `User (${uid.substring(0, 5)})`;
                 
-                // 🟢 智能 UI 降级：计算时间差
                 const diffMins = (new Date() - lastUpdate) / 60000;
                 let statusBadge = '';
                 
@@ -257,7 +254,6 @@ window.viewStaffRoute = async function(uid, realName) {
         const singleRef = ref(rtdb, `live_locations/${uid}`);
         unsubscribeStaffListener = onValue(singleRef, (snapshot) => {
             const val = snapshot.val();
-            // 🟢 拦截器：如果正在播放回放动画，忽略 Firebase 的实时推送
             if (val && window.selectedUid === uid && !window.isReplaying) {
                 updateCarMarker(val, realName, false);
             }
@@ -293,7 +289,7 @@ function showNoRecordState() {
     document.getElementById('overlayStatusTag').className = "badge bg-secondary";
 }
 
-// 绘制路径核心逻辑
+// 🟢 全新重写：多重数据清洗与抗绕路引擎
 async function drawRoute(rawLogs, realName) {
     if(routePolylines.length > 0) {
         routePolylines.forEach(p => p.setMap(null));
@@ -302,8 +298,9 @@ async function drawRoute(rawLogs, realName) {
 
     if (rawLogs.length === 0) return;
 
-    let logs = [];
-    logs.push(rawLogs[0]); 
+    // --- 第一阶：基础清洗 (距离与异常速度) ---
+    let tempLogs = [];
+    tempLogs.push(rawLogs[0]); 
     let lastValidPoint = rawLogs[0];
 
     for (let i = 1; i < rawLogs.length; i++) {
@@ -313,16 +310,43 @@ async function drawRoute(rawLogs, realName) {
         let p2 = new google.maps.LatLng(currentPoint.lat, currentPoint.lng);
         let distanceMeters = google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
 
-        if (distanceMeters < 30) continue;
+        if (distanceMeters < 30) continue; // 原地微小抖动
 
         let timeDiffSeconds = Math.abs(currentPoint.timestamp - lastValidPoint.timestamp) / 1000; 
         if (timeDiffSeconds <= 0) continue; 
 
         let speedMetersPerSecond = distanceMeters / timeDiffSeconds;
-        if (speedMetersPerSecond > 33.33) continue;
+        if (speedMetersPerSecond > 33.33) continue; // 超人瞬移拦截 (120km/h)
 
-        logs.push(currentPoint);
+        tempLogs.push(currentPoint);
         lastValidPoint = currentPoint;
+    }
+
+    // --- 第二阶：高级防飞点三角拦截 (Ping-Pong Filter) ---
+    let logs = [];
+    if (tempLogs.length > 2) {
+        for (let i = 0; i < tempLogs.length; i++) {
+            if (i === 0 || i === tempLogs.length - 1) {
+                logs.push(tempLogs[i]);
+                continue;
+            }
+            let prev = tempLogs[i - 1];
+            let curr = tempLogs[i];
+            let next = tempLogs[i + 1];
+
+            let distPrevCurr = google.maps.geometry.spherical.computeDistanceBetween(new google.maps.LatLng(prev.lat, prev.lng), new google.maps.LatLng(curr.lat, curr.lng));
+            let distCurrNext = google.maps.geometry.spherical.computeDistanceBetween(new google.maps.LatLng(curr.lat, curr.lng), new google.maps.LatLng(next.lat, next.lng));
+            let distPrevNext = google.maps.geometry.spherical.computeDistanceBetween(new google.maps.LatLng(prev.lat, prev.lng), new google.maps.LatLng(next.lat, next.lng));
+
+            // 如果当前点突然飞远(与前后距离都>100m)，但是前后两个点其实很近(比如不到飞出距离的一半)，这就是纯漂移！
+            if (distPrevCurr > 100 && distCurrNext > 100 && distPrevNext < distPrevCurr * 0.5) {
+                console.warn("Spike removed:", curr);
+                continue; 
+            }
+            logs.push(curr);
+        }
+    } else {
+        logs = tempLogs;
     }
 
     if (logs.length < 2) {
@@ -330,10 +354,10 @@ async function drawRoute(rawLogs, realName) {
         return; 
     }
 
-    // 🟢 暴露给全局供回放使用
     window.currentRouteLogs = logs;
     document.getElementById('replayBtn').classList.remove('d-none');
 
+    // 起点
     const firstLog = logs[0];
     if (!startMarker) {
         startMarker = new google.maps.Marker({
@@ -407,9 +431,24 @@ async function drawRoute(rawLogs, realName) {
                 let currentPath, color, weight;
 
                 if (status === google.maps.DirectionsStatus.OK) {
-                    currentPath = result.routes[0].overview_path;
-                    color = "#2563eb"; 
-                    weight = 5;
+                    // --- 第三阶：抗 API 绕路/强制掉头计算引擎 ---
+                    let straightDist = google.maps.geometry.spherical.computeDistanceBetween(origin, destinationFixed);
+                    
+                    let routeDist = 0;
+                    result.routes[0].legs.forEach(leg => { routeDist += leg.distance.value; });
+
+                    // 如果 API 规划的距离比直线距离长 2.5 倍，且总绕路距离超过 300 米，立刻判定为 Bug 绕路！
+                    if (straightDist > 0 && (routeDist / straightDist > 2.5) && routeDist > 300) {
+                        console.warn(`[Anti-Detour] Blocked huge detour. Straight: ${straightDist.toFixed(0)}m, Route: ${routeDist}m. Fallback applied.`);
+                        // 强制降级：直接画连线，无视道路
+                        currentPath = chunk.map(c => new google.maps.LatLng(c.lat, c.lng));
+                        color = "#64748b"; // 使用灰蓝色区分降级路段
+                        weight = 4;
+                    } else {
+                        currentPath = result.routes[0].overview_path;
+                        color = "#2563eb"; 
+                        weight = 5;
+                    }
                 } else {
                     currentPath = chunk.map(c => new google.maps.LatLng(c.lat, c.lng));
                     color = "#64748b"; 
@@ -455,7 +494,6 @@ function updateStatusCard(lastLog) {
     }
 }
 
-// 🟢 智能降级 UI 的主函数
 function updateCarMarker(data, realName, isReplayMode = false) {
     const pos = { lat: parseFloat(data.lat), lng: parseFloat(data.lng) };
     lastKnownPosition = pos; 
@@ -467,16 +505,15 @@ function updateCarMarker(data, realName, isReplayMode = false) {
 
     const isToday = document.getElementById('datePicker').value === new Date().toLocaleDateString('en-CA');
     
-    // 如果是实时状态（非回放），判定失联和弱网
     if (isToday && !isReplayMode && data.lastUpdate) {
         const diffMins = (new Date() - new Date(data.lastUpdate)) / 60000;
         if (data.isTracking === false || diffMins >= 15) {
-            markerColor = "#9ca3af"; // 灰色表示失联
-            markerOpacity = 0.5; // 半透明
+            markerColor = "#9ca3af"; 
+            markerOpacity = 0.5; 
             statusText = "Signal Lost";
             statusClass = "badge bg-secondary";
         } else if (diffMins >= 5) {
-            markerColor = "#f59e0b"; // 黄色表示弱网
+            markerColor = "#f59e0b"; 
             statusText = "Weak Signal";
             statusClass = "badge bg-warning text-dark";
         }
@@ -497,7 +534,6 @@ function updateCarMarker(data, realName, isReplayMode = false) {
             zIndex: 200 
         });
     } else {
-        // 动态更新车标颜色和透明度
         currentMarker.setIcon({
             path: google.maps.SymbolPath.CIRCLE, 
             scale: 12, 
@@ -510,7 +546,6 @@ function updateCarMarker(data, realName, isReplayMode = false) {
         currentMarker.setMap(map); 
     }
     
-    // 速度与时间显示
     const rawSpeed = data.speed || 0;
     const finalSpeed = rawSpeed > 0 ? (rawSpeed * 3.6).toFixed(1) : 0;
     document.getElementById('overlaySpeed').innerText = finalSpeed;
@@ -522,7 +557,6 @@ function updateCarMarker(data, realName, isReplayMode = false) {
         document.getElementById('overlayTime').innerText = '-';
     }
     
-    // 渲染右上角 Status Tag
     if (isToday && !isReplayMode && (statusText === "Signal Lost" || statusText === "Weak Signal")) {
         document.getElementById('overlayStatusTag').innerText = statusText;
         document.getElementById('overlayStatusTag').className = statusClass;
@@ -541,9 +575,6 @@ window.focusOnDriver = function() {
     }
 }
 
-// ==========================================
-// 4. 轨迹动态回放引擎 (Route Replay)
-// ==========================================
 window.toggleRouteReplay = function() {
     const btn = document.getElementById('replayBtn');
     
@@ -554,7 +585,6 @@ window.toggleRouteReplay = function() {
         btn.innerHTML = '<i data-lucide="play" class="size-4 me-2"></i> Route Replay';
         if (typeof lucide !== 'undefined') lucide.createIcons();
         
-        // 结束回放时，把车标挪回最后一个真实点
         const lastPoint = window.currentRouteLogs[window.currentRouteLogs.length - 1];
         if (lastPoint) {
             updateCarMarker({
@@ -578,18 +608,16 @@ window.toggleRouteReplay = function() {
     const totalPoints = window.currentRouteLogs.length;
     const realName = document.getElementById('overlayName').innerText;
 
-    // 视角拉近，方便观看回放动画
     if (map) map.setZoom(16);
 
     window.replayInterval = setInterval(() => {
         if (replayIndex >= totalPoints) {
-            window.toggleRouteReplay(); // 跑完终点自动停止
+            window.toggleRouteReplay(); 
             return;
         }
 
         const point = window.currentRouteLogs[replayIndex];
         
-        // 动态计算模拟速度 (防超人瞬移后剩下的合理数据)
         let simSpeed = 0;
         if (replayIndex > 0) {
             const prev = window.currentRouteLogs[replayIndex - 1];
@@ -603,7 +631,6 @@ window.toggleRouteReplay = function() {
             }
         }
 
-        // 调用 Marker 更新 (isReplayMode = true)
         updateCarMarker({
             lat: point.lat,
             lng: point.lng,
@@ -611,9 +638,8 @@ window.toggleRouteReplay = function() {
             lastUpdate: point.timestamp
         }, realName, true); 
 
-        // 镜头跟随小车移动
         if (map) map.panTo({ lat: point.lat, lng: point.lng });
 
         replayIndex++;
-    }, 400); // 每 400 毫秒跳动一次 (帧率)
+    }, 400); 
 };
