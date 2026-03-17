@@ -12,6 +12,8 @@
     
     <style>
         #map { width: 100%; height: 100%; }
+        /* 状态圆点的统一样式 */
+        .status-dot-custom { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
     </style>
 </head>
 
@@ -64,6 +66,9 @@
                     <div class="fw-bold text-dark" id="overlayTime">-</div>
                 </div>
             </div>
+            <button id="replayBtn" class="btn btn-outline-primary w-100 btn-sm fw-bold mb-2 d-none" onclick="window.toggleRouteReplay()">
+                <i data-lucide="play" class="size-4 me-2"></i> Route Replay
+            </button>
             <button class="btn btn-primary w-100 btn-sm fw-bold" onclick="window.focusOnDriver()">
                 <i data-lucide="crosshair" class="size-4 me-2"></i> Focus Location
             </button>
@@ -75,7 +80,6 @@
 <script>
     window.initMap = function() {
         console.log("Google Maps API loaded.");
-        // 具体地图构建由模块中的 initLiveTrackingApp 完成
     };
 </script>
 
