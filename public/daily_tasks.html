@@ -9,6 +9,18 @@
     <link href="style.css" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* 增加表头鼠标悬停效果 */
+        .sortable {
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.2s ease;
+        }
+        .sortable:hover {
+            background-color: #e9ecef !important;
+        }
+    </style>
 </head>
 <body class="bg-light">
 
@@ -23,25 +35,46 @@
     <div class="d-flex justify-content-between align-items-end flex-wrap gap-3 mb-4">
         <div>
             <h4 class="fw-bold m-0 text-dark"><i data-lucide="clipboard-list" class="me-2 text-primary"></i>Daily Tasks</h4>
-            <p class="text-muted mb-0 mt-1">View and manage daily task reports from the mobile app.</p>
+            <p class="text-muted mb-0 mt-1">View, filter, and sort daily task reports.</p>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-12 col-md-4">
+                    <label class="form-label small fw-bold text-muted mb-1">Search Staff</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0"><i data-lucide="search" class="size-4 text-muted"></i></span>
+                        <input type="text" id="searchStaff" class="form-control border-start-0 ps-0" placeholder="Sales Name...">
+                    </div>
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label small fw-bold text-muted mb-1">Filter by Date</label>
+                    <input type="date" id="filterDate" class="form-control">
+                </div>
+                <div class="col-12 col-md-2 d-flex align-items-end">
+                    <button id="resetBtn" class="btn btn-light border w-100"><i data-lucide="rotate-ccw" class="size-4 me-1"></i>Reset</button>
+                </div>
+            </div>
         </div>
     </div>
 
     <div class="card border-0 shadow-sm rounded-4">
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
+                <table class="table align-middle mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th class="ps-4 py-3">Date</th>
-                            <th>Sales</th>
-                            <th>Account</th>
-                            <th>Live</th>
-                            <th>Leads</th>
-                            <th>Viewers</th>
-                            <th>Top View</th>
-                            <th>Avg View</th>
-                            <th>Boosted</th>
+                            <th class="ps-4 py-3 sortable" data-sort="date">Date <i data-lucide="arrow-up-down" class="size-3 ms-1 text-muted"></i></th>
+                            <th class="sortable" data-sort="salesName">Sales <i data-lucide="arrow-up-down" class="size-3 ms-1 text-muted"></i></th>
+                            <th class="sortable" data-sort="accountType">Account <i data-lucide="arrow-up-down" class="size-3 ms-1 text-muted"></i></th>
+                            <th class="sortable" data-sort="liveCount">Live <i data-lucide="arrow-up-down" class="size-3 ms-1 text-muted"></i></th>
+                            <th class="sortable" data-sort="leads">Leads <i data-lucide="arrow-up-down" class="size-3 ms-1 text-muted"></i></th>
+                            <th class="sortable" data-sort="viewers">Viewers <i data-lucide="arrow-up-down" class="size-3 ms-1 text-muted"></i></th>
+                            <th class="sortable" data-sort="topView">Top View <i data-lucide="arrow-up-down" class="size-3 ms-1 text-muted"></i></th>
+                            <th class="sortable" data-sort="averageView">Avg View <i data-lucide="arrow-up-down" class="size-3 ms-1 text-muted"></i></th>
+                            <th class="sortable" data-sort="isBoosted">Boosted <i data-lucide="arrow-up-down" class="size-3 ms-1 text-muted"></i></th>
                             <th>Comment</th>
                             <th class="pe-4">Images</th>
                         </tr>
