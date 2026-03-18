@@ -61,13 +61,14 @@ function initNotificationSystem(db) {
     const badge = document.getElementById('notificationBadge');
     const list = document.getElementById('notificationList');
     
-    // 🟢 添加了 missingClockOuts 计数
+    // 🟢 添加了 dailyTasks 计数
     const counts = {
         leaves: 0,
         attendanceCorrections: 0,
         attendancePending: 0,
         edits: 0,
-        missingClockOuts: 0 
+        missingClockOuts: 0,
+        dailyTasks: 0 // 新增：今日日常任务数
     };
 
     // 🟢 提前定义昨天的日期，以便在 updateUI 中拼接到 URL 中
@@ -76,7 +77,8 @@ function initNotificationSystem(db) {
     const yStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
     const updateUI = () => {
-        const total = counts.leaves + counts.attendanceCorrections + counts.attendancePending + counts.edits + counts.missingClockOuts;
+        // 🟢 将 dailyTasks 加入总数计算
+        const total = counts.leaves + counts.attendanceCorrections + counts.attendancePending + counts.edits + counts.missingClockOuts + counts.dailyTasks;
 
         if (badge) {
             total > 0 ? badge.classList.remove('d-none') : badge.classList.add('d-none');
@@ -92,7 +94,7 @@ function initNotificationSystem(db) {
                     <small>All caught up!</small>
                 </li>`;
         } else {
-            // 1. Missing Clock Outs (Yesterday) 🟢 附加 ?date=昨天的日期 和 filter=missingOut
+            // 1. Missing Clock Outs (Yesterday)
             if (counts.missingClockOuts > 0) {
                 html += `
                     <li>
@@ -120,7 +122,7 @@ function initNotificationSystem(db) {
                     </li>`;
             }
 
-            // 3. 考勤修正申请 🟢 附加 ?tab=corrections
+            // 3. 考勤修正申请
             if (counts.attendanceCorrections > 0) {
                 html += `
                     <li>
@@ -134,7 +136,7 @@ function initNotificationSystem(db) {
                     </li>`;
             }
 
-            // 4. 待验证日常打卡 🟢 附加 ?filter=unverified
+            // 4. 待验证日常打卡
             if (counts.attendancePending > 0) {
                 html += `
                     <li>
@@ -161,6 +163,20 @@ function initNotificationSystem(db) {
                         </a>
                     </li>`;
             }
+
+            // 🟢 6. 今日日常任务 (Daily Tasks)
+            if (counts.dailyTasks > 0) {
+                html += `
+                    <li>
+                        <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="daily_tasks.html">
+                            <div class="bg-success bg-opacity-10 text-success p-1 rounded"><i data-lucide="clipboard-check" class="size-4"></i></div>
+                            <div>
+                                <div class="fw-bold small text-success">${counts.dailyTasks} Daily Task${counts.dailyTasks > 1 ? 's' : ''}</div>
+                                <div class="text-muted" style="font-size: 0.75rem;">Submitted today</div>
+                            </div>
+                        </a>
+                    </li>`;
+            }
         }
 
         if (list) list.innerHTML = html;
@@ -169,7 +185,7 @@ function initNotificationSystem(db) {
 
     // --- Listeners ---
     
-    // 监听昨天的异常打卡 (yStr 已经在顶部定义)
+    // 监听昨天的异常打卡
     onSnapshot(query(collection(db, "attendance"), where("date", "==", yStr)), (snap) => {
         const userRecords = {};
         snap.forEach(doc => {
@@ -206,6 +222,15 @@ function initNotificationSystem(db) {
 
     onSnapshot(query(collection(db, "edit_requests"), where("status", "==", "pending")), (snap) => {
         counts.edits = snap.size;
+        updateUI();
+    });
+
+    // 🟢 监听今日提交的 Daily Tasks
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0); // 今天的 00:00:00
+    
+    onSnapshot(query(collection(db, "daily_tasks"), where("date", ">=", todayStart)), (snap) => {
+        counts.dailyTasks = snap.size;
         updateUI();
     });
 }
