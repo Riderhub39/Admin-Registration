@@ -787,7 +787,7 @@ window.openMonthlyReportModal = () => {
 
     userList.forEach(u => {
         if (u.status !== 'disabled') {
-           staffSelect.innerHTML += `<option value="${u.authUid || u.docId}">[${u.authUid || 'N/A'}] ${u.name}</option>`;
+           staffSelect.innerHTML += `<option value="${u.authUid || u.docId}">[${u.docId || 'N/A'}] ${u.name}</option>`;
         }
     });
 
