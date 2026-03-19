@@ -23,7 +23,8 @@ let docIdToAuthMap = {};
 let attendanceData = []; 
 let currentMode = 'day'; 
 
-let photoModal, manualActionModal, editRecordModal, bulkVerifyModalInst; // 🟢 新增 bulkVerifyModalInst
+// 🟢 增加了 monthlyReportModalInst
+let photoModal, manualActionModal, editRecordModal, bulkVerifyModalInst, monthlyReportModalInst; 
 let unsubscribeAttendance = null; 
 let unverifiedRecordsCache = []; 
 
@@ -40,7 +41,8 @@ export async function initAttendanceApp() {
         photoModal = new bootstrap.Modal(document.getElementById('photoModal'));
         manualActionModal = new bootstrap.Modal(document.getElementById('manualActionModal'));
         editRecordModal = new bootstrap.Modal(document.getElementById('editRecordModal'));
-        bulkVerifyModalInst = new bootstrap.Modal(document.getElementById('bulkVerifyModal')); // 🟢 初始化批量验证弹窗
+        bulkVerifyModalInst = new bootstrap.Modal(document.getElementById('bulkVerifyModal')); 
+        monthlyReportModalInst = new bootstrap.Modal(document.getElementById('monthlyReportModal')); // 🟢 初始化月度报表弹窗
     }
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -85,7 +87,7 @@ async function fetchUsers() {
             status: d.status || 'active',
             docId: docSnap.id,
             authUid: d.authUid,
-            empCode: d.empCode // 确保用户文档中有 empCode 字段，如果没有下方有 fallback 处理
+            empCode: d.empCode 
         };
     });
 }
@@ -407,35 +409,31 @@ function renderDashboard(data, pUids, missingOutData = []) {
     }
 }
 
-// 🟢 优化4: 打开 Bulk Verify 弹窗并渲染表格数据
 window.bulkVerify = () => {
     if (unverifiedRecordsCache.length === 0) {
         alert("No unverified records available.");
         return;
     }
 
-    // 将未验证的数据按照员工分组归类
     const groupedData = {};
     unverifiedRecordsCache.forEach(record => {
         if (!groupedData[record.uid]) {
             const user = usersMap[record.uid] || {};
             groupedData[record.uid] = {
                 name: user.name || "Unknown Staff",
-                empCode: user.empCode || `EMP-${record.uid.substring(0, 5).toUpperCase()}`, // Fallback 处理
+                empCode: user.empCode || `EMP-${record.uid.substring(0, 5).toUpperCase()}`,
                 records: []
             };
         }
         groupedData[record.uid].records.push(record);
     });
 
-    // 填充弹窗中的表格
     const tbody = document.getElementById('bulkVerifyListBody');
     tbody.innerHTML = '';
 
     Object.values(groupedData).forEach(emp => {
         let cin = '--:--', cout = '--:--', bout = '--:--', bin = '--:--';
         
-        // 匹配各类打卡的时间
         emp.records.forEach(r => {
             const timeStr = r.timestamp ? formatTime(r.timestamp) : "--:--";
             if (r.session === 'Clock In') cin = timeStr;
@@ -444,7 +442,6 @@ window.bulkVerify = () => {
             else if (r.session === 'Break In') bin = timeStr;
         });
 
-        // 拼接表格行
         tbody.innerHTML += `
             <tr>
                 <td class="text-start ps-4">
@@ -463,7 +460,6 @@ window.bulkVerify = () => {
     bulkVerifyModalInst.show();
 };
 
-// 🟢 优化5: 确认提交批量 Verify 的后台写入
 window.confirmBulkVerify = async () => {
     showLoading();
     try {
@@ -476,7 +472,6 @@ window.confirmBulkVerify = async () => {
         await batch.commit();
         bulkVerifyModalInst.hide();
         showStatusAlert('statusMessage', `Successfully verified ${unverifiedRecordsCache.length} records!`, true);
-        // 注意：由于 onSnapshot 实时监听，Firestore 写入成功后前端会自动触发渲染，不需要手动刷新。
     } catch (e) {
         bulkVerifyModalInst.hide();
         hideLoading();
@@ -777,4 +772,171 @@ window.exportData = () => { showStatusAlert('statusMessage', "Export feature ena
 window.viewPhoto = (url) => {
     document.getElementById('modalImg').src = url;
     photoModal.show();
+};
+
+// ----------------------------------------------------
+// 🟢 新增功能：月度报表与总工时计算 (Monthly Report)
+// ----------------------------------------------------
+
+window.openMonthlyReportModal = () => {
+    const staffSelect = document.getElementById('reportStaffSelect');
+    staffSelect.innerHTML = '<option value="">-- Select Staff --</option>';
+
+    // 🟢 性能优化：直接使用在页面加载时已经缓存好的 usersMap，不再请求数据库，实现秒开！
+    const userList = Object.values(usersMap).sort((a, b) => a.name.localeCompare(b.name));
+
+    userList.forEach(u => {
+        if (u.status !== 'disabled') {
+            staffSelect.innerHTML += `<option value="${u.authUid || u.docId}">${u.name} (${u.email || 'No Email'})</option>`;
+        }
+    });
+
+    // 默认设置为当月
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    document.getElementById('reportMonthInput').value = `${yyyy}-${mm}`;
+
+    // 重置表格状态
+    document.getElementById('monthlyReportBody').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-5">Please select a staff and month to generate the report.</td></tr>';
+    document.getElementById('monthlyReportFooter').style.display = 'none';
+
+    monthlyReportModalInst.show();
+    if (window.lucide) window.lucide.createIcons();
+};
+
+window.generateMonthlyReport = async () => {
+    const uid = document.getElementById('reportStaffSelect').value;
+    const monthVal = document.getElementById('reportMonthInput').value; // 格式: "YYYY-MM"
+
+    if (!uid || !monthVal) {
+        alert("Please select both a staff member and a month.");
+        return;
+    }
+
+    const tbody = document.getElementById('monthlyReportBody');
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><div class="mt-2 text-muted small">Crunching numbers...</div></td></tr>';
+    document.getElementById('monthlyReportFooter').style.display = 'none';
+
+    try {
+        const startDate = `${monthVal}-01`;
+        const endDate = `${monthVal}-31`; 
+
+        const q = query(
+            collection(db, "attendance"),
+            where("date", ">=", startDate),
+            where("date", "<=", endDate)
+        );
+
+        const snap = await getDocs(q);
+
+        const dailyData = {};
+        
+        snap.forEach(doc => {
+            const data = doc.data();
+            if (data.uid === uid) {
+                if (!dailyData[data.date]) {
+                    dailyData[data.date] = { in: null, out: null, breakOut: null, breakIn: null };
+                }
+                
+                if (data.session === 'Clock In') {
+                    if (!dailyData[data.date].in || data.timestamp < dailyData[data.date].in.timestamp) {
+                        dailyData[data.date].in = data;
+                    }
+                }
+                if (data.session === 'Clock Out') {
+                    if (!dailyData[data.date].out || data.timestamp > dailyData[data.date].out.timestamp) {
+                        dailyData[data.date].out = data;
+                    }
+                }
+                if (data.session === 'Break Out') {
+                    if (!dailyData[data.date].breakOut || data.timestamp < dailyData[data.date].breakOut.timestamp) {
+                        dailyData[data.date].breakOut = data;
+                    }
+                }
+                if (data.session === 'Break In') {
+                    if (!dailyData[data.date].breakIn || data.timestamp > dailyData[data.date].breakIn.timestamp) {
+                        dailyData[data.date].breakIn = data;
+                    }
+                }
+            }
+        });
+
+        const sortedDates = Object.keys(dailyData).sort();
+
+        let totalMs = 0; 
+        let html = '';
+
+        if (sortedDates.length === 0) {
+            html = '<tr><td colspan="6" class="text-center text-muted py-5"><i data-lucide="calendar-x" class="size-8 mb-2 opacity-50 d-block mx-auto"></i>No attendance records found for this month.</td></tr>';
+        } else {
+            sortedDates.forEach(date => {
+                const dayRec = dailyData[date];
+                
+                let inStr = '-';
+                let outStr = '-';
+                let breakOutStr = '-';
+                let breakInStr = '-';
+                let hoursWorked = 0;
+
+                if (dayRec.in) inStr = formatTime(dayRec.in.timestamp);
+                if (dayRec.out) outStr = formatTime(dayRec.out.timestamp);
+                if (dayRec.breakOut) breakOutStr = formatTime(dayRec.breakOut.timestamp);
+                if (dayRec.breakIn) breakInStr = formatTime(dayRec.breakIn.timestamp);
+
+                let dailyWorkedMs = 0;
+                
+                if (dayRec.in && dayRec.out) {
+                    const inDate = dayRec.in.timestamp.toDate();
+                    const outDate = dayRec.out.timestamp.toDate();
+                    dailyWorkedMs = outDate - inDate;
+                    
+                    if (dayRec.breakOut && dayRec.breakIn) {
+                        const bOutDate = dayRec.breakOut.timestamp.toDate();
+                        const bInDate = dayRec.breakIn.timestamp.toDate();
+                        const breakDurationMs = bInDate - bOutDate;
+                        
+                        if (breakDurationMs > 0) {
+                            dailyWorkedMs -= breakDurationMs;
+                        }
+                    }
+                }
+
+                if (dailyWorkedMs > 0) {
+                    totalMs += dailyWorkedMs;
+                    hoursWorked = dailyWorkedMs / (1000 * 60 * 60);
+                }
+
+                html += `
+                    <tr>
+                        <td class="ps-4 fw-medium text-dark">${date}</td>
+                        <td>${dayRec.in ? `<span class="badge bg-success-subtle text-success border border-success-subtle">${inStr}</span>` : `<span class="text-muted small">Missing</span>`}</td>
+                        <td>${dayRec.breakOut ? `<span class="badge bg-warning-subtle text-warning border border-warning-subtle">${breakOutStr}</span>` : `<span class="text-muted small">-</span>`}</td>
+                        <td>${dayRec.breakIn ? `<span class="badge bg-info-subtle text-info border border-info-subtle">${breakInStr}</span>` : `<span class="text-muted small">-</span>`}</td>
+                        <td>${dayRec.out ? `<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">${outStr}</span>` : `<span class="text-danger small">Missing</span>`}</td>
+                        <td class="text-end pe-4 fw-bold ${hoursWorked > 0 ? 'text-dark' : 'text-muted'}">
+                            ${hoursWorked > 0 ? hoursWorked.toFixed(2) + ' <span class="fw-normal text-muted small">h</span>' : '-'}
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        tbody.innerHTML = html;
+
+        if (totalMs > 0) {
+            const totalHours = (totalMs / (1000 * 60 * 60)).toFixed(2);
+            document.getElementById('monthlyTotalHours').innerText = `${totalHours} h`;
+            document.getElementById('monthlyReportFooter').style.display = 'table-footer-group'; 
+        } else {
+            document.getElementById('monthlyReportFooter').style.display = 'none';
+        }
+
+        if (window.lucide) window.lucide.createIcons();
+
+    } catch (error) {
+        console.error("Error generating report:", error);
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-5"><i data-lucide="alert-triangle" class="me-2"></i>Error loading report: ${error.message}</td></tr>`;
+        if (window.lucide) window.lucide.createIcons();
+    }
 };
