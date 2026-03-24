@@ -21,6 +21,15 @@ const errorMessage = document.getElementById('errorMessage');
  */
 onAuthStateChanged(auth, async (user) => {
     if (user) {
+        const loginTime = localStorage.getItem('adminLoginTime');
+        const SESSION_DURATION = 8 * 60 * 60 * 1000; 
+
+        if (!loginTime || (Date.now() - parseInt(loginTime)) > SESSION_DURATION) {
+            // 如果超时或没有记录，强制登出并停留在当前登录页
+            await signOut(auth);
+            localStorage.removeItem('adminLoginTime');
+            return; 
+        }
         try {
             const docSnap = await getDoc(doc(db, "users", user.uid));
             if (docSnap.exists()) {
@@ -53,8 +62,9 @@ loginForm.addEventListener('submit', async (e) => {
     const pass = document.getElementById('password').value;
 
     try {
-        await signInWithEmailAndPassword(auth, email, pass);
-        // 登录成功后，onAuthStateChanged 会处理后续的权限验证和跳转
+       await signInWithEmailAndPassword(auth, email, pass);
+   
+        localStorage.setItem('adminLoginTime', Date.now().toString());
     } catch (error) {
         let msg = "An error occurred. Please try again.";
         switch (error.code) {

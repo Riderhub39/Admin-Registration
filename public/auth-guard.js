@@ -1,12 +1,9 @@
-// 文件: auth-guard.js
+
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { initUnifiedHeader } from "./header-app.js";
 
-/**
- * 验证当前用户是否具有管理权限 (Admin 或 Manager)。
- * 如果验证成功，初始化头部并执行回调；否则踢回登录页。
- */
+
 export function requireAdmin(app, db, onReadyCallback) {
     const auth = getAuth(app);
     const loadingOverlay = document.getElementById('loadingOverlay');
@@ -14,6 +11,17 @@ export function requireAdmin(app, db, onReadyCallback) {
 
     onAuthStateChanged(auth, async (user) => {
         if (!user) {
+            window.location.replace("index.html");
+            return;
+        }
+
+        const loginTime = localStorage.getItem('adminLoginTime');
+        const SESSION_DURATION = 8 * 60 * 60 * 1000;
+
+        if (!loginTime || (Date.now() - parseInt(loginTime)) > SESSION_DURATION) {
+            alert("Your session has expired (8 hours limit). Please sign in again.");
+            await signOut(auth);
+            localStorage.removeItem('adminLoginTime');
             window.location.replace("index.html");
             return;
         }
