@@ -19,6 +19,9 @@ const errorMessage = document.getElementById('errorMessage');
  * 🟢 逆向守卫：检查用户角色
  * 允许 'admin' 或 'manager' 角色进入
  */
+/**
+ * 🟢 逆向守卫：检查用户角色与 8 小时会话有效期
+ */
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         const loginTime = localStorage.getItem('adminLoginTime');
@@ -28,8 +31,10 @@ onAuthStateChanged(auth, async (user) => {
             // 如果超时或没有记录，强制登出并停留在当前登录页
             await signOut(auth);
             localStorage.removeItem('adminLoginTime');
+            setLoading(false); // 🟢 关键修复 2：阻止无限转圈
             return; 
         }
+
         try {
             const docSnap = await getDoc(doc(db, "users", user.uid));
             if (docSnap.exists()) {
@@ -38,21 +43,26 @@ onAuthStateChanged(auth, async (user) => {
                 if (userData.role === 'admin' || userData.role === 'manager') {
                     window.location.replace("home.html");
                 } else {
-                    await signOut(auth); // 普通员工角色，拒绝访问并强制登出
-                    showError("Access Denied. Management privileges required.");
+                    showError("Access Denied. Admin privileges required.");
+                    await signOut(auth);
+                    localStorage.removeItem('adminLoginTime'); 
+                    setLoading(false);
                 }
             } else {
+                showError("User record not found.");
                 await signOut(auth);
-                showError("Account error: Profile not found.");
+                localStorage.removeItem('adminLoginTime');
+                setLoading(false);
             }
         } catch (e) {
             await signOut(auth);
+            localStorage.removeItem('adminLoginTime');
             showError("Error verifying permissions.");
+            setLoading(false); // 🟢 关键修复 3：报错时阻止无限转圈
         }
     }
 });
 
-// 登录请求处理
 loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     errorMessage.classList.add('d-none');
@@ -62,10 +72,15 @@ loginForm.addEventListener('submit', async (e) => {
     const pass = document.getElementById('password').value;
 
     try {
-       await signInWithEmailAndPassword(auth, email, pass);
-   
+        // 🟢 关键修复 1：在触发 Firebase 登录前，先写入时间戳。
+        // 这样验证成功瞬间触发 onAuthStateChanged 时，就不会读到空数据了。
         localStorage.setItem('adminLoginTime', Date.now().toString());
+        
+        await signInWithEmailAndPassword(auth, email, pass);
     } catch (error) {
+        // 如果登录失败，把刚刚提前写入的时间戳清空
+        localStorage.removeItem('adminLoginTime');
+        
         let msg = "An error occurred. Please try again.";
         switch (error.code) {
             case 'auth/user-not-found':
