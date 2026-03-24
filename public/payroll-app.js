@@ -342,15 +342,39 @@ async function calculateAttendanceStats(uid, monthStr) {
     ]);
 
     const mySchedules = {}; let mySchedCount = 0;
-    allSchedSnap.forEach(d => { const s = d.data(); if(targetIds.includes(s.userId)){ mySchedules[s.date] = s; mySchedCount++; } });
+    const userSchedCounts = {}; 
+    const userSchedHours = {}; 
+
+    allSchedSnap.forEach(d => { 
+        const s = d.data(); 
+        if(targetIds.includes(s.userId)){ 
+            mySchedules[s.date] = s; 
+            mySchedCount++; 
+        } 
+        
+        userSchedCounts[s.userId] = (userSchedCounts[s.userId] || 0) + 1; 
+        
+        if(s.start && s.end) {
+            const start = s.start.toDate ? s.start.toDate() : new Date(s.start);
+            const end = s.end.toDate ? s.end.toDate() : new Date(s.end);
+            let duration = (end - start) / 3600000;
+            duration -= (s.breakMins || 0) / 60;
+            if (duration > 0) {
+                userSchedHours[s.userId] = (userSchedHours[s.userId] || 0) + duration;
+            }
+        }
+    });
 
     const attMap = {};
     myAttSnap.forEach(d => {
         const a = d.data();
         if (a.verificationStatus === 'Verified') {
-            if(!attMap[a.date]) attMap[a.date] = { in: null, out: null };
+            // 🟢 方案二：初始化加上 Break Out 和 Break In
+            if(!attMap[a.date]) attMap[a.date] = { in: null, out: null, breakOut: null, breakIn: null };
             if(a.session === 'Clock In') attMap[a.date].in = a.manualIn || a.timeIn || a.timestamp;
             if(a.session === 'Clock Out') attMap[a.date].out = a.manualOut || a.timeOut || a.timestamp;
+            if(a.session === 'Break Out') attMap[a.date].breakOut = a.manualOut || a.timeOut || a.timestamp;
+            if(a.session === 'Break In') attMap[a.date].breakIn = a.manualIn || a.timeIn || a.timestamp;
         }
     });
 
@@ -373,11 +397,23 @@ async function calculateAttendanceStats(uid, monthStr) {
             if (sched && sched.start) {
                 const inTime = toDateObj(records.in, dateStr);
                 const schedStart = toDateObj(sched.start, dateStr);
+                
+                // 迟到罚款逻辑保持不变
                 if (inTime > schedStart) { totalLateMs += (inTime - schedStart); lateCount++; }
+                
                 if (records.out) {
                     const outTime = toDateObj(records.out, dateStr);
-                    let workMs = outTime - (inTime < schedStart ? schedStart : inTime);
-                    workMs -= ((sched.breakMins || 60) * 60000); 
+                    // 🟢 方案二：不再截断早到时间，直接计算总跨度
+                    let workMs = outTime - inTime;
+                    
+                    // 🟢 方案二：只扣除真实打卡的午休时间
+                    if (records.breakOut && records.breakIn) {
+                        const bOut = toDateObj(records.breakOut, dateStr);
+                        const bIn = toDateObj(records.breakIn, dateStr);
+                        const breakDur = bIn - bOut;
+                        if (breakDur > 0) workMs -= breakDur;
+                    }
+
                     if(workMs > 0) totalWorkMs += workMs;
                 }
             }
@@ -399,12 +435,25 @@ async function calculateAttendanceStats(uid, monthStr) {
     const formattedTotalHrs = msToHM(totalWorkMs);
     const totalLateMins = Math.floor(totalLateMs / 60000);
 
-    const userSchedCounts = {}; 
-    allSchedSnap.forEach(d => { userSchedCounts[d.data().userId] = (userSchedCounts[d.data().userId] || 0) + 1; });
     const dayFreq = {}; Object.values(userSchedCounts).forEach(c => dayFreq[c] = (dayFreq[c] || 0) + 1);
     let majorityDays = 26; let maxFreq = 0;
     for (let d in dayFreq) { if (dayFreq[d] > maxFreq) { maxFreq = dayFreq[d]; majorityDays = parseInt(d); } }
 
+    const hrFreq = {}; 
+    Object.values(userSchedHours).forEach(h => {
+        const key = h.toFixed(1);
+        hrFreq[key] = (hrFreq[key] || 0) + 1;
+    });
+
+    let majorityHours = 208; let maxHrFreq = 0;
+    for (let h in hrFreq) { 
+        if (hrFreq[h] > maxHrFreq) { 
+            maxHrFreq = hrFreq[h]; 
+            majorityHours = parseFloat(h); 
+        } 
+    }
+
+    document.getElementById('metaTotalHrs').dataset.majorityHours = majorityHours;
     document.getElementById('inpStdDays').value = majorityDays;
     document.getElementById('dispSchDays').innerHTML = `${mySchedCount} <span style="font-size:0.6rem">Days</span>`;
     document.getElementById('dispActDays').innerHTML = `${actWorkedDays} <span style="font-size:0.6rem">Days</span>`;
@@ -426,6 +475,13 @@ window.calcTotals = (autoUpdateStatutory = false) => {
     const lateCount = parseInt(document.getElementById('metaLateCount').value) || 0;
 
     if (globalSettings.calcMode === 'hourly') {
+        const majorityHours = parseFloat(document.getElementById('metaTotalHrs').dataset.majorityHours) || 208;
+        
+        if (fullBasic > 0 && majorityHours > 0) {
+            const autoHrRate = fullBasic / majorityHours;
+            document.getElementById('inpHourlyRate').value = autoHrRate.toFixed(2);
+        }
+
         grossBasic = getVal('inpHourlyRate') * (parseFloat(document.getElementById('metaTotalHrs').value) || 0);
         document.getElementById('prorationMsg').style.visibility = 'hidden';
 
@@ -563,7 +619,6 @@ window.savePayslipForm = async () => {
 
         await logAdminAction(db, auth.currentUser, actionType, uid, oldData, payload);
 
-        // 如果用户是在通过左右键核对，点击Save后不要关闭弹窗，而是跳到下一个
         if (window.currentViewingPayslipId) {
             showStatusAlert('statusMessage', 'Saved! Moving to next...', true);
             window.navigatePayslip(1); 
@@ -664,7 +719,6 @@ window.openEditModal = (id) => {
     const d = currentPayrollData.find(x => x.id === id);
     if(!d) return;
 
-    // 记录当前核对的 ID，并显示左右切换按钮
     window.currentViewingPayslipId = id;
     const navGroup = document.getElementById('navPayslipGroup');
     if (navGroup) navGroup.style.display = 'inline-flex';
@@ -887,15 +941,47 @@ window.generateAllDrafts = async () => {
         ]);
 
         const schedules = {}; const leaves = []; const attendances = {}; const advances = {};
-        allSchedSnap.forEach(d => { const s = d.data(); if(!schedules[s.userId]) schedules[s.userId] = []; schedules[s.userId].push(s); });
+        
+        const userSchedHours = {};
+        allSchedSnap.forEach(d => { 
+            const s = d.data(); 
+            if(!schedules[s.userId]) schedules[s.userId] = []; 
+            schedules[s.userId].push(s); 
+            
+            if(s.start && s.end) {
+                const start = s.start.toDate ? s.start.toDate() : new Date(s.start);
+                const end = s.end.toDate ? s.end.toDate() : new Date(s.end);
+                let duration = (end - start) / 3600000;
+                duration -= (s.breakMins || 0) / 60;
+                if (duration > 0) userSchedHours[s.userId] = (userSchedHours[s.userId] || 0) + duration;
+            }
+        });
+
+        const hrFreq = {}; 
+        Object.values(userSchedHours).forEach(h => {
+            const key = h.toFixed(1);
+            if (h > 0) hrFreq[key] = (hrFreq[key] || 0) + 1;
+        });
+
+        let majorityHours = 208; let maxHrFreq = 0;
+        for (let h in hrFreq) { 
+            if (hrFreq[h] > maxHrFreq) { 
+                maxHrFreq = hrFreq[h]; 
+                majorityHours = parseFloat(h); 
+            } 
+        }
+
         allLeavesSnap.forEach(d => leaves.push(d.data()));
         allAttSnap.forEach(d => { 
             const a = d.data(); 
             if(a.verificationStatus === 'Verified') {
+                // 🟢 方案二：初始化加上 Break Out 和 Break In
                 if(!attendances[a.uid]) attendances[a.uid] = {};
-                if(!attendances[a.uid][a.date]) attendances[a.uid][a.date] = { in: null, out: null };
+                if(!attendances[a.uid][a.date]) attendances[a.uid][a.date] = { in: null, out: null, breakOut: null, breakIn: null };
                 if(a.session === 'Clock In') attendances[a.uid][a.date].in = a.manualIn || a.timeIn || a.timestamp;
                 if(a.session === 'Clock Out') attendances[a.uid][a.date].out = a.manualOut || a.timeOut || a.timestamp;
+                if(a.session === 'Break Out') attendances[a.uid][a.date].breakOut = a.manualOut || a.timeOut || a.timestamp;
+                if(a.session === 'Break In') attendances[a.uid][a.date].breakIn = a.manualIn || a.timeIn || a.timestamp;
             }
         });
         allAdvSnap.forEach(d => { 
@@ -942,11 +1028,23 @@ window.generateAllDrafts = async () => {
                     if (sched && sched.start) {
                         const inTime = toDateObj(records.in, dateStr);
                         const schedStart = toDateObj(sched.start, dateStr);
+                        
+                        // 迟到罚款依然计算
                         if (inTime > schedStart) { totalLateMs += (inTime - schedStart); lateCount++; }
+                        
                         if (records.out) {
                             const outTime = toDateObj(records.out, dateStr);
-                            let workMs = outTime - (inTime < schedStart ? schedStart : inTime);
-                            workMs -= ((sched.breakMins || 60) * 60000); 
+                            // 🟢 方案二：不再截断早到时间，直接计算总跨度
+                            let workMs = outTime - inTime;
+                            
+                            // 🟢 方案二：只扣除真实打卡的午休时间
+                            if (records.breakOut && records.breakIn) {
+                                const bOut = toDateObj(records.breakOut, dateStr);
+                                const bIn = toDateObj(records.breakIn, dateStr);
+                                const breakDur = bIn - bOut;
+                                if (breakDur > 0) workMs -= breakDur;
+                            }
+
                             if(workMs > 0) totalWorkMs += workMs;
                         }
                     }
@@ -975,7 +1073,8 @@ window.generateAllDrafts = async () => {
             let grossBasic = 0, autoLateDeduct = 0;
 
             if (globalSettings.calcMode === 'hourly') {
-                const hrRate = parseFloat(staff.payroll?.hourlyRate) || (fullBasic / 208);
+                const hrRate = parseFloat(staff.payroll?.hourlyRate) || (fullBasic > 0 ? (fullBasic / majorityHours) : 0);
+                
                 grossBasic = hrRate * totalDecimalHrs;
                 if (globalSettings.lateMode === 'times') {
                     autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
@@ -983,7 +1082,7 @@ window.generateAllDrafts = async () => {
             } else {
                 const totalPayableDays = actWorkedDays + paidLeaveCount;
                 const dailyRate = fullBasic / majorityDays;
-                grossBasic = Math.min(dailyRate * totalPayableDays, fullBasic);
+                grossBasic = Math.min(dailyRate * totalPayableDays, fullBasic); // ✅ 最高限制在这里起作用了
 
                 if (globalSettings.lateMode === 'times') {
                     autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
@@ -1053,7 +1152,6 @@ window.generateAllDrafts = async () => {
         alert("Batch Generation Failed: " + e.message);
     }
 };
-
 
 // ==========================================
 // 5. QUICK NAVIGATION (LEFT/RIGHT ARROWS)
