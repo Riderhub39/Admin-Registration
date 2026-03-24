@@ -261,7 +261,7 @@ async function loadAttendanceStats() {
                 const clockIn = records.filter(r => r.session === 'Clock In').sort((a,b) => (a.timestamp?.seconds||0)-(b.timestamp?.seconds||0))[0];
                 if (clockIn) {
                     const time = clockIn.manualIn ? new Date(`${todayStr}T${clockIn.manualIn}:00`) : clockIn.timestamp.toDate();
-                    if (time > (schedStart || new Date(todayStr + "T09:00:00"))) late++;
+                    if (time > (schedStart || new Date(todayStr + "T09:01:00"))) late++;
                 }
             } else if (schedStart) absent++;
         });
