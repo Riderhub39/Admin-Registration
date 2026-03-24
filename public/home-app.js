@@ -4,7 +4,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { getFirestore, collection, query, where, getDocs, onSnapshot, addDoc, serverTimestamp, doc, getDoc, setDoc, updateDoc, deleteDoc, orderBy, limit, startAfter, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
-// 🚀 ADDED: Import RTDB functions for Live Tracking Stats
+// 🚀 RTDB functions for Live Tracking Stats
 import { getDatabase, ref as rtdbRef, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 import { firebaseConfig } from "./firebase-config.js";
@@ -16,7 +16,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 const storage = getStorage(app); 
-const rtdb = getDatabase(app); // 🚀 ADDED: Initialize RTDB
+const rtdb = getDatabase(app); 
 
 let attChartInstance = null;
 let announceModal, officeModal, driverModal, auditModal, photoModal;
@@ -256,14 +256,26 @@ async function loadAttendanceStats() {
         staffDocIds.forEach(docId => {
             const records = attendanceMap[docId] || [];
             const schedStart = scheduleMap[docId];
+            
             if (records.length > 0) {
                 present++;
                 const clockIn = records.filter(r => r.session === 'Clock In').sort((a,b) => (a.timestamp?.seconds||0)-(b.timestamp?.seconds||0))[0];
-                if (clockIn) {
+                
+                // 🟢 只有在有排班的前提下，才去计算是否迟到
+                if (clockIn && schedStart) {
                     const time = clockIn.manualIn ? new Date(`${todayStr}T${clockIn.manualIn}:00`) : clockIn.timestamp.toDate();
-                    if (time > (schedStart || new Date(todayStr + "T09:01:00"))) late++;
+                    
+                    // 阈值为排班时间 + 1分钟 (60000毫秒)
+                    const lateThreshold = new Date(schedStart.getTime() + 60000); 
+                    
+                    if (time >= lateThreshold) {
+                        late++;
+                    }
                 }
-            } else if (schedStart) absent++;
+            } else if (schedStart) {
+                // 有排班但没记录，算 Absent
+                absent++;
+            }
         });
 
         document.getElementById('countPresent').innerText = Math.max(0, present - late);
@@ -290,7 +302,7 @@ function updateChart(present, absent, late) {
 
 window.goToAttendance = (filter) => window.location.href = `attendance.html?filter=${filter}`;
 
-// 🚀 REWRITTEN: Now correctly reads from RTDB `live_locations` exactly like the Live Tracking page
+// 🚀 RTDB function for Live Tracking Stats
 function loadTrackingStats() {
     const todayStr = new Date().toLocaleDateString('en-CA');
     const liveRef = rtdbRef(rtdb, 'live_locations');
@@ -309,7 +321,6 @@ function loadTrackingStats() {
                 
                 // Only count drivers who have logged a location TODAY
                 if (updateDateStr === todayStr) {
-                    // Same logic: Must not be explicitly marked false, and must be within 15 minutes
                     const isOnline = val.isTracking !== false && (new Date() - lastUpdateDate) < 1000 * 60 * 15; 
                     if (isOnline) {
                         onlineCount++;
