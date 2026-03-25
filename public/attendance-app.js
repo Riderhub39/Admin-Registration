@@ -68,7 +68,6 @@ export async function initAttendanceApp() {
         }
     }
 
-    // 🟢 绑定新的 Monthly Report Excel 导出按钮事件
     const exportBtn = document.getElementById('btnExportMonthlyExcel');
     if (exportBtn) {
         exportBtn.addEventListener('click', exportMonthlyReportToExcel);
@@ -127,11 +126,20 @@ window.loadData = async function() {
         leavesMap = {};
         leaveSnap.forEach(d => {
             const data = d.data();
-            const eUid = data.authUid || docIdToAuthMap[d.uid] || d.uid;
-            let curr = new Date(data.startDate);
-            while(curr <= new Date(data.endDate)) {
-                const dStr = curr.toISOString().split('T')[0];
-                if(dStr >= startDate && dStr <= endDate) leavesMap[eUid + "_" + dStr] = data.type;
+            // 🟢 核心修复 1：修改 d.uid 为 data.uid，确保能正确拿到请假人的 ID
+            const eUid = data.authUid || docIdToAuthMap[data.uid] || data.uid;
+            
+            // 🟢 核心修复 2：安全解析日期，避免 UTC 转换带来的日期偏移
+            const [sY, sM, sD] = data.startDate.split('-');
+            const [eY, eM, eD] = data.endDate.split('-');
+            let curr = new Date(sY, sM - 1, sD);
+            const endD = new Date(eY, eM - 1, eD);
+            
+            while(curr <= endD) {
+                const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
+                if(dStr >= startDate && dStr <= endDate) {
+                    leavesMap[eUid + "_" + dStr] = data.type;
+                }
                 curr.setDate(curr.getDate() + 1);
             }
         });
@@ -284,6 +292,7 @@ function renderDayUserCard(uid, records, container, targetDate, currentTodayStr)
     card.className = `user-card user-card-container ${isAbsent ? 'row-absent' : (leave ? 'row-leave' : '')}`;
     card.setAttribute('data-name', user.name);
     
+    // 🟢 UI 修复：如果是 Leave，优先显示蓝色的状态
     let statusColor = isAbsent ? "bg-danger" : 
                       (leave ? "bg-info" : 
                       (isMissingOut ? "bg-danger" : 
@@ -292,7 +301,7 @@ function renderDayUserCard(uid, records, container, targetDate, currentTodayStr)
                       (inT !== "--:--" ? "bg-success" : "bg-secondary")))));
 
     const statusLabel = isAbsent ? `<span class="badge bg-danger">ABSENT</span>` : 
-                        (leave && inT === '--:--' ? `<span class="badge bg-info">ON LEAVE</span>` : 
+                        (leave ? `<span class="badge bg-info text-dark">${leave.toUpperCase()}</span>` : 
                         (isMissingOut ? `<span class="badge bg-danger">MISSING OUT</span>` : 
                         (isClockedInToday ? `<span class="badge bg-warning text-dark">CLOCKED IN</span>` : "")));
 
@@ -345,7 +354,7 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
 
         if (dayRecords.length > 0 || sched || leave) {
             let statusHtml = '';
-            if (leave && !inT) statusHtml = '<span class="text-info fw-bold">ON LEAVE</span>';
+            if (leave && !inT) statusHtml = `<span class="text-info fw-bold">${leave.toUpperCase()}</span>`;
             else if (inT && !hasOut && dateStr < currentTodayStr) statusHtml = '<span class="text-danger fw-bold">MISSING OUT</span>';
             else if (inT) statusHtml = '<b>Verified Present</b>';
             else if (dateStr <= currentTodayStr && sched) statusHtml = '<span class="text-danger fw-bold">ABSENT</span>';
@@ -742,8 +751,9 @@ function listenToCorrections() {
             document.getElementById('noCorrectionsMsg').classList.add('d-none');
             snap.forEach(docSnap => {
                 const d = docSnap.data();
-                tbody.innerHTML += `<tr><td class="ps-4"><b>${d.empName || d.email?.split('@')[0]}</b><br><small>${d.targetDate}</small></td><td>${d.originalIn}<br>${d.originalOut}</td><td class="text-primary fw-bold">${d.requestedIn}<br>${d.requestedOut}</td><td><small>${d.remarks||'-'}</small></td><td class="text-end pe-4"><button class="btn btn-sm btn-success me-1" onclick="window.handleCorrection('${docSnap.id}', '${d.attendanceId}', '${d.requestedIn}', '${d.requestedOut}', 'approve')">✔</button><button class="btn btn-sm btn-danger" onclick="window.handleCorrection('${docSnap.id}', null, null, null, 'reject')">✖</button></td></tr>`;
+                tbody.innerHTML += `<tr><td class="ps-4"><b>${d.empName || d.email?.split('@')[0]}</b><br><small>${d.targetDate}</small></td><td>${d.originalIn}<br>${d.originalOut}</td><td class="text-primary fw-bold">${d.requestedIn}<br>${d.requestedOut}</td><td><small>${d.remarks||'-'}</small></td><td class="text-end pe-4"><button class="btn btn-sm btn-success me-1" onclick="window.handleCorrection('${docSnap.id}', '${d.attendanceId}', '${d.requestedIn}', '${d.requestedOut}', 'approve')"><i data-lucide="check" class="size-3"></i></button><button class="btn btn-sm btn-danger" onclick="window.handleCorrection('${docSnap.id}', null, null, null, 'reject')"><i data-lucide="x" class="size-3"></i></button></td></tr>`;
             });
+            if (window.lucide) window.lucide.createIcons();
         }
     });
 }
@@ -778,7 +788,7 @@ window.viewPhoto = (url) => {
 };
 
 // ----------------------------------------------------
-// 月度报表与总工时计算 (Monthly Report)
+// 🟢 月度报表与总工时计算 (Monthly Report) (已修复请假漏算和日期偏移)
 // ----------------------------------------------------
 
 window.openMonthlyReportModal = () => {
@@ -820,72 +830,77 @@ window.generateMonthlyReport = async () => {
 
     try {
         const startDate = `${monthVal}-01`;
-        const endDate = `${monthVal}-31`; 
+        const [yyyy, mm] = monthVal.split('-');
+        const daysInMonth = new Date(yyyy, mm, 0).getDate();
+        const endDate = `${monthVal}-${daysInMonth}`; 
 
-        const q = query(
-            collection(db, "attendance"),
-            where("date", ">=", startDate),
-            where("date", "<=", endDate)
-        );
-
+        // 1. 获取当月打卡记录
+        const q = query(collection(db, "attendance"), where("date", ">=", startDate), where("date", "<=", endDate));
         const snap = await getDocs(q);
 
-        const dailyData = {};
-        
-        snap.forEach(doc => {
-            const data = doc.data();
-            if (data.uid === uid) {
-                if (!dailyData[data.date]) {
-                    dailyData[data.date] = { in: null, out: null, breakOut: null, breakIn: null };
-                }
+        // 2. 🟢 修复请假记录跨天计算
+        const lq = query(collection(db, "leaves"), where("status", "==", "Approved"));
+        const lSnap = await getDocs(lq);
+        const userLeaves = {};
+        lSnap.forEach(d => {
+            const data = d.data();
+            if (data.uid === uid || data.authUid === uid) {
+                const [sY, sM, sD] = data.startDate.split('-');
+                const [eY, eM, eD] = data.endDate.split('-');
+                let curr = new Date(sY, sM - 1, sD);
+                const endD = new Date(eY, eM - 1, eD);
                 
-                if (data.session === 'Clock In') {
-                    if (!dailyData[data.date].in || data.timestamp < dailyData[data.date].in.timestamp) {
-                        dailyData[data.date].in = data;
+                while(curr <= endD) {
+                    const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
+                    if (dStr >= startDate && dStr <= endDate) {
+                        userLeaves[dStr] = data.type;
                     }
-                }
-                if (data.session === 'Clock Out') {
-                    if (!dailyData[data.date].out || data.timestamp > dailyData[data.date].out.timestamp) {
-                        dailyData[data.date].out = data;
-                    }
-                }
-                if (data.session === 'Break Out') {
-                    if (!dailyData[data.date].breakOut || data.timestamp < dailyData[data.date].breakOut.timestamp) {
-                        dailyData[data.date].breakOut = data;
-                    }
-                }
-                if (data.session === 'Break In') {
-                    if (!dailyData[data.date].breakIn || data.timestamp > dailyData[data.date].breakIn.timestamp) {
-                        dailyData[data.date].breakIn = data;
-                    }
+                    curr.setDate(curr.getDate() + 1);
                 }
             }
         });
 
-        const sortedDates = Object.keys(dailyData).sort();
+        // 3. 获取排班表，用于判断该天是否需要上班
+        const sSnap = await getDocs(query(collection(db, "schedules"), where("userId", "==", usersMap[uid].docId), where("date", ">=", startDate), where("date", "<=", endDate)));
+        const userSchedules = {};
+        sSnap.forEach(d => { userSchedules[d.data().date] = true; });
 
+        const dailyData = {};
+        snap.forEach(doc => {
+            const data = doc.data();
+            if (data.uid === uid || docIdToAuthMap[data.uid] === uid) {
+                if (!dailyData[data.date]) dailyData[data.date] = { in: null, out: null, breakOut: null, breakIn: null };
+                
+                if (data.session === 'Clock In' && (!dailyData[data.date].in || data.timestamp < dailyData[data.date].in.timestamp)) dailyData[data.date].in = data;
+                if (data.session === 'Clock Out' && (!dailyData[data.date].out || data.timestamp > dailyData[data.date].out.timestamp)) dailyData[data.date].out = data;
+                if (data.session === 'Break Out' && (!dailyData[data.date].breakOut || data.timestamp < dailyData[data.date].breakOut.timestamp)) dailyData[data.date].breakOut = data;
+                if (data.session === 'Break In' && (!dailyData[data.date].breakIn || data.timestamp > dailyData[data.date].breakIn.timestamp)) dailyData[data.date].breakIn = data;
+            }
+        });
+
+        const currentTodayStr = getLocalTodayStr();
         let totalMs = 0; 
         let html = '';
 
-        if (sortedDates.length === 0) {
-            html = '<tr><td colspan="6" class="text-center text-muted py-5"><i data-lucide="calendar-x" class="size-8 mb-2 opacity-50 d-block mx-auto"></i>No attendance records found for this month.</td></tr>';
-        } else {
-            sortedDates.forEach(date => {
-                const dayRec = dailyData[date];
-                
-                let inStr = '-';
-                let outStr = '-';
-                let breakOutStr = '-';
-                let breakInStr = '-';
-                let hoursWorked = 0;
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateStr = `${yyyy}-${mm}-${String(d).padStart(2, '0')}`;
+            const dayRec = dailyData[dateStr];
+            const leaveType = userLeaves[dateStr];
+            const hasSched = userSchedules[dateStr];
 
+            let inStr = '-';
+            let outStr = '-';
+            let breakOutStr = '-';
+            let breakInStr = '-';
+            let hoursWorked = 0;
+            let dailyWorkedMs = 0;
+
+            if (dayRec) {
                 if (dayRec.in) inStr = formatTime(dayRec.in.timestamp);
                 if (dayRec.out) outStr = formatTime(dayRec.out.timestamp);
                 if (dayRec.breakOut) breakOutStr = formatTime(dayRec.breakOut.timestamp);
                 if (dayRec.breakIn) breakInStr = formatTime(dayRec.breakIn.timestamp);
 
-                let dailyWorkedMs = 0;
-                
                 if (dayRec.in && dayRec.out) {
                     const inDate = dayRec.in.timestamp.toDate();
                     const outDate = dayRec.out.timestamp.toDate();
@@ -895,31 +910,50 @@ window.generateMonthlyReport = async () => {
                         const bOutDate = dayRec.breakOut.timestamp.toDate();
                         const bInDate = dayRec.breakIn.timestamp.toDate();
                         const breakDurationMs = bInDate - bOutDate;
-                        
-                        if (breakDurationMs > 0) {
-                            dailyWorkedMs -= breakDurationMs;
-                        }
+                        if (breakDurationMs > 0) dailyWorkedMs -= breakDurationMs;
                     }
                 }
+            }
 
-                if (dailyWorkedMs > 0) {
-                    totalMs += dailyWorkedMs;
-                    hoursWorked = dailyWorkedMs / (1000 * 60 * 60);
-                }
+            if (dailyWorkedMs > 0) {
+                totalMs += dailyWorkedMs;
+                hoursWorked = dailyWorkedMs / (1000 * 60 * 60);
+            }
 
-                html += `
-                    <tr>
-                        <td class="ps-4 fw-medium text-dark">${date}</td>
-                        <td>${dayRec.in ? `<span class="badge bg-success-subtle text-success border border-success-subtle">${inStr}</span>` : `<span class="text-muted small">Missing</span>`}</td>
-                        <td>${dayRec.breakOut ? `<span class="badge bg-warning-subtle text-warning border border-warning-subtle">${breakOutStr}</span>` : `<span class="text-muted small">-</span>`}</td>
-                        <td>${dayRec.breakIn ? `<span class="badge bg-info-subtle text-info border border-info-subtle">${breakInStr}</span>` : `<span class="text-muted small">-</span>`}</td>
-                        <td>${dayRec.out ? `<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">${outStr}</span>` : `<span class="text-danger small">Missing</span>`}</td>
-                        <td class="text-end pe-4 fw-bold ${hoursWorked > 0 ? 'text-dark' : 'text-muted'}">
-                            ${hoursWorked > 0 ? hoursWorked.toFixed(2) + ' <span class="fw-normal text-muted small">h</span>' : '-'}
-                        </td>
-                    </tr>
-                `;
-            });
+            let inDisplay = '';
+            if (leaveType && inStr === '-') {
+                inDisplay = `<span class="badge bg-info text-dark border border-info-subtle">${leaveType.toUpperCase()}</span>`;
+            } else if (dayRec && dayRec.in) {
+                inDisplay = `<span class="badge bg-success-subtle text-success border border-success-subtle">${inStr}</span>`;
+            } else if (dateStr > currentTodayStr) {
+                inDisplay = `<span class="text-muted small">-</span>`;
+            } else if (hasSched) {
+                inDisplay = `<span class="badge bg-danger-subtle text-danger border border-danger-subtle">Absent</span>`;
+            } else {
+                inDisplay = `<span class="text-muted small">Off</span>`;
+            }
+
+            let outDisplay = '';
+            if (dayRec && dayRec.out) {
+                outDisplay = `<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">${outStr}</span>`;
+            } else if (dayRec && dayRec.in && dateStr <= currentTodayStr) {
+                outDisplay = `<span class="text-danger small">Missing</span>`;
+            } else {
+                outDisplay = `<span class="text-muted small">-</span>`;
+            }
+
+            html += `
+                <tr>
+                    <td class="ps-4 fw-medium text-dark">${dateStr}</td>
+                    <td>${inDisplay}</td>
+                    <td>${dayRec && dayRec.breakOut ? `<span class="badge bg-warning-subtle text-warning border border-warning-subtle">${breakOutStr}</span>` : `<span class="text-muted small">-</span>`}</td>
+                    <td>${dayRec && dayRec.breakIn ? `<span class="badge bg-info-subtle text-info border border-info-subtle">${breakInStr}</span>` : `<span class="text-muted small">-</span>`}</td>
+                    <td>${outDisplay}</td>
+                    <td class="text-end pe-4 fw-bold ${hoursWorked > 0 ? 'text-dark' : 'text-muted'}">
+                        ${hoursWorked > 0 ? hoursWorked.toFixed(2) + ' <span class="fw-normal text-muted small">h</span>' : '-'}
+                    </td>
+                </tr>
+            `;
         }
 
         tbody.innerHTML = html;
@@ -941,9 +975,6 @@ window.generateMonthlyReport = async () => {
     }
 };
 
-// ----------------------------------------------------
-// 🟢 导出月度报告到 Excel (CSV)
-// ----------------------------------------------------
 export function exportMonthlyReportToExcel() {
     const table = document.getElementById("monthlyReportTable");
     if (!table) return;

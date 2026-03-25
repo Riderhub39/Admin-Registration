@@ -3,7 +3,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, collection, query, where, getDocs, onSnapshot, doc, runTransaction, updateDoc, serverTimestamp, limit, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-// 🟢 新增：引入 Firebase Storage 支持
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 import { firebaseConfig } from "./firebase-config.js";
@@ -12,7 +11,7 @@ import { normalizeDate, logAdminAction, formatDate, formatDateTime, showLoading,
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
-const storage = getStorage(app); // 🟢 初始化 Storage
+const storage = getStorage(app); 
 
 let fullHistoryList = [];
 let attachmentModal, rejectModal, editStatusModal, addLeaveModalInst;
@@ -123,7 +122,7 @@ function listenToPendingLeaves() {
                                         <i data-lucide="x" class="size-4 me-1"></i> Reject
                                     </button>
                                     ${data.attachmentUrl 
-                                        ? `<button class="btn btn-sm btn-light text-primary border" onclick="window.viewAttachment('${data.attachmentUrl}')"><i data-lucide="paperclip" class="size-4 me-1"></i> View Proof</button>`
+                                        ? `<button class="btn btn-sm btn-light text-primary border" onclick="window.viewAttachment('${data.attachmentUrl}', '${data.fileType || ''}')"><i data-lucide="paperclip" class="size-4 me-1"></i> View Proof</button>`
                                         : `<span class="text-muted small py-1"><i data-lucide="file-minus" class="size-3 me-1"></i>No Proof</span>`
                                     }
                                 </div>
@@ -176,6 +175,11 @@ window.filterHistory = function() {
         if (data.type === 'Medical Leave') typeClass = "text-danger";
         if (data.type === 'Unpaid Leave') typeClass = "text-warning text-dark";
 
+        // 🟢 传递 fileType 给查看函数
+        const attachmentBtn = data.attachmentUrl 
+            ? `<button class="btn btn-link btn-sm p-0 text-info text-decoration-none ms-3" onclick="window.viewAttachment('${data.attachmentUrl}', '${data.fileType || ''}')"><i data-lucide="paperclip" class="size-3 me-1"></i>Proof</button>`
+            : '';
+
         tbody.innerHTML += `
             <tr>
                 <td class="ps-4">
@@ -194,12 +198,17 @@ window.filterHistory = function() {
                     </span>
                 </td>
                 <td class="text-end pe-4">
-                    <div class="small text-dark">${reviewStr}</div>
-                    <button class="btn btn-link btn-sm p-0 text-decoration-none" onclick="window.openEditStatusModal('${data.id}', '${data.uid}', '${data.status}', '${data.reason || ''}')">Edit</button>
+                    <div class="small text-dark mb-1">${reviewStr}</div>
+                    <div class="d-flex justify-content-end align-items-center">
+                        <button class="btn btn-link btn-sm p-0 text-decoration-none" onclick="window.openEditStatusModal('${data.id}', '${data.uid}', '${data.status}', '${data.reason || ''}')">Edit</button>
+                        ${attachmentBtn} 
+                    </div>
                 </td>
             </tr>
         `;
     });
+
+    if (window.lucide) window.lucide.createIcons();
 }
 
 window.approveLeave = async function(leaveId, targetUid, days, type) {
@@ -245,14 +254,13 @@ window.approveLeave = async function(leaveId, targetUid, days, type) {
     }
 }
 
-// -------------------- 管理员手动添加请假 (Add Leave) --------------------
 window.openAddLeaveModal = () => {
     document.getElementById('addLeaveStaff').value = "";
     document.getElementById('addLeaveType').value = "Annual Leave";
     document.getElementById('addLeaveStart').value = "";
     document.getElementById('addLeaveEnd').value = "";
     document.getElementById('addLeaveReason').value = "";
-    document.getElementById('addLeaveAttachment').value = ""; // 🟢 清空文件输入框
+    document.getElementById('addLeaveAttachment').value = ""; 
     addLeaveModalInst.show();
 };
 
@@ -263,7 +271,6 @@ window.submitAddLeave = async () => {
     const endStr = document.getElementById('addLeaveEnd').value;
     const reason = document.getElementById('addLeaveReason').value || "Added by Admin";
     
-    // 🟢 获取选择的文件
     const fileInput = document.getElementById('addLeaveAttachment');
     const file = fileInput.files[0];
 
@@ -289,7 +296,6 @@ window.submitAddLeave = async () => {
         let attachmentUrl = null;
         let fileType = null;
 
-        // 🟢 先处理文件上传
         if (file) {
             document.getElementById('loadingText').innerText = "Uploading Attachment...";
             const ext = file.name.split('.').pop().toLowerCase();
@@ -335,7 +341,6 @@ window.submitAddLeave = async () => {
                 isPayrollDeductible: (type === 'Unpaid Leave')
             };
 
-            // 🟢 如果有上传附件，将其记录进数据中
             if (attachmentUrl) {
                 leaveData.attachmentUrl = attachmentUrl;
                 leaveData.fileType = fileType;
@@ -359,13 +364,54 @@ window.submitAddLeave = async () => {
     }
 };
 
-window.viewAttachment = function(url) {
+// 🟢 核心修复：支持预览 PDF 和图片
+window.viewAttachment = function(url, fileType = '') {
     const img = document.getElementById('attachmentImg');
     const msg = document.getElementById('noAttachmentMsg');
+    const modalBody = img.parentElement;
+
+    // 清理之前插入的 PDF iframe 和按钮
+    const oldIframe = document.getElementById('attachmentPdf');
+    if (oldIframe) oldIframe.remove();
+    const oldBtn = document.getElementById('attachmentPdfBtn');
+    if (oldBtn) oldBtn.remove();
+
     if(url) { 
-        img.src = url; img.classList.remove('d-none'); msg.classList.add('d-none'); 
+        msg.classList.add('d-none'); 
+
+        // 判断是否为 PDF (通过扩展名或者链接内容判断)
+        const isPdf = fileType.toLowerCase() === 'pdf' || url.toLowerCase().includes('.pdf?alt=media');
+
+        if (isPdf) {
+            img.classList.add('d-none');
+            
+            // 为桌面端嵌入一个 iframe
+            const iframe = document.createElement('iframe');
+            iframe.id = 'attachmentPdf';
+            iframe.src = url;
+            iframe.style.width = '100%';
+            iframe.style.height = '60vh';
+            iframe.style.border = 'none';
+            modalBody.appendChild(iframe);
+
+            // 为移动端提供一个备用跳转按钮（很多手机浏览器会拦截 iframe 里的 PDF）
+            const btn = document.createElement('a');
+            btn.id = 'attachmentPdfBtn';
+            btn.href = url;
+            btn.target = '_blank';
+            btn.className = 'btn btn-primary mt-3 mb-2 fw-bold d-inline-block px-4';
+            btn.innerHTML = '<i data-lucide="external-link" class="size-4 me-2"></i>Open PDF in New Tab';
+            modalBody.appendChild(btn);
+            
+            if (window.lucide) window.lucide.createIcons();
+        } else {
+            // 图片则直接显示在 img 标签
+            img.src = url; 
+            img.classList.remove('d-none'); 
+        }
     } else { 
-        img.classList.add('d-none'); msg.classList.remove('d-none'); 
+        img.classList.add('d-none'); 
+        msg.classList.remove('d-none'); 
     }
     attachmentModal.show();
 }
