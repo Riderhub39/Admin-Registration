@@ -1,21 +1,22 @@
 // leave-approval-app.js
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-// 🟢 确保引入了 getDocs
 import { getFirestore, collection, query, where, getDocs, onSnapshot, doc, runTransaction, updateDoc, serverTimestamp, limit, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+// 🟢 新增：引入 Firebase Storage 支持
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 import { firebaseConfig } from "./firebase-config.js";
-
 import { normalizeDate, logAdminAction, formatDate, formatDateTime, showLoading, hideLoading, showStatusAlert } from "./utils.js"; 
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
+const storage = getStorage(app); // 🟢 初始化 Storage
 
 let fullHistoryList = [];
 let attachmentModal, rejectModal, editStatusModal, addLeaveModalInst;
-let usersMap = {}; // 🟢 缓存员工信息
+let usersMap = {}; 
 
 export async function initLeaveApprovalApp() {
     document.getElementById('loadingText').innerText = "Loading Requests...";
@@ -25,15 +26,14 @@ export async function initLeaveApprovalApp() {
         attachmentModal = new bootstrap.Modal(document.getElementById('attachmentModal'));
         rejectModal = new bootstrap.Modal(document.getElementById('rejectModal'));
         editStatusModal = new bootstrap.Modal(document.getElementById('editStatusModal'));
-        addLeaveModalInst = new bootstrap.Modal(document.getElementById('addLeaveModal')); // 🟢 初始化添加表单
+        addLeaveModalInst = new bootstrap.Modal(document.getElementById('addLeaveModal'));
     }
 
-    await fetchUsers(); // 🟢 获取用户列表用于下拉框
+    await fetchUsers(); 
     listenToPendingLeaves();
     listenToLeaveHistory();
 }
 
-// 🟢 获取所有有效员工
 async function fetchUsers() {
     const snap = await getDocs(query(collection(db, "users"), where("role", "==", "staff")));
     const staffSelect = document.getElementById('addLeaveStaff');
@@ -52,7 +52,6 @@ async function fetchUsers() {
         }
     });
     
-    // 按字母排序并填充下拉框
     users.sort((a,b) => a.name.localeCompare(b.name)).forEach(u => {
         usersMap[u.id] = u;
         if(staffSelect) {
@@ -207,6 +206,8 @@ window.approveLeave = async function(leaveId, targetUid, days, type) {
     if (!confirm(`Approve ${days} day(s) of ${type}?`)) return;
 
     showLoading();
+    document.getElementById('loadingText').innerText = "Processing Approval...";
+    
     try {
         await runTransaction(db, async (transaction) => {
             const leaveRef = doc(db, "leaves", leaveId);
@@ -244,13 +245,14 @@ window.approveLeave = async function(leaveId, targetUid, days, type) {
     }
 }
 
-// 🟢 -------------------- 管理员手动添加请假 (Add Leave) --------------------
+// -------------------- 管理员手动添加请假 (Add Leave) --------------------
 window.openAddLeaveModal = () => {
     document.getElementById('addLeaveStaff').value = "";
     document.getElementById('addLeaveType').value = "Annual Leave";
     document.getElementById('addLeaveStart').value = "";
     document.getElementById('addLeaveEnd').value = "";
     document.getElementById('addLeaveReason').value = "";
+    document.getElementById('addLeaveAttachment').value = ""; // 🟢 清空文件输入框
     addLeaveModalInst.show();
 };
 
@@ -260,6 +262,10 @@ window.submitAddLeave = async () => {
     const startStr = document.getElementById('addLeaveStart').value;
     const endStr = document.getElementById('addLeaveEnd').value;
     const reason = document.getElementById('addLeaveReason').value || "Added by Admin";
+    
+    // 🟢 获取选择的文件
+    const fileInput = document.getElementById('addLeaveAttachment');
+    const file = fileInput.files[0];
 
     if (!staffId || !startStr || !endStr) {
         alert("Please fill in all required fields.");
@@ -278,7 +284,26 @@ window.submitAddLeave = async () => {
     if (!confirm(`Add ${days} day(s) of ${type} for ${user.name}?`)) return;
 
     showLoading();
+
     try {
+        let attachmentUrl = null;
+        let fileType = null;
+
+        // 🟢 先处理文件上传
+        if (file) {
+            document.getElementById('loadingText').innerText = "Uploading Attachment...";
+            const ext = file.name.split('.').pop().toLowerCase();
+            const targetUid = user.authUid || staffId;
+            const fileName = `${Date.now()}_${targetUid}.${ext}`;
+            const fileRef = storageRef(storage, `leave_attachments/${targetUid}/${fileName}`);
+            
+            await uploadBytes(fileRef, file);
+            attachmentUrl = await getDownloadURL(fileRef);
+            fileType = ext;
+        }
+
+        document.getElementById('loadingText').innerText = "Saving Record...";
+
         await runTransaction(db, async (transaction) => {
             const userRef = doc(db, "users", staffId);
             const userDoc = await transaction.get(userRef);
@@ -289,7 +314,6 @@ window.submitAddLeave = async () => {
                 if (oldBalance < days) {
                     throw new Error(`Insufficient Annual Leave Balance! Current: ${oldBalance}, Required: ${days}`);
                 }
-                // 扣除年假
                 transaction.update(userRef, { "leave_balance.annual": oldBalance - days });
             }
 
@@ -304,12 +328,18 @@ window.submitAddLeave = async () => {
                 endDate: endStr,
                 days: days,
                 reason: reason,
-                status: 'Approved', // 🟢 管理员直接添加即刻生效
+                status: 'Approved',
                 appliedAt: serverTimestamp(),
                 reviewedAt: serverTimestamp(),
                 reviewer: auth.currentUser.email,
                 isPayrollDeductible: (type === 'Unpaid Leave')
             };
+
+            // 🟢 如果有上传附件，将其记录进数据中
+            if (attachmentUrl) {
+                leaveData.attachmentUrl = attachmentUrl;
+                leaveData.fileType = fileType;
+            }
             
             transaction.set(newLeaveRef, leaveData);
 
@@ -355,6 +385,7 @@ window.confirmReject = async function() {
     if (!reason) { alert("Please provide a reason for rejection."); return; }
 
     showLoading();
+    document.getElementById('loadingText').innerText = "Rejecting Request...";
     try {
         await updateDoc(doc(db, "leaves", leaveId), {
             status: 'Rejected',
@@ -396,6 +427,7 @@ window.submitStatusChange = async function() {
     const reason = document.getElementById('editStatusReason').value;
 
     showLoading();
+    document.getElementById('loadingText').innerText = "Updating Status...";
     try {
         await runTransaction(db, async (transaction) => {
             const leaveRef = doc(db, "leaves", leaveId);
