@@ -23,7 +23,6 @@ let docIdToAuthMap = {};
 let attendanceData = []; 
 let currentMode = 'day'; 
 
-// 🟢 增加了 monthlyReportModalInst
 let photoModal, manualActionModal, editRecordModal, bulkVerifyModalInst, monthlyReportModalInst; 
 let unsubscribeAttendance = null; 
 let unverifiedRecordsCache = []; 
@@ -42,7 +41,7 @@ export async function initAttendanceApp() {
         manualActionModal = new bootstrap.Modal(document.getElementById('manualActionModal'));
         editRecordModal = new bootstrap.Modal(document.getElementById('editRecordModal'));
         bulkVerifyModalInst = new bootstrap.Modal(document.getElementById('bulkVerifyModal')); 
-        monthlyReportModalInst = new bootstrap.Modal(document.getElementById('monthlyReportModal')); // 🟢 初始化月度报表弹窗
+        monthlyReportModalInst = new bootstrap.Modal(document.getElementById('monthlyReportModal')); 
     }
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -67,6 +66,12 @@ export async function initAttendanceApp() {
             const tab = new bootstrap.Tab(tabBtn);
             tab.show();
         }
+    }
+
+    // 🟢 绑定新的 Monthly Report Excel 导出按钮事件
+    const exportBtn = document.getElementById('btnExportMonthlyExcel');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', exportMonthlyReportToExcel);
     }
 
     await fetchUsers();
@@ -247,7 +252,7 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
     hideLoading();
     document.getElementById('mainContainer').classList.remove('d-none');
     
-    lucide.createIcons();
+    if (window.lucide) window.lucide.createIcons();
 }
 
 function renderDayUserCard(uid, records, container, targetDate, currentTodayStr) {
@@ -767,22 +772,19 @@ window.handleCorrection = async (correctionId, attId, newIn, newOut, decision) =
     }
 }
 
-window.exportData = () => { showStatusAlert('statusMessage', "Export feature enabled. CSV will be generated based on current filter.", true); };
-
 window.viewPhoto = (url) => {
     document.getElementById('modalImg').src = url;
     photoModal.show();
 };
 
 // ----------------------------------------------------
-// 🟢 新增功能：月度报表与总工时计算 (Monthly Report)
+// 月度报表与总工时计算 (Monthly Report)
 // ----------------------------------------------------
 
 window.openMonthlyReportModal = () => {
     const staffSelect = document.getElementById('reportStaffSelect');
     staffSelect.innerHTML = '<option value="">-- Select Staff --</option>';
 
-    // 🟢 性能优化：直接使用在页面加载时已经缓存好的 usersMap，不再请求数据库，实现秒开！
     const userList = Object.values(usersMap).sort((a, b) => a.name.localeCompare(b.name));
 
     userList.forEach(u => {
@@ -791,13 +793,11 @@ window.openMonthlyReportModal = () => {
         }
     });
 
-    // 默认设置为当月
     const now = new Date();
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     document.getElementById('reportMonthInput').value = `${yyyy}-${mm}`;
 
-    // 重置表格状态
     document.getElementById('monthlyReportBody').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-5">Please select a staff and month to generate the report.</td></tr>';
     document.getElementById('monthlyReportFooter').style.display = 'none';
 
@@ -807,7 +807,7 @@ window.openMonthlyReportModal = () => {
 
 window.generateMonthlyReport = async () => {
     const uid = document.getElementById('reportStaffSelect').value;
-    const monthVal = document.getElementById('reportMonthInput').value; // 格式: "YYYY-MM"
+    const monthVal = document.getElementById('reportMonthInput').value;
 
     if (!uid || !monthVal) {
         alert("Please select both a staff member and a month.");
@@ -940,3 +940,63 @@ window.generateMonthlyReport = async () => {
         if (window.lucide) window.lucide.createIcons();
     }
 };
+
+// ----------------------------------------------------
+// 🟢 导出月度报告到 Excel (CSV)
+// ----------------------------------------------------
+export function exportMonthlyReportToExcel() {
+    const table = document.getElementById("monthlyReportTable");
+    if (!table) return;
+
+    const staffSelect = document.getElementById('reportStaffSelect');
+    const monthSelect = document.getElementById('reportMonthInput');
+    
+    if (!staffSelect.value || !monthSelect.value) {
+        showStatusAlert("Please generate a report first before exporting.", "warning");
+        return;
+    }
+
+    let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
+
+    const staffName = staffSelect.options[staffSelect.selectedIndex].text;
+    const monthVal = monthSelect.value;
+
+    csvContent += `Monthly Attendance Report\n`;
+    csvContent += `Staff:,${staffName}\n`;
+    csvContent += `Month:,${monthVal}\n\n`;
+
+    const headers = Array.from(table.querySelectorAll("thead th")).map(th => `"${th.innerText.trim()}"`);
+    csvContent += headers.join(",") + "\n";
+
+    const tbody = document.getElementById('monthlyReportBody');
+    const rows = Array.from(tbody.querySelectorAll("tr"));
+    
+    if (rows.length === 1 && rows[0].innerText.includes("Please select")) {
+        showStatusAlert("No data to export.", "warning");
+        return;
+    }
+
+    rows.forEach(row => {
+        const rowData = Array.from(row.querySelectorAll("td")).map(td => {
+            let text = td.innerText.replace(/(\r\n|\n|\r)/gm, " ").replace(/"/g, '""').trim();
+            if(text.endsWith(" h")) text = text.slice(0, -2);
+            return `"${text}"`;
+        });
+        csvContent += rowData.join(",") + "\n";
+    });
+
+    const footer = document.getElementById('monthlyReportFooter');
+    if (footer && footer.style.display !== 'none') {
+        const totalHours = document.getElementById('monthlyTotalHours').innerText.replace(" h", "");
+        csvContent += `,,,,"Total Working Hours:","${totalHours}"\n`;
+    }
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    const safeStaffName = staffName.replace(/\s+/g, '_');
+    link.setAttribute("download", `Monthly_Report_${safeStaffName}_${monthVal}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}

@@ -77,10 +77,6 @@
                     <button class="btn btn-primary fw-bold shadow-sm d-flex align-items-center gap-2" onclick="window.openMonthlyReportModal()">
                         <i data-lucide="calendar-days" class="size-4"></i> Monthly Report
                     </button>
-
-                    <button class="btn btn-outline-success fw-bold d-flex align-items-center gap-2 shadow-sm" onclick="window.exportData()">
-                        <i data-lucide="download" class="size-4"></i> Export Excel
-                    </button>
                 </div>
             </div>
         </div>
@@ -301,7 +297,7 @@
                     </div>
                     
                     <div class="table-responsive bg-white rounded-3 shadow-sm border">
-                        <table class="table table-hover align-middle mb-0">
+                        <table class="table table-hover align-middle mb-0" id="monthlyReportTable">
                             <thead class="table-light">
                                 <tr>
                                     <th class="ps-4 py-3">Date</th>
@@ -323,6 +319,12 @@
                             </tfoot>
                         </table>
                     </div>
+                </div>
+                <div class="modal-footer border-top bg-light d-flex justify-content-between">
+                    <button type="button" class="btn btn-success fw-bold shadow-sm" id="btnExportMonthlyExcel">
+                        <i data-lucide="file-spreadsheet" class="size-4 me-2"></i> Export to Excel
+                    </button>
+                    <button type="button" class="btn btn-secondary fw-bold px-4 shadow-sm" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
