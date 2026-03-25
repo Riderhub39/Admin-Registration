@@ -139,9 +139,9 @@
                                 </div>
                             </div>
                             <div class="col-2">
-                                <div class="stats-box border-info bg-info-subtle">
-                                    <span class="stats-label text-info">Paid Leave</span>
-                                    <span class="stats-val text-info" id="dispPaidLeave">0 <span style="font-size: 0.6rem">Days</span></span>
+                                <div class="stats-box border-info bg-info-subtle" title="AL: Annual Leave, ML: Medical Leave">
+                                    <span class="stats-label text-info">Paid Leave (AL/ML)</span>
+                                    <span class="stats-val text-info" id="dispPaidLeave" style="font-size: 1rem">0 <span style="font-size: 0.6rem">Days</span></span>
                                 </div>
                             </div>
                             <div class="col-2">
@@ -165,7 +165,10 @@
                             
                             <input type="hidden" id="metaDaysSch" value="0">
                             <input type="hidden" id="metaDaysAct" value="0">
-                            <input type="hidden" id="metaPaidLeave" value="0">
+                            <input type="hidden" id="metaAnnualLeave" value="0">
+                            <input type="hidden" id="metaMedicalLeave" value="0">
+                            <input type="hidden" id="metaUnpaidLeave" value="0">
+
                             <input type="hidden" id="metaTotalHrs" value="0">
                             <input type="hidden" id="metaLateMins" value="0">
                             <input type="hidden" id="metaLateCount" value="0"> 

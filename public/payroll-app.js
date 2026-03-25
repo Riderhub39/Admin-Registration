@@ -369,7 +369,6 @@ async function calculateAttendanceStats(uid, monthStr) {
     myAttSnap.forEach(d => {
         const a = d.data();
         if (a.verificationStatus === 'Verified') {
-            // 🟢 方案二：初始化加上 Break Out 和 Break In
             if(!attMap[a.date]) attMap[a.date] = { in: null, out: null, breakOut: null, breakIn: null };
             if(a.session === 'Clock In') attMap[a.date].in = a.manualIn || a.timeIn || a.timestamp;
             if(a.session === 'Clock Out') attMap[a.date].out = a.manualOut || a.timeOut || a.timestamp;
@@ -398,15 +397,12 @@ async function calculateAttendanceStats(uid, monthStr) {
                 const inTime = toDateObj(records.in, dateStr);
                 const schedStart = toDateObj(sched.start, dateStr);
                 
-                // 迟到罚款逻辑保持不变
                 if (inTime > schedStart) { totalLateMs += (inTime - schedStart); lateCount++; }
                 
                 if (records.out) {
                     const outTime = toDateObj(records.out, dateStr);
-                    // 🟢 方案二：不再截断早到时间，直接计算总跨度
                     let workMs = outTime - inTime;
                     
-                    // 🟢 方案二：只扣除真实打卡的午休时间
                     if (records.breakOut && records.breakIn) {
                         const bOut = toDateObj(records.breakOut, dateStr);
                         const bIn = toDateObj(records.breakIn, dateStr);
@@ -420,13 +416,25 @@ async function calculateAttendanceStats(uid, monthStr) {
         }
     }
 
-    let paidLeaveCount = 0;
+    // 🟢 修复时区偏移并分类统计不同假别
+    let annualLeaveCount = 0;
+    let medicalLeaveCount = 0;
+    let unpaidLeaveCount = 0;
+
     myLeavesSnap.forEach(d => {
         const l = d.data();
-        let curr = new Date(l.startDate); let end = new Date(l.endDate);
-        while(curr <= end) {
-            const dStr = curr.toISOString().split('T')[0];
-            if(dStr >= startDate && dStr <= endDate && l.type !== 'Unpaid Leave' && !attMap[dStr]?.in) paidLeaveCount++; 
+        const [sY, sM, sD] = l.startDate.split('-');
+        const [eY, eM, eD] = l.endDate.split('-');
+        let curr = new Date(sY, sM - 1, sD);
+        const endD = new Date(eY, eM - 1, eD);
+
+        while(curr <= endD) {
+            const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
+            if(dStr >= startDate && dStr <= endDate && !attMap[dStr]?.in) {
+                if (l.type === 'Annual Leave' || l.type === '年假' || l.type === 'Cuti Tahunan') annualLeaveCount++;
+                else if (l.type === 'Medical Leave' || l.type === '病假' || l.type === 'Cuti Sakit') medicalLeaveCount++;
+                else unpaidLeaveCount++; // Unpaid Leave 或者是其他的无薪假
+            }
             curr.setDate(curr.getDate() + 1);
         }
     });
@@ -453,18 +461,27 @@ async function calculateAttendanceStats(uid, monthStr) {
         } 
     }
 
+    const paidLeaveCount = annualLeaveCount + medicalLeaveCount; // 计算总的带薪假天数
+
     document.getElementById('metaTotalHrs').dataset.majorityHours = majorityHours;
     document.getElementById('inpStdDays').value = majorityDays;
     document.getElementById('dispSchDays').innerHTML = `${mySchedCount} <span style="font-size:0.6rem">Days</span>`;
     document.getElementById('dispActDays').innerHTML = `${actWorkedDays} <span style="font-size:0.6rem">Days</span>`;
-    document.getElementById('dispPaidLeave').innerHTML = `${paidLeaveCount} <span style="font-size:0.6rem">Days</span>`;
+    
+    // 显示具体的 AL 和 ML
+    document.getElementById('dispPaidLeave').innerHTML = `${paidLeaveCount} <span style="font-size:0.6rem">Days (AL:${annualLeaveCount} ML:${medicalLeaveCount})</span>`;
     document.getElementById('dispPayableDays').innerHTML = `${actWorkedDays + paidLeaveCount} <span style="font-size:0.6rem">Days</span>`;
+    
     document.getElementById('dispTotalHrs').innerHTML = `${formattedTotalHrs}`;
     document.getElementById('dispLateStats').innerHTML = `${lateCount} <span style="font-size:0.6rem">times (${totalLateMins}m)</span>`;
 
-    ['metaDaysSch', 'metaDaysAct', 'metaPaidLeave', 'metaTotalHrs', 'metaLateMins', 'metaLateCount'].forEach((id, i) => {
-        document.getElementById(id).value = [mySchedCount, actWorkedDays, paidLeaveCount, totalDecimalHrs, totalLateMins, lateCount][i];
+    ['metaDaysSch', 'metaDaysAct', 'metaTotalHrs', 'metaLateMins', 'metaLateCount'].forEach((id, i) => {
+        document.getElementById(id).value = [mySchedCount, actWorkedDays, totalDecimalHrs, totalLateMins, lateCount][i];
     });
+
+    document.getElementById('metaAnnualLeave').value = annualLeaveCount;
+    document.getElementById('metaMedicalLeave').value = medicalLeaveCount;
+    document.getElementById('metaUnpaidLeave').value = unpaidLeaveCount;
 }
 
 window.calcTotals = (autoUpdateStatutory = false) => {
@@ -491,7 +508,12 @@ window.calcTotals = (autoUpdateStatutory = false) => {
         } else document.getElementById('lateFormulaText').innerText = "Unpaid by default in Hourly mode.";
     } else {
         const stdDays = getVal('inpStdDays') || 26; 
-        const totalPayableDays = (parseFloat(document.getElementById('metaDaysAct').value) || 0) + (parseFloat(document.getElementById('metaPaidLeave').value) || 0);
+        
+        // 🟢 结算天数 = 实际上班天数 + 年假 + 病假 (无薪假不加入)
+        const totalPayableDays = (parseFloat(document.getElementById('metaDaysAct').value) || 0) + 
+                                 (parseFloat(document.getElementById('metaAnnualLeave').value) || 0) +
+                                 (parseFloat(document.getElementById('metaMedicalLeave').value) || 0);
+
         const dailyRate = fullBasic / stdDays;
         grossBasic = Math.min(dailyRate * totalPayableDays, fullBasic);
 
@@ -568,9 +590,14 @@ window.savePayslipForm = async () => {
         deductions: { epf: getVal('inpEPF'), socso: getVal('inpSOCSO'), eis: getVal('inpEIS'), tax: getVal('inpPCB'), late: getVal('inpLateDed'), advance: getVal('inpAdvance'), total: totalDed },
         employer_epf: getVal('inpEmpEPF'), employer_socso: getVal('inpEmpSOCSO'), employer_eis: getVal('inpEmpEIS'),
         attendanceStats: {
-            stdDays: getVal('inpStdDays'), actDays: document.getElementById('metaDaysAct').value,
-            paidLeave: document.getElementById('metaPaidLeave').value, totalHrs: document.getElementById('metaTotalHrs').value,
-            lateMins: document.getElementById('metaLateMins').value, lateCount: document.getElementById('metaLateCount').value, 
+            stdDays: getVal('inpStdDays'), 
+            actDays: document.getElementById('metaDaysAct').value,
+            annualLeave: document.getElementById('metaAnnualLeave').value,
+            medicalLeave: document.getElementById('metaMedicalLeave').value,
+            unpaidLeave: document.getElementById('metaUnpaidLeave').value,
+            totalHrs: document.getElementById('metaTotalHrs').value,
+            lateMins: document.getElementById('metaLateMins').value, 
+            lateCount: document.getElementById('metaLateCount').value, 
             mode: globalSettings.calcMode
         },
         gross: grossTotal, net: net, status: status,
@@ -760,14 +787,23 @@ window.openEditModal = (id) => {
     if (d.attendanceStats) {
         document.getElementById('inpStdDays').value = d.attendanceStats.stdDays || 26;
         document.getElementById('metaDaysAct').value = d.attendanceStats.actDays || 0;
-        document.getElementById('metaPaidLeave').value = d.attendanceStats.paidLeave || 0;
+        
+        // 读取并拆分显示各类型假别
+        document.getElementById('metaAnnualLeave').value = d.attendanceStats.annualLeave || 0;
+        document.getElementById('metaMedicalLeave').value = d.attendanceStats.medicalLeave || 0;
+        document.getElementById('metaUnpaidLeave').value = d.attendanceStats.unpaidLeave || 0;
+        
+        const al = parseFloat(d.attendanceStats.annualLeave) || 0;
+        const ml = parseFloat(d.attendanceStats.medicalLeave) || 0;
+        const totalPaidLeave = al + ml;
+        
+        document.getElementById('dispPaidLeave').innerHTML = `${totalPaidLeave} <span style="font-size:0.6rem">Days (AL:${al} ML:${ml})</span>`;
+        document.getElementById('dispActDays').innerHTML = `${d.attendanceStats.actDays || 0} <span style="font-size:0.6rem">Days</span>`;
+        document.getElementById('dispPayableDays').innerHTML = `${parseFloat(d.attendanceStats.actDays || 0) + totalPaidLeave} <span style="font-size:0.6rem">Days</span>`;
+
         document.getElementById('metaTotalHrs').value = d.attendanceStats.totalHrs || 0; 
         document.getElementById('metaLateMins').value = d.attendanceStats.lateMins || 0;
         document.getElementById('metaLateCount').value = d.attendanceStats.lateCount || 0;
-        
-        document.getElementById('dispActDays').innerHTML = `${d.attendanceStats.actDays} <span style="font-size:0.6rem">Days</span>`;
-        document.getElementById('dispPaidLeave').innerHTML = `${d.attendanceStats.paidLeave} <span style="font-size:0.6rem">Days</span>`;
-        document.getElementById('dispPayableDays').innerHTML = `${parseFloat(d.attendanceStats.actDays) + parseFloat(d.attendanceStats.paidLeave)} <span style="font-size:0.6rem">Days</span>`;
         
         const savedTotalHrs = parseFloat(d.attendanceStats.totalHrs) || 0;
         const hrPart = Math.floor(savedTotalHrs);
@@ -796,7 +832,13 @@ window.viewPayslip = (id) => {
     if(d.deductions.late > 0) extraDedRows += `<tr><td></td><td></td><td style="padding-left: 20px; color:red;">LATE DEDUCTION</td><td style="text-align: right; color:red;">${formatMoney(d.deductions.late)}</td></tr>`;
     if(d.deductions.advance > 0) extraDedRows += `<tr><td></td><td></td><td style="padding-left: 20px; color:red;">SALARY ADVANCE</td><td style="text-align: right; color:red;">${formatMoney(d.deductions.advance)}</td></tr>`;
 
-    const stats = d.attendanceStats || { actDays:0, schDays:0, paidLeave:0 };
+    const stats = d.attendanceStats || { actDays:0, schDays:0, annualLeave:0, medicalLeave:0, unpaidLeave:0 };
+    const al = parseFloat(stats.annualLeave) || 0;
+    const ml = parseFloat(stats.medicalLeave) || 0;
+    const ul = parseFloat(stats.unpaidLeave) || 0;
+    const actDays = parseFloat(stats.actDays) || 0;
+    const payableDays = actDays + al + ml;
+
     const html = `
         <div class="payslip-preview bg-white shadow-sm border rounded">
             <div class="payslip-header border-bottom border-dark pb-3 mb-3">
@@ -853,7 +895,7 @@ window.viewPayslip = (id) => {
             </div>
             
             <div style="margin-top:20px; font-size:0.75rem; border:1px dashed #ccc; padding:10px; border-radius:6px; color:#64748b;">
-                <b>Attendance Stats:</b> Payable Days: ${parseFloat(stats.actDays) + parseFloat(stats.paidLeave)} / ${stats.stdDays} (Worked: ${stats.actDays}, Leave: ${stats.paidLeave})
+                <b>Attendance Stats:</b> Payable Days: ${payableDays} / ${stats.stdDays} (Worked: ${actDays}, AL: ${al}, ML: ${ml}, Unpaid Leave: ${ul})
                 <br><b>Late Stats:</b> ${stats.lateCount || 0} times (${stats.lateMins || 0} minutes)
             </div>
         </div>
@@ -932,7 +974,6 @@ window.generateAllDrafts = async () => {
         const startDate = `${monthStr}-01`;
         const endDate = `${monthStr}-${new Date(year, month, 0).getDate()}`;
 
-        // 并发拉取当月所有的公共数据
         const [allSchedSnap, allLeavesSnap, allAttSnap, allAdvSnap] = await Promise.all([
             getDocs(query(collection(db, "schedules"), where("date", ">=", startDate), where("date", "<=", endDate))),
             getDocs(query(collection(db, "leaves"), where("status", "==", "Approved"))),
@@ -975,7 +1016,6 @@ window.generateAllDrafts = async () => {
         allAttSnap.forEach(d => { 
             const a = d.data(); 
             if(a.verificationStatus === 'Verified') {
-                // 🟢 方案二：初始化加上 Break Out 和 Break In
                 if(!attendances[a.uid]) attendances[a.uid] = {};
                 if(!attendances[a.uid][a.date]) attendances[a.uid][a.date] = { in: null, out: null, breakOut: null, breakIn: null };
                 if(a.session === 'Clock In') attendances[a.uid][a.date].in = a.manualIn || a.timeIn || a.timestamp;
@@ -1029,15 +1069,12 @@ window.generateAllDrafts = async () => {
                         const inTime = toDateObj(records.in, dateStr);
                         const schedStart = toDateObj(sched.start, dateStr);
                         
-                        // 迟到罚款依然计算
                         if (inTime > schedStart) { totalLateMs += (inTime - schedStart); lateCount++; }
                         
                         if (records.out) {
                             const outTime = toDateObj(records.out, dateStr);
-                            // 🟢 方案二：不再截断早到时间，直接计算总跨度
                             let workMs = outTime - inTime;
                             
-                            // 🟢 方案二：只扣除真实打卡的午休时间
                             if (records.breakOut && records.breakIn) {
                                 const bOut = toDateObj(records.breakOut, dateStr);
                                 const bIn = toDateObj(records.breakIn, dateStr);
@@ -1051,18 +1088,28 @@ window.generateAllDrafts = async () => {
                 }
             }
 
-            let paidLeaveCount = 0;
+            // 🟢 修复时区偏移，并分出各类假别
+            let annualLeaveCount = 0, medicalLeaveCount = 0, unpaidLeaveCount = 0;
             leaves.forEach(l => {
                 if (searchIds.includes(l.uid)) {
-                    let curr = new Date(l.startDate); let end = new Date(l.endDate);
-                    while(curr <= end) {
-                        const dStr = curr.toISOString().split('T')[0];
-                        if(dStr >= startDate && dStr <= endDate && l.type !== 'Unpaid Leave' && !myAtt[dStr]?.in) paidLeaveCount++; 
+                    const [sY, sM, sD] = l.startDate.split('-');
+                    const [eY, eM, eD] = l.endDate.split('-');
+                    let curr = new Date(sY, sM - 1, sD);
+                    const endD = new Date(eY, eM - 1, eD);
+
+                    while(curr <= endD) {
+                        const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
+                        if(dStr >= startDate && dStr <= endDate && !myAtt[dStr]?.in) {
+                            if (l.type === 'Annual Leave' || l.type === '年假' || l.type === 'Cuti Tahunan') annualLeaveCount++;
+                            else if (l.type === 'Medical Leave' || l.type === '病假' || l.type === 'Cuti Sakit') medicalLeaveCount++;
+                            else unpaidLeaveCount++;
+                        }
                         curr.setDate(curr.getDate() + 1);
                     }
                 }
             });
 
+            const paidLeaveCount = annualLeaveCount + medicalLeaveCount;
             const totalDecimalHrs = totalWorkMs / 3600000;
             const totalLateMins = Math.floor(totalLateMs / 60000);
             
@@ -1082,7 +1129,7 @@ window.generateAllDrafts = async () => {
             } else {
                 const totalPayableDays = actWorkedDays + paidLeaveCount;
                 const dailyRate = fullBasic / majorityDays;
-                grossBasic = Math.min(dailyRate * totalPayableDays, fullBasic); // ✅ 最高限制在这里起作用了
+                grossBasic = Math.min(dailyRate * totalPayableDays, fullBasic); 
 
                 if (globalSettings.lateMode === 'times') {
                     autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
@@ -1120,7 +1167,8 @@ window.generateAllDrafts = async () => {
                 employer_epf: 0, employer_socso: 0, employer_eis: 0,
                 attendanceStats: {
                     stdDays: majorityDays, actDays: actWorkedDays,
-                    paidLeave: paidLeaveCount, totalHrs: totalDecimalHrs.toFixed(2),
+                    annualLeave: annualLeaveCount, medicalLeave: medicalLeaveCount, unpaidLeave: unpaidLeaveCount,
+                    totalHrs: totalDecimalHrs.toFixed(2),
                     lateMins: totalLateMins, lateCount: lateCount, 
                     mode: globalSettings.calcMode
                 },
