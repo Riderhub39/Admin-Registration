@@ -220,7 +220,7 @@ window.openDayManager = function(dateStr, filterIds = null, preStart = "", preEn
         addPanel.style.pointerEvents = 'auto';
     }
     
-    // 🟢 2. 使用 Toast
+    // 🟢 使用 Toast
     if(holidayCache[dateStr]) showStatusAlert('statusMessage', `Note: ${dateStr} is a public holiday.`, true);
     
     renderDayRoster();
@@ -281,7 +281,7 @@ window.addShiftToDay = async function() {
         return;
     }
     
-    showLoading(); // 🟢
+    showLoading(); 
     try {
         const batch = writeBatch(db);
         const startDT = new Date(`${currentManagerDate}T${start}`);
@@ -465,7 +465,7 @@ window.runBulkSchedule = async () => {
     if (selectedStaff.length === 0) return showStatusAlert('statusMessage', 'Select at least one staff.', false);
 
     document.getElementById('btnRunBulk').disabled = true;
-    showLoading(); // 🟢
+    showLoading(); 
 
     try {
         const batch = writeBatch(db);
@@ -504,11 +504,13 @@ window.runBulkSchedule = async () => {
                 const dayOfWeek = String(current.getUTCDay()); 
                 const dayRule = rules[dayOfWeek];
                 
-                if (dayRule && dayRule.active && dayRule.start && dayRule.end && !holidayCache[dateStr]) {
+                // 🟢 解除限制：不再判断 !holidayCache[dateStr]
+                if (dayRule && dayRule.active && dayRule.start && dayRule.end) {
                     const startDT = new Date(`${dateStr}T${dayRule.start}`);
                     const endDT = new Date(`${dateStr}T${dayRule.end}`);
                     const key = `${cleanId}_${dateStr}`;
 
+                    // 检查是否请假 (依然阻挡) 或者是否已经排过班
                     if (!leaveCache[key] && !rawSchedules.some(s => String(s.userId).trim() === cleanId && s.date === dateStr)) {
                         const ref = doc(collection(db, "schedules"));
                         batch.set(ref, { 
@@ -537,10 +539,10 @@ window.runBulkSchedule = async () => {
         bulkModal.hide();
         hideLoading();
         if(successCount > 0) {
-            alert(`✅ Scheduled ${successCount} shifts.\n\nSmart Feature: New joiners were only scheduled from their Join Date.`);
+            alert(`✅ Scheduled ${successCount} shifts.\n\nSmart Feature: New joiners were only scheduled from their Join Date.\nNote: Shifts were successfully assigned to Public Holidays if applicable.`);
             window.filterTable();
         } else {
-            showStatusAlert('statusMessage', 'No shifts were created (maybe all overlaps/holidays).', false);
+            showStatusAlert('statusMessage', 'No shifts were created (maybe all overlaps or on leave).', false);
         }
 
     } catch (e) {
@@ -585,14 +587,17 @@ window.filterBulkStaff = function() {
 function updateCalendarEvents() {
     calendar.removeAllEvents();
     const hEvents = []; 
+    // 依然在背景高亮显示假期，但不再阻挡点击
     for(let d in holidayCache) hEvents.push({title: holidayCache[d], start: d, display: 'background', className: 'holiday-bg', allDay: true});
     calendar.addEventSource(hEvents);
+    
     const groups = {};
     rawSchedules.forEach(s => {
         const timeKey = `${s.start.getTime()}-${s.end.getTime()}`;
         if(!groups[timeKey]) groups[timeKey] = { id: timeKey, start: s.start, end: s.end, ids: [], names: [], count: 0, date: s.date, type: s.shiftType };
         groups[timeKey].ids.push(s.id); groups[timeKey].names.push(s.empName); groups[timeKey].count++;
     });
+    
     const shiftEvents = Object.values(groups).map(g => {
         const timeText = `${formatTime(g.start)} - ${formatTime(g.end)}`;
         const title = `${timeText} (${g.count})`;
@@ -612,6 +617,48 @@ function initCalendar() {
         eventTimeFormat: { hour: 'numeric', minute: '2-digit', meridiem: 'short' },
         displayEventTime: false,
         selectable: true, slotEventOverlap: false, eventOrder: 'start,duration',
+        
+        // 🟢 解除限制：删除 selectAllow 函数中对假期的阻挡
+        selectAllow: function(info) {
+            const dateStr = info.startStr.split('T')[0];
+            const selectedStaff = document.getElementById('staffFilter').value;
+            if (selectedStaff !== 'all' && leaveCache[selectedStaff + "_" + dateStr]) return false;
+            return true;
+        },
+
+        // 🟢 解除限制：删除 eventDrop 函数中对假期拖拽的阻挡
+        eventDrop: async function(info) {
+            const newDateStr = info.event.startStr.split('T')[0];
+            const staffId = info.event.extendedProps.filterIds[0] ? rawSchedules.find(x => x.id === info.event.extendedProps.filterIds[0])?.userId : null;
+            
+            if (staffId && leaveCache[staffId + "_" + newDateStr]) {
+                alert("Cannot move shift to a day the staff is on leave.");
+                info.revert();
+                return;
+            }
+
+            if(!confirm("Move this shift?")) { info.revert(); return; }
+            
+            showLoading();
+            try {
+                const s = new Date(`${newDateStr}T${info.event.startStr.split('T')[1].substring(0,5)}:00`);
+                const e = new Date(`${newDateStr}T${info.event.endStr.split('T')[1].substring(0,5)}:00`);
+                
+                const oldData = rawSchedules.find(x => x.id === info.event.id);
+                const newData = { date: newDateStr, start: Timestamp.fromDate(s), end: Timestamp.fromDate(e) };
+                
+                await updateDoc(doc(db, "schedules", info.event.id), newData);
+                await logAdminAction(db, auth.currentUser, "MOVE_SHIFT", staffId, oldData, newData);
+                
+                hideLoading();
+            } catch (err) {
+                console.error(err);
+                info.revert();
+                hideLoading();
+                alert("Failed to move shift.");
+            }
+        },
+
         dateClick: (info) => window.openDayManager(info.dateStr),
         eventClick: (info) => { if(info.event.display === 'background') return; const props = info.event.extendedProps; window.openDayManager(props.dateStr, props.filterIds, props.preFillStart, props.preFillEnd); }
     });
@@ -867,3 +914,80 @@ window.openStaffAnalytics = (uid) => {
     document.getElementById('modalTotalShifts').innerText = data.shifts.length; document.getElementById('modalTotalHours').innerText = data.totalHours.toFixed(1);
     staffAnalyticsModal.show();
 }
+
+window.copyPreviousWeek = async () => {
+    if(!confirm("Copy all shifts from last week to this current week shown on screen?")) return;
+    
+    showLoading();
+    try {
+        const currentStart = calendar.view.activeStart;
+        const currentEnd = calendar.view.activeEnd;
+
+        const lastWeekStart = new Date(currentStart); lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+        const lastWeekEnd = new Date(currentEnd); lastWeekEnd.setDate(lastWeekEnd.getDate() - 7);
+
+        const lwsStr = normalizeDate(lastWeekStart);
+        const lweStr = normalizeDate(lastWeekEnd);
+
+        const snap = await getDocs(query(collection(db, "schedules"), where("date", ">=", lwsStr), where("date", "<=", lweStr)));
+        
+        const batch = writeBatch(db);
+        let count = 0;
+
+        snap.forEach(d => {
+            const old = d.data();
+            const oldDateObj = new Date(old.date);
+            oldDateObj.setDate(oldDateObj.getDate() + 7);
+            const newDateStr = normalizeDate(oldDateObj);
+
+            // 🟢 在 Copy Week 时也不屏蔽 Public Holiday
+            if (!leaveCache[old.userId + "_" + newDateStr]) {
+                const s = old.start.toDate(); s.setDate(s.getDate() + 7);
+                const e = old.end.toDate(); e.setDate(e.getDate() + 7);
+
+                const p = { ...old, date: newDateStr, start: Timestamp.fromDate(s), end: Timestamp.fromDate(e) };
+                batch.set(doc(collection(db, "schedules")), p);
+                count++;
+            }
+        });
+
+        if (count === 0) { hideLoading(); return alert("No shifts found in previous week to copy."); }
+
+        await batch.commit();
+        await logAdminAction(db, auth.currentUser, "COPY_PREVIOUS_WEEK", "MULTIPLE", null, { copiedCount: count });
+        hideLoading();
+        showStatusAlert('statusMessage', `Copied ${count} shifts successfully!`, true);
+    } catch(err) {
+        console.error(err);
+        hideLoading();
+        alert("Copy failed.");
+    }
+};
+
+window.clearCurrentWeek = async () => {
+    if(!confirm("⚠️ DANGER: Are you sure you want to CLEAR ALL shifts in the currently viewed date range?")) return;
+    
+    showLoading();
+    try {
+        const startStr = normalizeDate(calendar.view.activeStart);
+        const endD = new Date(calendar.view.activeEnd);
+        endD.setDate(endD.getDate() - 1); 
+        const endStr = normalizeDate(endD);
+
+        const snap = await getDocs(query(collection(db, "schedules"), where("date", ">=", startStr), where("date", "<=", endStr)));
+        
+        const batch = writeBatch(db);
+        let count = 0;
+        snap.forEach(d => { batch.delete(d.ref); count++; });
+
+        if(count > 0) {
+            await batch.commit();
+            await logAdminAction(db, auth.currentUser, "CLEAR_WEEK_SHIFTS", "MULTIPLE", null, { range: `${startStr} to ${endStr}`, deletedCount: count });
+        }
+        hideLoading();
+        showStatusAlert('statusMessage', `Cleared ${count} shifts.`, true);
+    } catch(err) {
+        hideLoading();
+        alert("Clear failed.");
+    }
+};

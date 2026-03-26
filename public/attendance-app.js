@@ -19,6 +19,7 @@ const auth = getAuth(app);
 let schedulesMap = {}; 
 let leavesMap = {};
 let usersMap = {};
+let holidaysMap = {}; // 缓存 Public Holidays
 let docIdToAuthMap = {}; 
 let attendanceData = []; 
 let currentMode = 'day'; 
@@ -27,7 +28,6 @@ let photoModal, manualActionModal, editRecordModal, bulkVerifyModalInst, monthly
 let unsubscribeAttendance = null; 
 let unverifiedRecordsCache = []; 
 
-// 获取本地当天的标准化日期字符串 YYYY-MM-DD
 function getLocalTodayStr() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -55,9 +55,7 @@ export async function initAttendanceApp() {
 
     if (urlFilter) {
         const filterEl = document.getElementById('dayStatusFilter');
-        if (filterEl) {
-            filterEl.value = urlFilter;
-        }
+        if (filterEl) filterEl.value = urlFilter;
     }
 
     if (urlTab) {
@@ -69,13 +67,21 @@ export async function initAttendanceApp() {
     }
 
     const exportBtn = document.getElementById('btnExportMonthlyExcel');
-    if (exportBtn) {
-        exportBtn.addEventListener('click', exportMonthlyReportToExcel);
-    }
+    if (exportBtn) exportBtn.addEventListener('click', exportMonthlyReportToExcel);
 
+    await fetchHolidays(); 
     await fetchUsers();
     window.loadData();
     listenToCorrections();
+}
+
+async function fetchHolidays() {
+    try {
+        const snap = await getDoc(doc(db, "settings", "holidays"));
+        if (snap.exists() && snap.data().holiday_list) {
+            snap.data().holiday_list.forEach(h => { holidaysMap[h.date] = h.name; });
+        }
+    } catch(e) { console.error("Error loading holidays:", e); }
 }
 
 async function fetchUsers() {
@@ -126,10 +132,8 @@ window.loadData = async function() {
         leavesMap = {};
         leaveSnap.forEach(d => {
             const data = d.data();
-            // 🟢 核心修复 1：修改 d.uid 为 data.uid，确保能正确拿到请假人的 ID
             const eUid = data.authUid || docIdToAuthMap[data.uid] || data.uid;
             
-            // 🟢 核心修复 2：安全解析日期，避免 UTC 转换带来的日期偏移
             const [sY, sM, sD] = data.startDate.split('-');
             const [eY, eM, eD] = data.endDate.split('-');
             let curr = new Date(sY, sM - 1, sD);
@@ -144,16 +148,12 @@ window.loadData = async function() {
             }
         });
 
-        if (unsubscribeAttendance) {
-            unsubscribeAttendance();
-        }
+        if (unsubscribeAttendance) unsubscribeAttendance();
 
         const attQuery = query(collection(db, "attendance"), where("date", ">=", startDate), where("date", "<=", endDate));
         unsubscribeAttendance = onSnapshot(attQuery, (attSnap) => {
             processAndRenderAttendance(attSnap, startDate, endDate);
-        }, (error) => {
-            console.error("Error listening to attendance:", error);
-        });
+        }, (error) => console.error("Error listening to attendance:", error));
 
     } catch(e) { 
         console.error(e); 
@@ -207,9 +207,7 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
              const targetDate = startDate; 
              const isMissingOut = hasIn && !hasOut && (targetDate < currentTodayStr);
 
-             if (isMissingOut) {
-                 missingOutData.push(usersMap[uid].name);
-             }
+             if (isMissingOut) missingOutData.push(usersMap[uid].name);
 
              let showUser = false;
              if (dayFilter === 'all') showUser = true;
@@ -267,8 +265,10 @@ function renderDayUserCard(uid, records, container, targetDate, currentTodayStr)
     const user = usersMap[uid];
     const sched = schedulesMap[uid + "_" + targetDate];
     const leave = leavesMap[uid + "_" + targetDate];
+    // 🟢 核心修改 1：只有当天有排班，PH 才会生效被展示
+    const isPH = !!holidaysMap[targetDate] && !!sched; 
     
-    if (!sched && records.length === 0 && !leave) return false;
+    if (!sched && records.length === 0 && !leave && !isPH) return false;
 
     let inT = "--:--", outT = "--:--", pending = 0;
     
@@ -284,7 +284,7 @@ function renderDayUserCard(uid, records, container, targetDate, currentTodayStr)
         if(r.session === 'Clock Out') outT = formatTime(r.timestamp);
     });
 
-    const isAbsent = (targetDate <= currentTodayStr) && inT === "--:--" && sched && !leave;
+    const isAbsent = (targetDate <= currentTodayStr) && inT === "--:--" && sched && !leave && !isPH; 
     const isMissingOut = inT !== "--:--" && outT === "--:--" && targetDate < currentTodayStr;
     const isClockedInToday = inT !== "--:--" && outT === "--:--" && targetDate === currentTodayStr;
 
@@ -292,18 +292,23 @@ function renderDayUserCard(uid, records, container, targetDate, currentTodayStr)
     card.className = `user-card user-card-container ${isAbsent ? 'row-absent' : (leave ? 'row-leave' : '')}`;
     card.setAttribute('data-name', user.name);
     
-    // 🟢 UI 修复：如果是 Leave，优先显示蓝色的状态
     let statusColor = isAbsent ? "bg-danger" : 
+                      (isPH && inT === "--:--" ? "bg-warning" :
                       (leave ? "bg-info" : 
                       (isMissingOut ? "bg-danger" : 
                       (isClockedInToday ? "bg-warning" : 
                       (pending > 0 ? "bg-warning" : 
-                      (inT !== "--:--" ? "bg-success" : "bg-secondary")))));
+                      (inT !== "--:--" ? "bg-success" : "bg-secondary"))))));
 
-    const statusLabel = isAbsent ? `<span class="badge bg-danger">ABSENT</span>` : 
-                        (leave ? `<span class="badge bg-info text-dark">${leave.toUpperCase()}</span>` : 
-                        (isMissingOut ? `<span class="badge bg-danger">MISSING OUT</span>` : 
-                        (isClockedInToday ? `<span class="badge bg-warning text-dark">CLOCKED IN</span>` : "")));
+    let statusLabel = isAbsent ? `<span class="badge bg-danger">ABSENT</span>` : 
+                      (isPH && inT === "--:--" ? `<span class="badge bg-warning text-dark border"><i data-lucide="star" class="size-3 me-1"></i> PUBLIC HOLIDAY</span>` :
+                      (leave ? `<span class="badge bg-info text-dark">${leave.toUpperCase()}</span>` : 
+                      (isMissingOut ? `<span class="badge bg-danger">MISSING OUT</span>` : 
+                      (isClockedInToday ? `<span class="badge bg-warning text-dark">CLOCKED IN</span>` : ""))));
+
+    if (isPH && inT !== "--:--") {
+        statusLabel += `<span class="badge bg-warning text-dark ms-1">PH (3x)</span>`;
+    }
 
     card.innerHTML = `
         <div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-${uid}">
@@ -336,13 +341,18 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
     const days = new Date(y, m, 0).getDate();
     
     let present = 0;
+    let scheduledCount = 0; 
     let rowsHtml = "";
 
     for(let d=1; d<=days; d++) {
         const dateStr = `${y}-${m}-${d.toString().padStart(2,'0')}`;
         const sched = schedulesMap[uid + "_" + dateStr];
         const leave = leavesMap[uid + "_" + dateStr];
+        // 🟢 核心修改 2：只有排班的情况下，公共假期才算有效 PH
+        const isPH = !!holidaysMap[dateStr] && !!sched; 
         const dayRecords = allRecords.filter(r => r.date === dateStr && r.verificationStatus === 'Verified');
+
+        if (sched) scheduledCount++;
 
         let inT = null;
         let hasOut = false;
@@ -352,9 +362,12 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
         });
         if(inT) present++;
 
-        if (dayRecords.length > 0 || sched || leave) {
+        if (dayRecords.length > 0 || sched || leave || isPH) {
             let statusHtml = '';
-            if (leave && !inT) statusHtml = `<span class="text-info fw-bold">${leave.toUpperCase()}</span>`;
+
+            if (isPH && !inT) statusHtml = `<span class="badge bg-warning text-dark border border-warning-subtle">PUBLIC HOLIDAY</span>`;
+            else if (isPH && inT) statusHtml = `<b>Worked <span class="text-warning">(3x PH)</span></b>`;
+            else if (leave && !inT) statusHtml = `<span class="text-info fw-bold">${leave.toUpperCase()}</span>`;
             else if (inT && !hasOut && dateStr < currentTodayStr) statusHtml = '<span class="text-danger fw-bold">MISSING OUT</span>';
             else if (inT) statusHtml = '<b>Verified Present</b>';
             else if (dateStr <= currentTodayStr && sched) statusHtml = '<span class="text-danger fw-bold">ABSENT</span>';
@@ -369,7 +382,7 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
 
     const card = document.createElement('div');
     card.className = 'user-card user-card-container'; card.setAttribute('data-name', user.name);
-    card.innerHTML = `<div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-month-${uid}"><div class="row align-items-center"><div class="col-4 d-flex align-items-center gap-3">${user.photo?`<img src="${user.photo}" class="staff-avatar">`:`<div class="staff-avatar">${user.name.charAt(0)}</div>`}<div><h6 class="fw-bold m-0">${user.name}</h6></div></div><div class="col-7 text-center"><div class="stat-label">Days Present</div><div class="stat-value">${present} / ${days}</div></div><div class="col-1 text-end"><i data-lucide="chevron-down" class="text-muted chevron-icon"></i></div></div></div><div id="collapse-month-${uid}" class="collapse"><ul class="list-group list-group-flush">${rowsHtml}</ul></div>`;
+    card.innerHTML = `<div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-month-${uid}"><div class="row align-items-center"><div class="col-4 d-flex align-items-center gap-3">${user.photo?`<img src="${user.photo}" class="staff-avatar">`:`<div class="staff-avatar">${user.name.charAt(0)}</div>`}<div><h6 class="fw-bold m-0">${user.name}</h6></div></div><div class="col-7 text-center"><div class="stat-label">Days Present</div><div class="stat-value">${present} / ${scheduledCount}</div></div><div class="col-1 text-end"><i data-lucide="chevron-down" class="text-muted chevron-icon"></i></div></div></div><div id="collapse-month-${uid}" class="collapse"><ul class="list-group list-group-flush">${rowsHtml}</ul></div>`;
     container.appendChild(card);
     return true;
 }
@@ -399,8 +412,14 @@ function renderDashboard(data, pUids, missingOutData = []) {
     Object.keys(usersMap).forEach(uid => {
         if(usersMap[uid].status === 'disabled') return;
         active++;
-        if(leavesMap[uid+"_"+target]) leave++;
-        else if(schedulesMap[uid+"_"+target] && !pUids.has(uid)) { absent++; aList.push(usersMap[uid].name); }
+        const sched = schedulesMap[uid+"_"+target];
+        // 🟢 核心修改 3：Dashboard 统计逻辑：如果有排班而且当天是假期，或者有请假，才算 Leave
+        if(leavesMap[uid+"_"+target] || (holidaysMap[target] && sched)) {
+            leave++; 
+        } else if(sched && !pUids.has(uid)) { 
+            absent++; 
+            aList.push(usersMap[uid].name); 
+        }
     });
     
     document.getElementById('statTotalStaff').innerText = active;
@@ -788,7 +807,7 @@ window.viewPhoto = (url) => {
 };
 
 // ----------------------------------------------------
-// 🟢 月度报表与总工时计算 (Monthly Report) (已修复请假漏算和日期偏移)
+// 🟢 月度报表与总工时计算 (Monthly Report) 
 // ----------------------------------------------------
 
 window.openMonthlyReportModal = () => {
@@ -834,11 +853,9 @@ window.generateMonthlyReport = async () => {
         const daysInMonth = new Date(yyyy, mm, 0).getDate();
         const endDate = `${monthVal}-${daysInMonth}`; 
 
-        // 1. 获取当月打卡记录
         const q = query(collection(db, "attendance"), where("date", ">=", startDate), where("date", "<=", endDate));
         const snap = await getDocs(q);
 
-        // 2. 🟢 修复请假记录跨天计算
         const lq = query(collection(db, "leaves"), where("status", "==", "Approved"));
         const lSnap = await getDocs(lq);
         const userLeaves = {};
@@ -860,7 +877,6 @@ window.generateMonthlyReport = async () => {
             }
         });
 
-        // 3. 获取排班表，用于判断该天是否需要上班
         const sSnap = await getDocs(query(collection(db, "schedules"), where("userId", "==", usersMap[uid].docId), where("date", ">=", startDate), where("date", "<=", endDate)));
         const userSchedules = {};
         sSnap.forEach(d => { userSchedules[d.data().date] = true; });
@@ -887,6 +903,10 @@ window.generateMonthlyReport = async () => {
             const dayRec = dailyData[dateStr];
             const leaveType = userLeaves[dateStr];
             const hasSched = userSchedules[dateStr];
+            
+            // 🟢 核心修改 4：报表里的 Public Holiday 也需判断是否有排班
+            const isPH = !!holidaysMap[dateStr] && !!hasSched; 
+            const phName = holidaysMap[dateStr] || '';
 
             let inStr = '-';
             let outStr = '-';
@@ -921,7 +941,11 @@ window.generateMonthlyReport = async () => {
             }
 
             let inDisplay = '';
-            if (leaveType && inStr === '-') {
+            if (isPH && inStr === '-') {
+                inDisplay = `<span class="badge bg-warning text-dark border border-warning-subtle" title="${phName}"><i data-lucide="star" class="size-3 me-1"></i> PUBLIC HOLIDAY</span>`;
+            } else if (isPH && inStr !== '-') {
+                inDisplay = `<span class="badge bg-success-subtle text-success border border-success-subtle">${inStr}</span> <span class="badge bg-warning text-dark ms-1" title="${phName}">PH (3x)</span>`;
+            } else if (leaveType && inStr === '-') {
                 inDisplay = `<span class="badge bg-info text-dark border border-info-subtle">${leaveType.toUpperCase()}</span>`;
             } else if (dayRec && dayRec.in) {
                 inDisplay = `<span class="badge bg-success-subtle text-success border border-success-subtle">${inStr}</span>`;
