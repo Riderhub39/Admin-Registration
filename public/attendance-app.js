@@ -19,12 +19,13 @@ const auth = getAuth(app);
 let schedulesMap = {}; 
 let leavesMap = {};
 let usersMap = {};
-let holidaysMap = {}; // 缓存 Public Holidays
+let holidaysMap = {}; 
 let docIdToAuthMap = {}; 
 let attendanceData = []; 
 let currentMode = 'day'; 
 
 let photoModal, manualActionModal, editRecordModal, bulkVerifyModalInst, monthlyReportModalInst; 
+let importCsvModalInst; // 🟢 导入模态框实例
 let unsubscribeAttendance = null; 
 let unverifiedRecordsCache = []; 
 
@@ -42,6 +43,7 @@ export async function initAttendanceApp() {
         editRecordModal = new bootstrap.Modal(document.getElementById('editRecordModal'));
         bulkVerifyModalInst = new bootstrap.Modal(document.getElementById('bulkVerifyModal')); 
         monthlyReportModalInst = new bootstrap.Modal(document.getElementById('monthlyReportModal')); 
+        importCsvModalInst = new bootstrap.Modal(document.getElementById('importCsvModal')); // 🟢 初始化导入模态框
     }
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -97,7 +99,7 @@ async function fetchUsers() {
             status: d.status || 'active',
             docId: docSnap.id,
             authUid: d.authUid,
-            empCode: d.empCode 
+            empCode: d.personal?.empCode || d.empCode || d.staffId || "" 
         };
     });
 }
@@ -317,7 +319,13 @@ function renderDayUserCard(uid, records, container, targetDate, currentTodayStr)
                         ${user.photo ? `<img src="${user.photo}" class="staff-avatar">` : `<div class="staff-avatar">${user.name.charAt(0)}</div>`}
                         <span class="position-absolute top-0 start-100 translate-middle p-1 border border-light rounded-circle ${statusColor}"></span>
                     </div>
-                    <div><h6 class="fw-bold text-dark m-0 text-truncate" style="max-width:150px">${user.name}</h6><small class="text-muted">Shift: ${sched?formatTime(sched.start)+'-'+formatTime(sched.end):'Off'}</small></div>
+                    <div>
+                        <h6 class="fw-bold text-dark m-0 text-truncate" style="max-width:150px">${user.name}</h6>
+                        <div class="d-flex align-items-center mt-1">
+                            ${user.empCode ? `<span class="badge bg-light text-secondary border border-secondary-subtle me-2 px-1 py-0" style="font-size: 0.65rem;">${user.empCode}</span>` : ''}
+                            <small class="text-muted" style="font-size: 0.7rem;">Shift: ${sched?formatTime(sched.start)+'-'+formatTime(sched.end):'Off'}</small>
+                        </div>
+                    </div>
                 </div>
                 <div class="col-md-5"><div class="row text-center"><div class="col-6"><div class="stat-label">In</div><div class="stat-value font-monospace">${inT}</div></div><div class="col-6"><div class="stat-label">Out</div><div class="stat-value text-success font-monospace">${outT}</div></div></div></div>
                 <div class="col-md-3 text-end d-flex align-items-center justify-content-end gap-2">
@@ -359,7 +367,6 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
             if(r.session === 'Clock Out') hasOut = true; 
         });
 
-        // 🟢 核心修改：将 Clock In 打卡、Medical Leave、Annual Leave 和 有排班的 PH 都算作 Days Present
         let isML = leave && (leave.includes('Medical') || leave.includes('病假') || leave.includes('Cuti Sakit'));
         let isAL = leave && (leave.includes('Annual') || leave.includes('年假') || leave.includes('Cuti Tahunan'));
         
@@ -387,7 +394,24 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
 
     const card = document.createElement('div');
     card.className = 'user-card user-card-container'; card.setAttribute('data-name', user.name);
-    card.innerHTML = `<div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-month-${uid}"><div class="row align-items-center"><div class="col-4 d-flex align-items-center gap-3">${user.photo?`<img src="${user.photo}" class="staff-avatar">`:`<div class="staff-avatar">${user.name.charAt(0)}</div>`}<div><h6 class="fw-bold m-0">${user.name}</h6></div></div><div class="col-7 text-center"><div class="stat-label">Days Present</div><div class="stat-value">${present} / ${scheduledCount}</div></div><div class="col-1 text-end"><i data-lucide="chevron-down" class="text-muted chevron-icon"></i></div></div></div><div id="collapse-month-${uid}" class="collapse"><ul class="list-group list-group-flush">${rowsHtml}</ul></div>`;
+    card.innerHTML = `
+        <div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-month-${uid}">
+            <div class="row align-items-center">
+                <div class="col-4 d-flex align-items-center gap-3">
+                    ${user.photo?`<img src="${user.photo}" class="staff-avatar">`:`<div class="staff-avatar">${user.name.charAt(0)}</div>`}
+                    <div>
+                        <h6 class="fw-bold m-0">${user.name}</h6>
+                        ${user.empCode ? `<small class="text-muted fw-bold d-block mt-1" style="font-size: 0.65rem;"><span class="badge bg-light text-secondary border border-secondary-subtle px-1 py-0">${user.empCode}</span></small>` : ''}
+                    </div>
+                </div>
+                <div class="col-7 text-center">
+                    <div class="stat-label">Days Present</div>
+                    <div class="stat-value">${present} / ${scheduledCount}</div>
+                </div>
+                <div class="col-1 text-end"><i data-lucide="chevron-down" class="text-muted chevron-icon"></i></div>
+            </div>
+        </div>
+        <div id="collapse-month-${uid}" class="collapse"><ul class="list-group list-group-flush">${rowsHtml}</ul></div>`;
     container.appendChild(card);
     return true;
 }
@@ -811,7 +835,7 @@ window.viewPhoto = (url) => {
 };
 
 // ----------------------------------------------------
-// 🟢 月度报表与总工时计算 (Monthly Report) 
+// 🟢 月度报表与 CSV 导入
 // ----------------------------------------------------
 
 window.openMonthlyReportModal = () => {
@@ -822,7 +846,7 @@ window.openMonthlyReportModal = () => {
 
     userList.forEach(u => {
         if (u.status !== 'disabled') {
-           staffSelect.innerHTML += `<option value="${u.authUid || u.docId}">[${u.docId || 'N/A'}] ${u.name}</option>`;
+           staffSelect.innerHTML += `<option value="${u.authUid || u.docId}">[${u.empCode || 'N/A'}] ${u.name}</option>`;
         }
     });
 
@@ -1058,3 +1082,120 @@ export function exportMonthlyReportToExcel() {
     link.click();
     document.body.removeChild(link);
 }
+
+// 🟢 -------------------- CSV 导入逻辑 --------------------
+window.openImportCsvModal = () => {
+    const staffSelect = document.getElementById('importStaffSelect');
+    staffSelect.innerHTML = '<option value="">-- Select Staff --</option>';
+
+    const userList = Object.values(usersMap).sort((a, b) => a.name.localeCompare(b.name));
+
+    userList.forEach(u => {
+        if (u.status !== 'disabled') {
+           staffSelect.innerHTML += `<option value="${u.authUid || u.docId}">[${u.empCode || 'N/A'}] ${u.name}</option>`;
+        }
+    });
+
+    document.getElementById('importCsvFile').value = '';
+    importCsvModalInst.show();
+};
+
+window.processCsvImport = async () => {
+    const uid = document.getElementById('importStaffSelect').value;
+    const fileInput = document.getElementById('importCsvFile');
+
+    if (!uid || !fileInput.files.length) {
+        alert("Please select a staff member and a CSV file.");
+        return;
+    }
+
+    if (!confirm("Are you sure you want to import this attendance data?\n\nThis will add new records into the database. Make sure you don't accidentally duplicate data.")) {
+        return;
+    }
+
+    const file = fileInput.files[0];
+    const reader = new FileReader();
+
+    reader.onload = async function(e) {
+        showLoading();
+        try {
+            const text = e.target.result;
+            const lines = text.split(/\r?\n/);
+            let startIndex = -1;
+            
+            for(let i=0; i<lines.length; i++) {
+                if (lines[i].includes('"Date"') && lines[i].includes('"Clock In"')) {
+                    startIndex = i + 1;
+                    break;
+                }
+            }
+
+            if (startIndex === -1) {
+                throw new Error("Invalid CSV format. Please use the exact format exported from Monthly Report.");
+            }
+
+            const user = Object.values(usersMap).find(u => u.authUid === uid || u.docId === uid);
+            if (!user) throw new Error("Selected staff could not be found.");
+
+            const batch = writeBatch(db);
+            let opCount = 0;
+
+            for(let i=startIndex; i<lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line || line.includes('Total Working Hours')) break;
+
+                const cols = line.split(',').map(c => c.replace(/(^"|"$)/g, '').trim());
+                if (cols.length < 5) continue;
+
+                const dateStr = cols[0];
+                const clockIn = cols[1];
+                const breakOut = cols[2];
+                const breakIn = cols[3];
+                const clockOut = cols[4];
+
+                if (dateStr === 'Date' || dateStr === '') continue;
+
+                const pushRecord = (session, timeStr) => {
+                    if (timeStr && timeStr !== '-' && timeStr.toLowerCase() !== 'off' && timeStr.toLowerCase() !== 'missing') {
+                        const preciseDate = new Date(`${dateStr}T${timeStr}:00`);
+                        const newRef = doc(collection(db, "attendance"));
+                        batch.set(newRef, {
+                            uid: user.authUid || user.docId, 
+                            name: user.name,
+                            email: user.email || '',
+                            date: dateStr,
+                            session: session,
+                            timestamp: Timestamp.fromDate(preciseDate),
+                            verificationStatus: "Verified",
+                            address: "Imported from CSV"
+                        });
+                        opCount++;
+                    }
+                };
+
+                pushRecord("Clock In", clockIn);
+                pushRecord("Break Out", breakOut);
+                pushRecord("Break In", breakIn);
+                pushRecord("Clock Out", clockOut);
+            }
+
+            if (opCount > 0) {
+                await batch.commit();
+                importCsvModalInst.hide();
+                hideLoading();
+                showStatusAlert('statusMessage', `Successfully imported ${opCount} records!`, true);
+                window.loadData();
+            } else {
+                hideLoading();
+                showStatusAlert('statusMessage', "No valid time records found in the CSV.", false);
+            }
+
+        } catch (err) {
+            console.error(err);
+            hideLoading();
+            showStatusAlert('statusMessage', `Import failed: ${err.message}`, false);
+        }
+    };
+
+    reader.readAsText(file);
+};
