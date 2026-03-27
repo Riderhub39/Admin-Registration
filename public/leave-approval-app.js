@@ -16,6 +16,7 @@ const storage = getStorage(app);
 let fullHistoryList = [];
 let attachmentModal, rejectModal, editStatusModal, addLeaveModalInst;
 let usersMap = {}; 
+let holidaysMap = {}; // 🟢 缓存公共假期
 
 export async function initLeaveApprovalApp() {
     document.getElementById('loadingText').innerText = "Loading Requests...";
@@ -28,9 +29,19 @@ export async function initLeaveApprovalApp() {
         addLeaveModalInst = new bootstrap.Modal(document.getElementById('addLeaveModal'));
     }
 
+    await fetchHolidays(); // 🟢 加载公共假期
     await fetchUsers(); 
     listenToPendingLeaves();
     listenToLeaveHistory();
+}
+
+async function fetchHolidays() {
+    try {
+        const snap = await getDoc(doc(db, "settings", "holidays"));
+        if (snap.exists() && snap.data().holiday_list) {
+            snap.data().holiday_list.forEach(h => { holidaysMap[h.date] = h.name; });
+        }
+    } catch(e) { console.error("Error loading holidays:", e); }
 }
 
 async function fetchUsers() {
@@ -57,6 +68,31 @@ async function fetchUsers() {
             staffSelect.innerHTML += `<option value="${u.id}">${u.name}</option>`;
         }
     });
+}
+
+// 🟢 核心：计算这段请假期间，有多少天是“有排班且属于公共假期”的，这些天不该扣除假期余额
+async function getValidPhCount(uid, authUid, startDate, endDate) {
+    const searchIds = [uid];
+    if (authUid) searchIds.push(authUid);
+    
+    const schedSnap = await getDocs(query(collection(db, "schedules"), where("userId", "in", searchIds), where("date", ">=", startDate), where("date", "<=", endDate)));
+    const scheds = {};
+    schedSnap.forEach(d => scheds[d.data().date] = true);
+
+    let validPhCount = 0;
+    const [sY, sM, sD] = startDate.split('-');
+    const [eY, eM, eD] = endDate.split('-');
+    let curr = new Date(sY, sM - 1, sD);
+    const endD = new Date(eY, eM - 1, eD);
+
+    while(curr <= endD) {
+        const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
+        if (holidaysMap[dStr] && scheds[dStr]) {
+            validPhCount++;
+        }
+        curr.setDate(curr.getDate() + 1);
+    }
+    return validPhCount;
 }
 
 function listenToPendingLeaves() {
@@ -115,7 +151,7 @@ function listenToPendingLeaves() {
                             </div>
                             <div class="col-md-3 text-end">
                                 <div class="d-flex flex-column gap-2">
-                                    <button class="btn btn-success fw-bold shadow-sm" onclick="window.approveLeave('${data.id}', '${data.uid}', ${data.days}, '${data.type}')">
+                                    <button class="btn btn-success fw-bold shadow-sm" onclick="window.approveLeave('${data.id}', '${data.uid}', ${data.days}, '${data.type}', '${data.startDate}', '${data.endDate}')">
                                         <i data-lucide="check" class="size-4 me-1"></i> Approve
                                     </button>
                                     <button class="btn btn-outline-danger fw-bold" onclick="window.openRejectModal('${data.id}', '${data.uid}')">
@@ -175,9 +211,13 @@ window.filterHistory = function() {
         if (data.type === 'Medical Leave') typeClass = "text-danger";
         if (data.type === 'Unpaid Leave') typeClass = "text-warning text-dark";
 
-        // 🟢 传递 fileType 给查看函数
         const attachmentBtn = data.attachmentUrl 
             ? `<button class="btn btn-link btn-sm p-0 text-info text-decoration-none ms-3" onclick="window.viewAttachment('${data.attachmentUrl}', '${data.fileType || ''}')"><i data-lucide="paperclip" class="size-3 me-1"></i>Proof</button>`
+            : '';
+
+        // 🟢 追加扣除天数信息显示，让人知道有没有被 PH 抵消
+        const deductInfo = (data.deductibleDays !== undefined && data.deductibleDays < data.days) 
+            ? `<br><small class="text-warning">(-${data.deductibleDays} deducted)</small>` 
             : '';
 
         tbody.innerHTML += `
@@ -191,7 +231,7 @@ window.filterHistory = function() {
                     <div class="small text-dark">${formatDate(data.startDate)}</div>
                     <div class="small text-muted">to ${formatDate(data.endDate)}</div>
                 </td>
-                <td class="fw-bold">${data.days}</td>
+                <td class="fw-bold">${data.days} ${deductInfo}</td>
                 <td>
                     <span class="badge ${isApprove ? 'bg-success bg-opacity-10 text-success border border-success-subtle' : 'bg-danger bg-opacity-10 text-danger border border-danger-subtle'}">
                         ${data.status}
@@ -211,13 +251,17 @@ window.filterHistory = function() {
     if (window.lucide) window.lucide.createIcons();
 }
 
-window.approveLeave = async function(leaveId, targetUid, days, type) {
+window.approveLeave = async function(leaveId, targetUid, days, type, startDate, endDate) {
     if (!confirm(`Approve ${days} day(s) of ${type}?`)) return;
 
     showLoading();
     document.getElementById('loadingText').innerText = "Processing Approval...";
     
     try {
+        // 🟢 拦截计算：排除掉当中的 Public Holidays
+        const phOverlap = await getValidPhCount(targetUid, usersMap[targetUid]?.authUid, startDate, endDate);
+        const actualDeductibleDays = Math.max(0, days - phOverlap);
+
         await runTransaction(db, async (transaction) => {
             const leaveRef = doc(db, "leaves", leaveId);
             const userRef = doc(db, "users", targetUid);
@@ -226,10 +270,10 @@ window.approveLeave = async function(leaveId, targetUid, days, type) {
             const isAnnual = (type === 'Annual Leave' || type === '年假' || type === 'Cuti Tahunan');
             let currentBalance = 0;
 
-            if (isAnnual) {
+            if (isAnnual && actualDeductibleDays > 0) {
                 currentBalance = userDoc.data().leave_balance?.annual || 0;
-                if (currentBalance < days) throw new Error(`Insufficient Balance! Current: ${currentBalance}, Required: ${days}`);
-                transaction.update(userRef, { "leave_balance.annual": currentBalance - days });
+                if (currentBalance < actualDeductibleDays) throw new Error(`Insufficient Balance! Current: ${currentBalance}, Required to deduct: ${actualDeductibleDays}`);
+                transaction.update(userRef, { "leave_balance.annual": currentBalance - actualDeductibleDays });
             } 
             
             transaction.update(leaveRef, { 
@@ -237,16 +281,19 @@ window.approveLeave = async function(leaveId, targetUid, days, type) {
                 reviewedAt: serverTimestamp(), 
                 reviewer: auth.currentUser.email, 
                 isPayrollDeductible: (type === 'Unpaid Leave'), 
-                deductibleDays: days 
+                deductibleDays: actualDeductibleDays, // 🟢 记录实际扣除的余额/无薪天数
+                phOverlap: phOverlap // 🟢 记录这段时间含有多少天公共假期
             });
 
             logAdminAction(db, auth.currentUser, "APPROVE_LEAVE", targetUid, 
                 { leaveId: leaveId, oldBalance: currentBalance }, 
-                { daysDeducted: isAnnual ? days : 0, type: type }
+                { daysRequested: days, daysDeducted: actualDeductibleDays, phOverlap: phOverlap, type: type }
             );
         });
         hideLoading();
-        showStatusAlert('statusMessage', 'Leave approved successfully.', true);
+        let msg = 'Leave approved successfully.';
+        if (phOverlap > 0) msg += `\n(Overlapped with ${phOverlap} Public Holiday(s), balance deduction reduced.)`;
+        showStatusAlert('statusMessage', msg, true);
     } catch (e) { 
         console.error(e); 
         hideLoading();
@@ -310,17 +357,21 @@ window.submitAddLeave = async () => {
 
         document.getElementById('loadingText').innerText = "Saving Record...";
 
+        // 🟢 拦截计算：排除掉当中的 Public Holidays
+        const phOverlap = await getValidPhCount(staffId, user.authUid, startStr, endStr);
+        const actualDeductibleDays = Math.max(0, days - phOverlap);
+
         await runTransaction(db, async (transaction) => {
             const userRef = doc(db, "users", staffId);
             const userDoc = await transaction.get(userRef);
             
             let oldBalance = 0;
-            if (type === 'Annual Leave') {
+            if (type === 'Annual Leave' && actualDeductibleDays > 0) {
                 oldBalance = userDoc.data().leave_balance?.annual || 0;
-                if (oldBalance < days) {
-                    throw new Error(`Insufficient Annual Leave Balance! Current: ${oldBalance}, Required: ${days}`);
+                if (oldBalance < actualDeductibleDays) {
+                    throw new Error(`Insufficient Annual Leave Balance! Current: ${oldBalance}, Required to deduct: ${actualDeductibleDays}`);
                 }
-                transaction.update(userRef, { "leave_balance.annual": oldBalance - days });
+                transaction.update(userRef, { "leave_balance.annual": oldBalance - actualDeductibleDays });
             }
 
             const newLeaveRef = doc(collection(db, "leaves"));
@@ -333,6 +384,8 @@ window.submitAddLeave = async () => {
                 startDate: startStr,
                 endDate: endStr,
                 days: days,
+                deductibleDays: actualDeductibleDays, // 🟢 记录
+                phOverlap: phOverlap, // 🟢 记录
                 reason: reason,
                 status: 'Approved',
                 appliedAt: serverTimestamp(),
@@ -356,7 +409,9 @@ window.submitAddLeave = async () => {
 
         addLeaveModalInst.hide();
         hideLoading();
-        showStatusAlert('statusMessage', 'Leave manually added and approved successfully.', true);
+        let msg = 'Leave manually added and approved successfully.';
+        if (phOverlap > 0) msg += `\n(Overlapped with ${phOverlap} Public Holiday(s), balance deduction reduced.)`;
+        showStatusAlert('statusMessage', msg, true);
     } catch (e) {
         console.error(e);
         hideLoading();
@@ -364,13 +419,11 @@ window.submitAddLeave = async () => {
     }
 };
 
-// 🟢 核心修复：支持预览 PDF 和图片
 window.viewAttachment = function(url, fileType = '') {
     const img = document.getElementById('attachmentImg');
     const msg = document.getElementById('noAttachmentMsg');
     const modalBody = img.parentElement;
 
-    // 清理之前插入的 PDF iframe 和按钮
     const oldIframe = document.getElementById('attachmentPdf');
     if (oldIframe) oldIframe.remove();
     const oldBtn = document.getElementById('attachmentPdfBtn');
@@ -378,14 +431,10 @@ window.viewAttachment = function(url, fileType = '') {
 
     if(url) { 
         msg.classList.add('d-none'); 
-
-        // 判断是否为 PDF (通过扩展名或者链接内容判断)
         const isPdf = fileType.toLowerCase() === 'pdf' || url.toLowerCase().includes('.pdf?alt=media');
 
         if (isPdf) {
             img.classList.add('d-none');
-            
-            // 为桌面端嵌入一个 iframe
             const iframe = document.createElement('iframe');
             iframe.id = 'attachmentPdf';
             iframe.src = url;
@@ -394,7 +443,6 @@ window.viewAttachment = function(url, fileType = '') {
             iframe.style.border = 'none';
             modalBody.appendChild(iframe);
 
-            // 为移动端提供一个备用跳转按钮（很多手机浏览器会拦截 iframe 里的 PDF）
             const btn = document.createElement('a');
             btn.id = 'attachmentPdfBtn';
             btn.href = url;
@@ -405,7 +453,6 @@ window.viewAttachment = function(url, fileType = '') {
             
             if (window.lucide) window.lucide.createIcons();
         } else {
-            // 图片则直接显示在 img 标签
             img.src = url; 
             img.classList.remove('d-none'); 
         }
@@ -482,25 +529,35 @@ window.submitStatusChange = async function() {
             
             const isAnnual = (leaveData.type === 'Annual Leave' || leaveData.type === '年假' || leaveData.type === 'Cuti Tahunan');
 
+            // 🟢 如果旧数据没有存 deductibleDays，我们在这补算一次
+            let actualDeductibleDays = leaveData.deductibleDays;
+            if (actualDeductibleDays === undefined) {
+                const phOverlap = await getValidPhCount(targetUid, usersMap[targetUid]?.authUid, leaveData.startDate, leaveData.endDate);
+                actualDeductibleDays = Math.max(0, leaveData.days - phOverlap);
+            }
+
             if (leaveData.status === 'Approved' && newStatus !== 'Approved' && isAnnual) {
                 const userRef = doc(db, "users", targetUid);
                 const userDoc = await transaction.get(userRef);
                 const currentBal = userDoc.data().leave_balance?.annual || 0;
-                transaction.update(userRef, { "leave_balance.annual": currentBal + leaveData.days });
+                // 退还实际扣除的额度
+                transaction.update(userRef, { "leave_balance.annual": currentBal + actualDeductibleDays });
             }
 
             if (leaveData.status !== 'Approved' && newStatus === 'Approved' && isAnnual) {
                 const userRef = doc(db, "users", targetUid);
                 const userDoc = await transaction.get(userRef);
                 const currentBal = userDoc.data().leave_balance?.annual || 0;
-                if (currentBal < leaveData.days) throw new Error("Insufficient Balance for this reversal!");
-                transaction.update(userRef, { "leave_balance.annual": currentBal - leaveData.days });
+                if (currentBal < actualDeductibleDays) throw new Error("Insufficient Balance for this reversal!");
+                // 再次扣除实际应该扣除的额度
+                transaction.update(userRef, { "leave_balance.annual": currentBal - actualDeductibleDays });
             }
 
             let updatePayload = {
                 status: newStatus,
                 reviewedAt: serverTimestamp(),
-                reviewer: auth.currentUser.email
+                reviewer: auth.currentUser.email,
+                deductibleDays: actualDeductibleDays // 保存回数据库，防止老数据没有这个字段
             };
             
             if (newStatus === 'Rejected') updatePayload.rejectionReason = reason;

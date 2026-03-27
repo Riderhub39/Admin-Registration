@@ -382,8 +382,28 @@ async function calculateAttendanceStats(uid, monthStr) {
         }
     });
 
+    // 🟢 加载所有请假记录
+    const userLeaves = {};
+    myLeavesSnap.forEach(d => {
+        const l = d.data();
+        const [sY, sM, sD] = l.startDate.split('-');
+        const [eY, eM, eD] = l.endDate.split('-');
+        let curr = new Date(sY, sM - 1, sD);
+        const endD = new Date(eY, eM - 1, eD);
+
+        while(curr <= endD) {
+            const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
+            if (dStr >= startDate && dStr <= endDate) {
+                userLeaves[dStr] = l.type;
+            }
+            curr.setDate(curr.getDate() + 1);
+        }
+    });
+
     let actWorkedDays = 0, totalWorkMs = 0, totalLateMs = 0, lateCount = 0; 
+    let annualLeaveCount = 0, medicalLeaveCount = 0, unpaidLeaveCount = 0;
     let phUnworkedDays = 0, phWorkedDays = 0, phWorkedMs = 0;
+    
     const satMulti = parseFloat(globalSettings.satMultiplier || 1.0);
 
     const toDateObj = (t, dateStr) => {
@@ -393,16 +413,20 @@ async function calculateAttendanceStats(uid, monthStr) {
         return new Date(t);
     };
 
-    // 🟢 核心：逐日分析，确保 PH 的“有排班才生效”逻辑
+    // 🟢 核心按天计算逻辑
     for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
-        const isPH = !!holidaysMap[dateStr];
         const records = attMap[dateStr];
         const sched = mySchedules[dateStr];
         const isScheduled = !!sched;
+        const isPH = !!holidaysMap[dateStr];
         const validPH = isPH && isScheduled; // 必须有排班的假期才算数
 
+        // 提取当天的请假信息
+        const leaveType = userLeaves[dateStr];
+
         if (records && records.in) {
+            // 当天有打卡记录 -> 计算为已工作
             const isSat = new Date(dateStr).getDay() === 6;
             actWorkedDays += isSat ? satMulti : 1;
 
@@ -432,34 +456,16 @@ async function calculateAttendanceStats(uid, monthStr) {
                 phWorkedMs += (workMsThisDay > 0 ? workMsThisDay : 0);
             }
         } else {
-            // 没有打卡
+            // 当天没打卡 -> 检查是否有公共假期优先，如果没有再检查请假
             if (validPH) {
-                phUnworkedDays++; // 有排班的假期且没打卡，算 Paid PH Off
+                phUnworkedDays++; // 有排班的假期且没打卡，算 Paid PH Off，忽略任何其他 Leave 申请
+            } else if (leaveType) {
+                if (leaveType.includes('Annual') || leaveType.includes('年假') || leaveType.includes('Cuti Tahunan')) annualLeaveCount++;
+                else if (leaveType.includes('Medical') || leaveType.includes('病假') || leaveType.includes('Cuti Sakit')) medicalLeaveCount++;
+                else unpaidLeaveCount++;
             }
         }
     }
-
-    let annualLeaveCount = 0, medicalLeaveCount = 0, unpaidLeaveCount = 0;
-
-    myLeavesSnap.forEach(d => {
-        const l = d.data();
-        const [sY, sM, sD] = l.startDate.split('-');
-        const [eY, eM, eD] = l.endDate.split('-');
-        let curr = new Date(sY, sM - 1, sD);
-        const endD = new Date(eY, eM - 1, eD);
-
-        while(curr <= endD) {
-            const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
-            // 🟢 如果当天是没有打卡的请假，且不是有效的公共假期，则累加请假天数
-            const validPH = !!holidaysMap[dStr] && !!mySchedules[dStr];
-            if(dStr >= startDate && dStr <= endDate && !attMap[dStr]?.in && !validPH) {
-                if (l.type === 'Annual Leave' || l.type === '年假' || l.type === 'Cuti Tahunan') annualLeaveCount++;
-                else if (l.type === 'Medical Leave' || l.type === '病假' || l.type === 'Cuti Sakit') medicalLeaveCount++;
-                else unpaidLeaveCount++; 
-            }
-            curr.setDate(curr.getDate() + 1);
-        }
-    });
 
     const totalDecimalHrs = (totalWorkMs / 3600000).toFixed(2);
     const formattedTotalHrs = msToHM(totalWorkMs);
@@ -646,7 +652,8 @@ window.savePayslipForm = async () => {
             mode: globalSettings.calcMode
         },
         gross: grossTotal, net: net, status: status,
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
+        createdAt: serverTimestamp() 
     };
 
     const payslipId = `${uid}_${month}`; 
@@ -838,6 +845,8 @@ window.openEditModal = (id) => {
         document.getElementById('metaAnnualLeave').value = d.attendanceStats.annualLeave || 0;
         document.getElementById('metaMedicalLeave').value = d.attendanceStats.medicalLeave || 0;
         document.getElementById('metaUnpaidLeave').value = d.attendanceStats.unpaidLeave || 0;
+        document.getElementById('metaPHUnworked').value = d.attendanceStats.phUnworked || 0;
+        document.getElementById('metaPHWorked').value = d.attendanceStats.phWorked || 0;
         
         const al = parseFloat(d.attendanceStats.annualLeave) || 0;
         const ml = parseFloat(d.attendanceStats.medicalLeave) || 0;
@@ -845,8 +854,6 @@ window.openEditModal = (id) => {
 
         const phOff = parseFloat(d.attendanceStats.phUnworked) || 0;
         const phWork = parseFloat(d.attendanceStats.phWorked) || 0;
-        document.getElementById('metaPHUnworked').value = phOff;
-        document.getElementById('metaPHWorked').value = phWork;
         
         document.getElementById('dispPaidLeave').innerHTML = `${totalPaidLeave} <span style="font-size:0.6rem">Days (AL:${al} ML:${ml})</span>`;
         document.getElementById('dispActDays').innerHTML = `${d.attendanceStats.actDays || 0} <span style="font-size:0.6rem">Days</span>`;
@@ -1116,13 +1123,14 @@ window.generateAllDrafts = async () => {
             const myAtt = searchIds.map(sid => attendances[sid] || {}).reduce((acc, curr) => ({...acc, ...curr}), {});
             const mySchedsList = searchIds.map(sid => schedules[sid] || []).flat().reduce((acc, s) => { acc[s.date] = s; return acc; }, {});
 
+            // 🟢 核心按天计算逻辑
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
-                const isPH = !!holidaysMap[dateStr];
                 const records = myAtt[dateStr];
                 const sched = mySchedsList[dateStr];
                 const isScheduled = !!sched;
-                const validPH = isPH && isScheduled; // 🟢 只有有排班的假期才算数
+                const isPH = !!holidaysMap[dateStr];
+                const validPH = isPH && isScheduled; // 必须有排班的假期才算数
 
                 if (records && records.in) {
                     const isSat = new Date(dateStr).getDay() === 6;
@@ -1156,7 +1164,7 @@ window.generateAllDrafts = async () => {
                     }
                 } else {
                     if (validPH) {
-                        phUnworkedDays++;
+                        phUnworkedDays++; 
                     }
                 }
             }
@@ -1171,6 +1179,8 @@ window.generateAllDrafts = async () => {
 
                     while(curr <= endD) {
                         const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
+                        
+                        // 🟢 忽略有效的公共假期
                         const validPH = !!holidaysMap[dStr] && !!mySchedsList[dStr];
                         if(dStr >= startDate && dStr <= endDate && !myAtt[dStr]?.in && !validPH) {
                             if (l.type === 'Annual Leave' || l.type === '年假' || l.type === 'Cuti Tahunan') annualLeaveCount++;

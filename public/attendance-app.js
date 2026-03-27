@@ -97,7 +97,6 @@ async function fetchUsers() {
             status: d.status || 'active',
             docId: docSnap.id,
             authUid: d.authUid,
-            // 🟢 优化：抓取最新的工号结构
             empCode: d.personal?.empCode || d.empCode || d.staffId || "" 
         };
     });
@@ -265,8 +264,10 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
 function renderDayUserCard(uid, records, container, targetDate, currentTodayStr) {
     const user = usersMap[uid];
     const sched = schedulesMap[uid + "_" + targetDate];
-    const leave = leavesMap[uid + "_" + targetDate];
+    // 🟢 如果这天是公共假期且有排班，我们直接忽略这一天的请假申请，强制视为有效 PH
     const isPH = !!holidaysMap[targetDate] && !!sched; 
+    let leave = leavesMap[uid + "_" + targetDate];
+    if (isPH) leave = null; // 屏蔽请假
     
     if (!sched && records.length === 0 && !leave && !isPH) return false;
 
@@ -310,7 +311,6 @@ function renderDayUserCard(uid, records, container, targetDate, currentTodayStr)
         statusLabel += `<span class="badge bg-warning text-dark ms-1">PH (3x)</span>`;
     }
 
-    // 🟢 UI 更新：在姓名下方加入工号和班次时间
     card.innerHTML = `
         <div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-${uid}">
             <div class="row align-items-center">
@@ -354,8 +354,11 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
     for(let d=1; d<=days; d++) {
         const dateStr = `${y}-${m}-${d.toString().padStart(2,'0')}`;
         const sched = schedulesMap[uid + "_" + dateStr];
-        const leave = leavesMap[uid + "_" + dateStr];
         const isPH = !!holidaysMap[dateStr] && !!sched; 
+        
+        let leave = leavesMap[uid + "_" + dateStr];
+        if (isPH) leave = null; // 🟢 如果是 PH，直接屏蔽当天的请假
+
         const dayRecords = allRecords.filter(r => r.date === dateStr && r.verificationStatus === 'Verified');
 
         if (sched) scheduledCount++;
@@ -394,7 +397,6 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
 
     const card = document.createElement('div');
     card.className = 'user-card user-card-container'; card.setAttribute('data-name', user.name);
-    // 🟢 UI 更新：在 Month View 姓名下方也加上工号
     card.innerHTML = `
         <div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-month-${uid}">
             <div class="row align-items-center">
@@ -443,7 +445,8 @@ function renderDashboard(data, pUids, missingOutData = []) {
         if(usersMap[uid].status === 'disabled') return;
         active++;
         const sched = schedulesMap[uid+"_"+target];
-        if(leavesMap[uid+"_"+target] || (holidaysMap[target] && sched)) {
+        // 🟢 如果是假期且有排班，优先判定为假期（等同 Leave 属性，不标红 Absent）
+        if((holidaysMap[target] && sched) || leavesMap[uid+"_"+target]) {
             leave++; 
         } else if(sched && !pUids.has(uid)) { 
             absent++; 
@@ -930,11 +933,14 @@ window.generateMonthlyReport = async () => {
         for (let d = 1; d <= daysInMonth; d++) {
             const dateStr = `${yyyy}-${mm}-${String(d).padStart(2, '0')}`;
             const dayRec = dailyData[dateStr];
-            const leaveType = userLeaves[dateStr];
-            const hasSched = userSchedules[dateStr];
             
+            const hasSched = userSchedules[dateStr];
             const isPH = !!holidaysMap[dateStr] && !!hasSched; 
             const phName = holidaysMap[dateStr] || '';
+            
+            // 🟢 核心修复：如果是有效的公共假期，则无视所有的个人请假
+            let leaveType = leavesMap[uid + "_" + dateStr] || userLeaves[dateStr];
+            if (isPH) leaveType = null; 
 
             let inStr = '-';
             let outStr = '-';
