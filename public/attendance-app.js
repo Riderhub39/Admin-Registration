@@ -19,13 +19,12 @@ const auth = getAuth(app);
 let schedulesMap = {}; 
 let leavesMap = {};
 let usersMap = {};
-let holidaysMap = {}; 
+let holidaysMap = {}; // 缓存 Public Holidays
 let docIdToAuthMap = {}; 
 let attendanceData = []; 
 let currentMode = 'day'; 
 
 let photoModal, manualActionModal, editRecordModal, bulkVerifyModalInst, monthlyReportModalInst; 
-let importCsvModalInst; // 🟢 导入模态框实例
 let unsubscribeAttendance = null; 
 let unverifiedRecordsCache = []; 
 
@@ -43,7 +42,6 @@ export async function initAttendanceApp() {
         editRecordModal = new bootstrap.Modal(document.getElementById('editRecordModal'));
         bulkVerifyModalInst = new bootstrap.Modal(document.getElementById('bulkVerifyModal')); 
         monthlyReportModalInst = new bootstrap.Modal(document.getElementById('monthlyReportModal')); 
-        importCsvModalInst = new bootstrap.Modal(document.getElementById('importCsvModal')); // 🟢 初始化导入模态框
     }
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -99,6 +97,7 @@ async function fetchUsers() {
             status: d.status || 'active',
             docId: docSnap.id,
             authUid: d.authUid,
+            // 🟢 优化：抓取最新的工号结构
             empCode: d.personal?.empCode || d.empCode || d.staffId || "" 
         };
     });
@@ -311,6 +310,7 @@ function renderDayUserCard(uid, records, container, targetDate, currentTodayStr)
         statusLabel += `<span class="badge bg-warning text-dark ms-1">PH (3x)</span>`;
     }
 
+    // 🟢 UI 更新：在姓名下方加入工号和班次时间
     card.innerHTML = `
         <div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-${uid}">
             <div class="row align-items-center">
@@ -394,6 +394,7 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
 
     const card = document.createElement('div');
     card.className = 'user-card user-card-container'; card.setAttribute('data-name', user.name);
+    // 🟢 UI 更新：在 Month View 姓名下方也加上工号
     card.innerHTML = `
         <div class="card-header-custom collapsed" data-bs-toggle="collapse" data-bs-target="#collapse-month-${uid}">
             <div class="row align-items-center">
@@ -835,7 +836,7 @@ window.viewPhoto = (url) => {
 };
 
 // ----------------------------------------------------
-// 🟢 月度报表与 CSV 导入
+// 🟢 月度报表与总工时计算 (Monthly Report) 
 // ----------------------------------------------------
 
 window.openMonthlyReportModal = () => {
@@ -846,7 +847,7 @@ window.openMonthlyReportModal = () => {
 
     userList.forEach(u => {
         if (u.status !== 'disabled') {
-           staffSelect.innerHTML += `<option value="${u.authUid || u.docId}">[${u.empCode || 'N/A'}] ${u.name}</option>`;
+           staffSelect.innerHTML += `<option value="${u.authUid || u.docId}">[${u.docId || 'N/A'}] ${u.name}</option>`;
         }
     });
 
@@ -1082,120 +1083,3 @@ export function exportMonthlyReportToExcel() {
     link.click();
     document.body.removeChild(link);
 }
-
-// 🟢 -------------------- CSV 导入逻辑 --------------------
-window.openImportCsvModal = () => {
-    const staffSelect = document.getElementById('importStaffSelect');
-    staffSelect.innerHTML = '<option value="">-- Select Staff --</option>';
-
-    const userList = Object.values(usersMap).sort((a, b) => a.name.localeCompare(b.name));
-
-    userList.forEach(u => {
-        if (u.status !== 'disabled') {
-           staffSelect.innerHTML += `<option value="${u.authUid || u.docId}">[${u.empCode || 'N/A'}] ${u.name}</option>`;
-        }
-    });
-
-    document.getElementById('importCsvFile').value = '';
-    importCsvModalInst.show();
-};
-
-window.processCsvImport = async () => {
-    const uid = document.getElementById('importStaffSelect').value;
-    const fileInput = document.getElementById('importCsvFile');
-
-    if (!uid || !fileInput.files.length) {
-        alert("Please select a staff member and a CSV file.");
-        return;
-    }
-
-    if (!confirm("Are you sure you want to import this attendance data?\n\nThis will add new records into the database. Make sure you don't accidentally duplicate data.")) {
-        return;
-    }
-
-    const file = fileInput.files[0];
-    const reader = new FileReader();
-
-    reader.onload = async function(e) {
-        showLoading();
-        try {
-            const text = e.target.result;
-            const lines = text.split(/\r?\n/);
-            let startIndex = -1;
-            
-            for(let i=0; i<lines.length; i++) {
-                if (lines[i].includes('"Date"') && lines[i].includes('"Clock In"')) {
-                    startIndex = i + 1;
-                    break;
-                }
-            }
-
-            if (startIndex === -1) {
-                throw new Error("Invalid CSV format. Please use the exact format exported from Monthly Report.");
-            }
-
-            const user = Object.values(usersMap).find(u => u.authUid === uid || u.docId === uid);
-            if (!user) throw new Error("Selected staff could not be found.");
-
-            const batch = writeBatch(db);
-            let opCount = 0;
-
-            for(let i=startIndex; i<lines.length; i++) {
-                const line = lines[i].trim();
-                if (!line || line.includes('Total Working Hours')) break;
-
-                const cols = line.split(',').map(c => c.replace(/(^"|"$)/g, '').trim());
-                if (cols.length < 5) continue;
-
-                const dateStr = cols[0];
-                const clockIn = cols[1];
-                const breakOut = cols[2];
-                const breakIn = cols[3];
-                const clockOut = cols[4];
-
-                if (dateStr === 'Date' || dateStr === '') continue;
-
-                const pushRecord = (session, timeStr) => {
-                    if (timeStr && timeStr !== '-' && timeStr.toLowerCase() !== 'off' && timeStr.toLowerCase() !== 'missing') {
-                        const preciseDate = new Date(`${dateStr}T${timeStr}:00`);
-                        const newRef = doc(collection(db, "attendance"));
-                        batch.set(newRef, {
-                            uid: user.authUid || user.docId, 
-                            name: user.name,
-                            email: user.email || '',
-                            date: dateStr,
-                            session: session,
-                            timestamp: Timestamp.fromDate(preciseDate),
-                            verificationStatus: "Verified",
-                            address: "Imported from CSV"
-                        });
-                        opCount++;
-                    }
-                };
-
-                pushRecord("Clock In", clockIn);
-                pushRecord("Break Out", breakOut);
-                pushRecord("Break In", breakIn);
-                pushRecord("Clock Out", clockOut);
-            }
-
-            if (opCount > 0) {
-                await batch.commit();
-                importCsvModalInst.hide();
-                hideLoading();
-                showStatusAlert('statusMessage', `Successfully imported ${opCount} records!`, true);
-                window.loadData();
-            } else {
-                hideLoading();
-                showStatusAlert('statusMessage', "No valid time records found in the CSV.", false);
-            }
-
-        } catch (err) {
-            console.error(err);
-            hideLoading();
-            showStatusAlert('statusMessage', `Import failed: ${err.message}`, false);
-        }
-    };
-
-    reader.readAsText(file);
-};

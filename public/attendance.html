@@ -74,10 +74,6 @@
                         <i data-lucide="check-circle" class="size-4"></i> Bulk Verify
                     </button>
 
-                    <button class="btn btn-outline-info fw-bold d-flex align-items-center gap-2 shadow-sm" onclick="window.openImportCsvModal()">
-                        <i data-lucide="upload" class="size-4"></i> Import CSV
-                    </button>
-
                     <button class="btn btn-primary fw-bold shadow-sm d-flex align-items-center gap-2" onclick="window.openMonthlyReportModal()">
                         <i data-lucide="calendar-days" class="size-4"></i> Monthly Report
                     </button>
@@ -258,7 +254,8 @@
                                     <th>Clock Out</th>
                                 </tr>
                             </thead>
-                            <tbody id="bulkVerifyListBody"></tbody>
+                            <tbody id="bulkVerifyListBody">
+                                </tbody>
                         </table>
                     </div>
                 </div>
@@ -328,32 +325,6 @@
                         <i data-lucide="file-spreadsheet" class="size-4 me-2"></i> Export to Excel
                     </button>
                     <button type="button" class="btn btn-secondary fw-bold px-4 shadow-sm" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="importCsvModal" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0 shadow">
-                <div class="modal-header bg-info bg-opacity-10 border-0">
-                    <h6 class="modal-title fw-bold text-info"><i data-lucide="upload-cloud" class="size-4 me-2"></i>Import Attendance (CSV)</h6>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body p-4">
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold text-dark">Target Employee</label>
-                        <select id="importStaffSelect" class="form-select border-info fw-bold"></select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold text-dark">CSV File</label>
-                        <input type="file" id="importCsvFile" class="form-control border-info" accept=".csv">
-                        <div class="form-text mt-2" style="font-size:0.75rem;">File must match the exported Monthly Report format. Existing records for the imported dates will not be deleted, but new punches will be added.</div>
-                    </div>
-                </div>
-                <div class="modal-footer bg-light border-0">
-                    <button class="btn btn-light fw-bold" data-bs-dismiss="modal">Cancel</button>
-                    <button class="btn btn-info text-white fw-bold shadow-sm px-4" onclick="window.processCsvImport()">Import Data</button>
                 </div>
             </div>
         </div>
