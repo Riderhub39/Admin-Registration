@@ -265,7 +265,6 @@ function renderDayUserCard(uid, records, container, targetDate, currentTodayStr)
     const user = usersMap[uid];
     const sched = schedulesMap[uid + "_" + targetDate];
     const leave = leavesMap[uid + "_" + targetDate];
-    // 🟢 核心修改 1：只有当天有排班，PH 才会生效被展示
     const isPH = !!holidaysMap[targetDate] && !!sched; 
     
     if (!sched && records.length === 0 && !leave && !isPH) return false;
@@ -348,7 +347,6 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
         const dateStr = `${y}-${m}-${d.toString().padStart(2,'0')}`;
         const sched = schedulesMap[uid + "_" + dateStr];
         const leave = leavesMap[uid + "_" + dateStr];
-        // 🟢 核心修改 2：只有排班的情况下，公共假期才算有效 PH
         const isPH = !!holidaysMap[dateStr] && !!sched; 
         const dayRecords = allRecords.filter(r => r.date === dateStr && r.verificationStatus === 'Verified');
 
@@ -360,7 +358,14 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
             if(r.session === 'Clock In') inT = formatTime(r.timestamp); 
             if(r.session === 'Clock Out') hasOut = true; 
         });
-        if(inT) present++;
+
+        // 🟢 核心修改：将 Clock In 打卡、Medical Leave、Annual Leave 和 有排班的 PH 都算作 Days Present
+        let isML = leave && (leave.includes('Medical') || leave.includes('病假') || leave.includes('Cuti Sakit'));
+        let isAL = leave && (leave.includes('Annual') || leave.includes('年假') || leave.includes('Cuti Tahunan'));
+        
+        if(inT || isPH || isML || isAL) {
+            present++;
+        }
 
         if (dayRecords.length > 0 || sched || leave || isPH) {
             let statusHtml = '';
@@ -413,7 +418,6 @@ function renderDashboard(data, pUids, missingOutData = []) {
         if(usersMap[uid].status === 'disabled') return;
         active++;
         const sched = schedulesMap[uid+"_"+target];
-        // 🟢 核心修改 3：Dashboard 统计逻辑：如果有排班而且当天是假期，或者有请假，才算 Leave
         if(leavesMap[uid+"_"+target] || (holidaysMap[target] && sched)) {
             leave++; 
         } else if(sched && !pUids.has(uid)) { 
@@ -904,7 +908,6 @@ window.generateMonthlyReport = async () => {
             const leaveType = userLeaves[dateStr];
             const hasSched = userSchedules[dateStr];
             
-            // 🟢 核心修改 4：报表里的 Public Holiday 也需判断是否有排班
             const isPH = !!holidaysMap[dateStr] && !!hasSched; 
             const phName = holidaysMap[dateStr] || '';
 
