@@ -401,9 +401,7 @@ async function calculateAttendanceStats(uid, monthStr) {
     });
 
     let actWorkedDays = 0, totalWorkMs = 0, totalLateMs = 0, lateCount = 0; 
-    let annualLeaveCount = 0, medicalLeaveCount = 0, unpaidLeaveCount = 0;
     let phUnworkedDays = 0, phWorkedDays = 0, phWorkedMs = 0;
-    
     const satMulti = parseFloat(globalSettings.satMultiplier || 1.0);
 
     const toDateObj = (t, dateStr) => {
@@ -421,9 +419,6 @@ async function calculateAttendanceStats(uid, monthStr) {
         const isScheduled = !!sched;
         const isPH = !!holidaysMap[dateStr];
         const validPH = isPH && isScheduled; // 必须有排班的假期才算数
-
-        // 提取当天的请假信息
-        const leaveType = userLeaves[dateStr];
 
         if (records && records.in) {
             // 当天有打卡记录 -> 计算为已工作
@@ -448,6 +443,20 @@ async function calculateAttendanceStats(uid, monthStr) {
                     const breakDur = bIn - bOut;
                     if (breakDur > 0) workMsThisDay -= breakDur;
                 }
+
+                // 🟢 封顶逻辑 (Capping to Scheduled Hours)
+                if (sched && sched.start && sched.end) {
+                    const sStart = toDateObj(sched.start, dateStr);
+                    const sEnd = toDateObj(sched.end, dateStr);
+                    let schedDurMs = sEnd - sStart;
+                    if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
+
+                    // 如果实际打卡工作时间大于排班标准时间，则强制截断为排班时间
+                    if (schedDurMs > 0 && workMsThisDay > schedDurMs) {
+                        workMsThisDay = schedDurMs;
+                    }
+                }
+
                 if(workMsThisDay > 0) totalWorkMs += workMsThisDay;
             }
 
@@ -456,16 +465,34 @@ async function calculateAttendanceStats(uid, monthStr) {
                 phWorkedMs += (workMsThisDay > 0 ? workMsThisDay : 0);
             }
         } else {
-            // 当天没打卡 -> 检查是否有公共假期优先，如果没有再检查请假
+            // 当天没打卡 -> 检查是否有公共假期优先
             if (validPH) {
                 phUnworkedDays++; // 有排班的假期且没打卡，算 Paid PH Off，忽略任何其他 Leave 申请
-            } else if (leaveType) {
-                if (leaveType.includes('Annual') || leaveType.includes('年假') || leaveType.includes('Cuti Tahunan')) annualLeaveCount++;
-                else if (leaveType.includes('Medical') || leaveType.includes('病假') || leaveType.includes('Cuti Sakit')) medicalLeaveCount++;
-                else unpaidLeaveCount++;
             }
         }
     }
+
+    let annualLeaveCount = 0, medicalLeaveCount = 0, unpaidLeaveCount = 0;
+
+    myLeavesSnap.forEach(d => {
+        const l = d.data();
+        const [sY, sM, sD] = l.startDate.split('-');
+        const [eY, eM, eD] = l.endDate.split('-');
+        let curr = new Date(sY, sM - 1, sD);
+        const endD = new Date(eY, eM - 1, eD);
+
+        while(curr <= endD) {
+            const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
+            // 🟢 如果当天是没有打卡的请假，且不是有效的公共假期，则累加请假天数
+            const validPH = !!holidaysMap[dStr] && !!mySchedules[dStr];
+            if(dStr >= startDate && dStr <= endDate && !attMap[dStr]?.in && !validPH) {
+                if (l.type === 'Annual Leave' || l.type === '年假' || l.type === 'Cuti Tahunan') annualLeaveCount++;
+                else if (l.type === 'Medical Leave' || l.type === '病假' || l.type === 'Cuti Sakit') medicalLeaveCount++;
+                else unpaidLeaveCount++; 
+            }
+            curr.setDate(curr.getDate() + 1);
+        }
+    });
 
     const totalDecimalHrs = (totalWorkMs / 3600000).toFixed(2);
     const formattedTotalHrs = msToHM(totalWorkMs);
@@ -652,8 +679,7 @@ window.savePayslipForm = async () => {
             mode: globalSettings.calcMode
         },
         gross: grossTotal, net: net, status: status,
-        updatedAt: serverTimestamp(),
-        createdAt: serverTimestamp() 
+        updatedAt: serverTimestamp()
     };
 
     const payslipId = `${uid}_${month}`; 
@@ -1155,6 +1181,18 @@ window.generateAllDrafts = async () => {
                             if (breakDur > 0) workMsThisDay -= breakDur;
                         }
 
+                        // 🟢 新增：工时上限逻辑 (Capping to Scheduled Hours)
+                        if (sched && sched.start && sched.end) {
+                            const sStart = toDateObj(sched.start, dateStr);
+                            const sEnd = toDateObj(sched.end, dateStr);
+                            let schedDurMs = sEnd - sStart;
+                            if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
+
+                            if (schedDurMs > 0 && workMsThisDay > schedDurMs) {
+                                workMsThisDay = schedDurMs;
+                            }
+                        }
+
                         if(workMsThisDay > 0) totalWorkMs += workMsThisDay;
                     }
                     
@@ -1163,8 +1201,9 @@ window.generateAllDrafts = async () => {
                         phWorkedMs += (workMsThisDay > 0 ? workMsThisDay : 0);
                     }
                 } else {
+                    // 没有打卡
                     if (validPH) {
-                        phUnworkedDays++; 
+                        phUnworkedDays++; // 有排班的假期且没打卡，算 Paid PH Off，忽略任何其他 Leave 申请
                     }
                 }
             }

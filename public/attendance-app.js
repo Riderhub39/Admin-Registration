@@ -1,5 +1,3 @@
-// attendance-app.js
-
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { 
     getFirestore, collection, getDocs, query, where, doc, updateDoc, 
@@ -264,10 +262,9 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
 function renderDayUserCard(uid, records, container, targetDate, currentTodayStr) {
     const user = usersMap[uid];
     const sched = schedulesMap[uid + "_" + targetDate];
-    // 🟢 如果这天是公共假期且有排班，我们直接忽略这一天的请假申请，强制视为有效 PH
     const isPH = !!holidaysMap[targetDate] && !!sched; 
     let leave = leavesMap[uid + "_" + targetDate];
-    if (isPH) leave = null; // 屏蔽请假
+    if (isPH) leave = null; // 🟢 PH priority
     
     if (!sched && records.length === 0 && !leave && !isPH) return false;
 
@@ -357,7 +354,7 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
         const isPH = !!holidaysMap[dateStr] && !!sched; 
         
         let leave = leavesMap[uid + "_" + dateStr];
-        if (isPH) leave = null; // 🟢 如果是 PH，直接屏蔽当天的请假
+        if (isPH) leave = null; // 🟢 PH priority
 
         const dayRecords = allRecords.filter(r => r.date === dateStr && r.verificationStatus === 'Verified');
 
@@ -445,8 +442,7 @@ function renderDashboard(data, pUids, missingOutData = []) {
         if(usersMap[uid].status === 'disabled') return;
         active++;
         const sched = schedulesMap[uid+"_"+target];
-        // 🟢 如果是假期且有排班，优先判定为假期（等同 Leave 属性，不标红 Absent）
-        if((holidaysMap[target] && sched) || leavesMap[uid+"_"+target]) {
+        if(leavesMap[uid+"_"+target] || (holidaysMap[target] && sched)) {
             leave++; 
         } else if(sched && !pUids.has(uid)) { 
             absent++; 
@@ -681,9 +677,30 @@ window.submitManualAction = async () => {
                 const uRef = doc(db, "users", userObj.docId);
                 const uDoc = await tx.get(uRef);
                 const oldBal = uDoc.data().leave_balance?.annual || 0;
-                if(type === 'Annual Leave') tx.update(uRef, { "leave_balance.annual": oldBal - 1 });
                 
-                const leaveData = { uid: userObj.docId, authUid: userObj.authUid, empName: userObj.name, type, startDate: dateStr, endDate: dateStr, days: 1, status: 'Approved', reviewedAt: serverTimestamp(), isPayrollDeductible: type === 'Unpaid Leave', reason: document.getElementById('manualReason').value || "Admin Manual Leave" };
+                const eUid = userObj.authUid || userObj.docId;
+                const isPH = !!holidaysMap[dateStr] && !!schedulesMap[eUid+"_"+dateStr];
+                const deductAmt = isPH ? 0 : 1;
+
+                if(type === 'Annual Leave' && deductAmt > 0) {
+                    tx.update(uRef, { "leave_balance.annual": oldBal - deductAmt });
+                }
+                
+                const leaveData = { 
+                    uid: userObj.docId, 
+                    authUid: userObj.authUid, 
+                    empName: userObj.name, 
+                    type, 
+                    startDate: dateStr, 
+                    endDate: dateStr, 
+                    days: 1, 
+                    deductibleDays: deductAmt, 
+                    phOverlap: isPH ? 1 : 0,
+                    status: 'Approved', 
+                    reviewedAt: serverTimestamp(), 
+                    isPayrollDeductible: type === 'Unpaid Leave', 
+                    reason: document.getElementById('manualReason').value || "Admin Manual Leave" 
+                };
                 tx.set(doc(collection(db, "leaves")), leaveData);
                 
                 await logAdminAction(db, auth.currentUser, "MANUAL_LEAVE_ASSIGN", userObj.docId, {oldBalance: oldBal, oldAttendance: oldDataSnapshot}, leaveData);
@@ -911,7 +928,7 @@ window.generateMonthlyReport = async () => {
 
         const sSnap = await getDocs(query(collection(db, "schedules"), where("userId", "==", usersMap[uid].docId), where("date", ">=", startDate), where("date", "<=", endDate)));
         const userSchedules = {};
-        sSnap.forEach(d => { userSchedules[d.data().date] = true; });
+        sSnap.forEach(d => { userSchedules[d.data().date] = d.data(); });
 
         const dailyData = {};
         snap.forEach(doc => {
@@ -929,6 +946,13 @@ window.generateMonthlyReport = async () => {
         const currentTodayStr = getLocalTodayStr();
         let totalMs = 0; 
         let html = '';
+        
+        const toDateObj = (t, dateStr) => {
+            if(!t) return null;
+            if(t.toDate) return t.toDate();
+            if(typeof t === 'string' && t.includes(':')) return new Date(`${dateStr}T${t}:00`);
+            return new Date(t);
+        };
 
         for (let d = 1; d <= daysInMonth; d++) {
             const dateStr = `${yyyy}-${mm}-${String(d).padStart(2, '0')}`;
@@ -938,7 +962,7 @@ window.generateMonthlyReport = async () => {
             const isPH = !!holidaysMap[dateStr] && !!hasSched; 
             const phName = holidaysMap[dateStr] || '';
             
-            // 🟢 核心修复：如果是有效的公共假期，则无视所有的个人请假
+            // 🟢 核心：强制公共假期优先级
             let leaveType = leavesMap[uid + "_" + dateStr] || userLeaves[dateStr];
             if (isPH) leaveType = null; 
 
@@ -965,6 +989,18 @@ window.generateMonthlyReport = async () => {
                         const bInDate = dayRec.breakIn.timestamp.toDate();
                         const breakDurationMs = bInDate - bOutDate;
                         if (breakDurationMs > 0) dailyWorkedMs -= breakDurationMs;
+                    }
+                    
+                    // 🟢 封顶逻辑 (Capping to Scheduled Hours)
+                    if (hasSched && hasSched.start && hasSched.end) {
+                        const sStart = toDateObj(hasSched.start, dateStr);
+                        const sEnd = toDateObj(hasSched.end, dateStr);
+                        let schedDurMs = sEnd - sStart;
+                        if (hasSched.breakMins) schedDurMs -= hasSched.breakMins * 60000;
+
+                        if (schedDurMs > 0 && dailyWorkedMs > schedDurMs) {
+                            dailyWorkedMs = schedDurMs;
+                        }
                     }
                 }
             }
