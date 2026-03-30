@@ -23,6 +23,9 @@ let holidaysMap = {}; // 🟢 缓存 Public Holidays
 let formModal, printModal, advancesModal, settingsModal;
 let globalSettings = { calcMode: 'daily', satMultiplier: 1.0, lateMode: 'minutes', lateFixedAmount: 10 }; 
 
+const safeSetVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+const safeSetText = (id, text) => { const el = document.getElementById(id); if (el) el.innerText = text; };
+
 // ==========================================
 // INITIALIZATION
 // ==========================================
@@ -65,15 +68,14 @@ async function loadSettings() {
         const snap = await getDoc(doc(db, "settings", "payroll_config"));
         if (snap.exists()) globalSettings = { ...globalSettings, ...snap.data() };
         
-        document.getElementById('configCalcMode').value = globalSettings.calcMode;
-        document.getElementById('configSatMulti').value = globalSettings.satMultiplier;
-        document.getElementById('configLateMode').value = globalSettings.lateMode || 'minutes';
-        document.getElementById('configLateAmount').value = globalSettings.lateFixedAmount || 10;
+        safeSetVal('configCalcMode', globalSettings.calcMode);
+        safeSetVal('configSatMulti', globalSettings.satMultiplier);
+        safeSetVal('configLateMode', globalSettings.lateMode || 'minutes');
+        safeSetVal('configLateAmount', globalSettings.lateFixedAmount || 10);
         
         window.toggleSettingsView();
         window.toggleLateSettings();
 
-        // 🟢 加载 Public Holidays
         const holSnap = await getDoc(doc(db, "settings", "holidays"));
         if (holSnap.exists() && holSnap.data().holiday_list) {
             holSnap.data().holiday_list.forEach(h => { holidaysMap[h.date] = h.name; });
@@ -82,22 +84,26 @@ async function loadSettings() {
 }
 
 window.toggleSettingsView = () => {
-    const mode = document.getElementById('configCalcMode').value;
+    const mode = document.getElementById('configCalcMode')?.value || globalSettings.calcMode;
     const hint = document.getElementById('calcModeHint');
     const satBox = document.getElementById('satConfigBox');
-    if (mode === 'hourly') {
-        hint.innerText = "Pays based on strictly total hours worked.";
-        satBox.classList.add('d-none');
-    } else {
-        hint.innerText = "Pays based on days worked + paid leave days.";
-        satBox.classList.remove('d-none');
+    if(hint) {
+        if (mode === 'hourly') {
+            hint.innerText = "Pays based on strictly total hours worked.";
+            if(satBox) satBox.classList.add('d-none');
+        } else {
+            hint.innerText = "Pays based on days worked + paid leave days.";
+            if(satBox) satBox.classList.remove('d-none');
+        }
     }
 };
 
 window.toggleLateSettings = () => {
-    const mode = document.getElementById('configLateMode').value;
+    const mode = document.getElementById('configLateMode')?.value || 'minutes';
     const amountBox = document.getElementById('lateFixedAmountBox');
-    mode === 'times' ? amountBox.classList.remove('d-none') : amountBox.classList.add('d-none');
+    if(amountBox) {
+        mode === 'times' ? amountBox.classList.remove('d-none') : amountBox.classList.add('d-none');
+    }
 };
 
 window.saveSettings = async () => {
@@ -133,6 +139,7 @@ window.openSettingsModal = () => settingsModal.show();
 function listenToAdvances() {
     onSnapshot(query(collection(db, "salary_advances"), where("status", "==", "Pending")), (snap) => {
         const badge = document.getElementById('advanceBadge');
+        if(!badge) return;
         if (snap.empty) badge.classList.add('d-none');
         else { badge.classList.remove('d-none'); badge.innerText = snap.size; }
     });
@@ -199,7 +206,6 @@ window.updateAdvanceStatus = async (id, status) => {
         const oldData = oldSnap.data();
 
         await updateDoc(docRef, { status: status, updatedAt: serverTimestamp() });
-        
         await logAdminAction(db, auth.currentUser, "APPROVE_ADVANCE", oldData.uid, { status: oldData.status }, { status: status, amount: oldData.amount });
 
         hideLoading();
@@ -234,6 +240,7 @@ window.markAdvanceTransferred = async (id) => {
 
 function showModalAlert(msg, type) {
     const alertBox = document.getElementById('advanceModalAlert');
+    if(!alertBox) return;
     alertBox.className = `alert alert-${type} m-3 small fw-bold text-center`;
     alertBox.innerText = msg;
     alertBox.classList.remove('d-none');
@@ -247,15 +254,14 @@ async function loadStaffData() {
     const snap = await getDocs(query(collection(db, "users")));
     staffMap = {}; 
     const select = document.getElementById('staffSelect');
+    if(!select) return;
     select.innerHTML = '<option value="">-- Choose Staff --</option>';
 
     snap.forEach(doc => {
         const s = doc.data();
         if (s.status === 'disabled' || s.role === 'manager') return;
-        
         const personal = s.personal || {}; 
         const displayName = personal.name || s.name || 'Unknown Staff';
-        
         staffMap[doc.id] = { 
             id: doc.id, authUid: s.authUid, ...s, 
             displayName: displayName, 
@@ -271,12 +277,16 @@ window.autoFillStaffData = async () => {
     if (!uid || !monthStr) return;
 
     const staff = staffMap[uid]; 
-    
     const isHourly = globalSettings.calcMode === 'hourly';
-    document.getElementById('calcModeBadge').innerText = isHourly ? 'Mode: Hourly Rate' : 'Mode: Daily Rate';
-    document.getElementById('calcModeBadge').className = isHourly ? 'badge bg-primary me-2' : 'badge bg-success me-2';
-    document.getElementById('boxStdDays').classList.toggle('d-none', isHourly);
-    document.getElementById('boxHourlyRate').classList.toggle('d-none', !isHourly);
+    
+    safeSetText('calcModeBadge', isHourly ? 'Mode: Hourly Rate' : 'Mode: Daily Rate');
+    const badgeEl = document.getElementById('calcModeBadge');
+    if(badgeEl) badgeEl.className = isHourly ? 'badge bg-primary me-2' : 'badge bg-success me-2';
+    
+    const boxStdDays = document.getElementById('boxStdDays');
+    const boxHourlyRate = document.getElementById('boxHourlyRate');
+    if(boxStdDays) boxStdDays.classList.toggle('d-none', isHourly);
+    if(boxHourlyRate) boxHourlyRate.classList.toggle('d-none', !isHourly);
 
     let totalAdv = 0; let advIds = [];
     if(staff) {
@@ -296,9 +306,9 @@ window.autoFillStaffData = async () => {
     }
 
     if(staff) {
-        document.getElementById('inpBasic').value = staff.payroll?.basic || 0;
-        document.getElementById('inpAdvance').value = totalAdv;
-        document.getElementById('pendingAdvanceIds').value = JSON.stringify(advIds);
+        safeSetVal('inpBasic', staff.payroll?.basic || 0);
+        safeSetVal('inpAdvance', totalAdv);
+        safeSetVal('pendingAdvanceIds', JSON.stringify(advIds));
         window.recalcStatutoryAndTotals(); 
     }
 
@@ -309,29 +319,33 @@ window.autoFillStaffData = async () => {
 };
 
 window.recalcStatutoryAndTotals = () => {
-    const uid = document.getElementById('staffSelect').value;
+    const uid = document.getElementById('staffSelect')?.value;
     const staff = staffMap[uid]; 
-    const basicSalary = parseFloat(document.getElementById('inpBasic').value) || 0;
+    const basicSalary = parseFloat(document.getElementById('inpBasic')?.value) || 0;
 
     if (staff && staff.statutory) {
         const epfRaw = staff.statutory.epf?.contrib || '';
         const eisRaw = staff.statutory.eis || '';
 
-        document.getElementById('hintEPF').innerText = epfRaw ? `(${epfRaw}${epfRaw.toString().includes('%') ? '' : '%'})` : '';
-        document.getElementById('hintEIS').innerText = eisRaw ? `(${eisRaw}${eisRaw.toString().includes('%') ? '' : '%'})` : '';
+        safeSetText('hintEPF', epfRaw ? `(${epfRaw}${epfRaw.toString().includes('%') ? '' : '%'})` : '');
+        safeSetText('hintEIS', eisRaw ? `(${eisRaw}${eisRaw.toString().includes('%') ? '' : '%'})` : '');
 
         const epfAmt = calculateStatutoryAmount(epfRaw, basicSalary, true); 
         const eisAmt = calculateStatutoryAmount(eisRaw, basicSalary, true); 
 
-        if (epfAmt > 0) document.getElementById('inpEPF').value = epfAmt.toFixed(2);
-        if (eisAmt > 0) document.getElementById('inpEIS').value = eisAmt.toFixed(2);
+        if (epfAmt > 0) safeSetVal('inpEPF', epfAmt.toFixed(2));
+        if (eisAmt > 0) safeSetVal('inpEIS', eisAmt.toFixed(2));
     } else {
-        document.getElementById('hintEPF').innerText = ''; document.getElementById('hintEIS').innerText = '';
+        safeSetText('hintEPF', ''); safeSetText('hintEIS', '');
     }
     window.calcTotals();
 };
 
 async function calculateAttendanceStats(uid, monthStr) {
+    console.log(`\n%c=========================================`, `color:blue; font-weight:bold;`);
+    console.log(`%c[ANALYSIS START] Staff: ${staffMap[uid]?.displayName} | Month: ${monthStr}`, `color:blue; font-weight:bold; font-size: 14px;`);
+    console.log(`=========================================`);
+
     const staff = staffMap[uid];
     if (!staff) return;
 
@@ -382,7 +396,6 @@ async function calculateAttendanceStats(uid, monthStr) {
         }
     });
 
-    // 🟢 加载所有请假记录
     const userLeaves = {};
     myLeavesSnap.forEach(d => {
         const l = d.data();
@@ -390,18 +403,15 @@ async function calculateAttendanceStats(uid, monthStr) {
         const [eY, eM, eD] = l.endDate.split('-');
         let curr = new Date(sY, sM - 1, sD);
         const endD = new Date(eY, eM - 1, eD);
-
         while(curr <= endD) {
             const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
-            if (dStr >= startDate && dStr <= endDate) {
-                userLeaves[dStr] = l.type;
-            }
+            if (dStr >= startDate && dStr <= endDate) { userLeaves[dStr] = l.type; }
             curr.setDate(curr.getDate() + 1);
         }
     });
 
     let actWorkedDays = 0, totalWorkMs = 0, totalLateMs = 0, lateCount = 0; 
-    let phUnworkedDays = 0, phWorkedDays = 0, phWorkedMs = 0;
+    let phUnworkedDays = 0, phWorkedDays = 0, phWorkedMs = 0, phUnworkedMs = 0;
     const satMulti = parseFloat(globalSettings.satMultiplier || 1.0);
 
     const toDateObj = (t, dateStr) => {
@@ -411,17 +421,15 @@ async function calculateAttendanceStats(uid, monthStr) {
         return new Date(t);
     };
 
-    // 🟢 核心按天计算逻辑
     for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
+        const isPH = !!holidaysMap[dateStr];
         const records = attMap[dateStr];
         const sched = mySchedules[dateStr];
         const isScheduled = !!sched;
-        const isPH = !!holidaysMap[dateStr];
         const validPH = isPH && isScheduled; // 必须有排班的假期才算数
 
         if (records && records.in) {
-            // 当天有打卡记录 -> 计算为已工作
             const isSat = new Date(dateStr).getDay() === 6;
             actWorkedDays += isSat ? satMulti : 1;
 
@@ -444,57 +452,54 @@ async function calculateAttendanceStats(uid, monthStr) {
                     if (breakDur > 0) workMsThisDay -= breakDur;
                 }
 
-                // 🟢 封顶逻辑 (Capping to Scheduled Hours)
+                // 🟢 工时上限逻辑 (Capping to Scheduled Hours)
                 if (sched && sched.start && sched.end) {
                     const sStart = toDateObj(sched.start, dateStr);
                     const sEnd = toDateObj(sched.end, dateStr);
                     let schedDurMs = sEnd - sStart;
                     if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
 
-                    // 如果实际打卡工作时间大于排班标准时间，则强制截断为排班时间
                     if (schedDurMs > 0 && workMsThisDay > schedDurMs) {
                         workMsThisDay = schedDurMs;
                     }
                 }
-
                 if(workMsThisDay > 0) totalWorkMs += workMsThisDay;
             }
 
             if (validPH) {
-                phWorkedDays++;
+                phWorkedDays += isSat ? satMulti : 1; 
                 phWorkedMs += (workMsThisDay > 0 ? workMsThisDay : 0);
             }
         } else {
-            // 当天没打卡 -> 检查是否有公共假期优先
+            // 没有打卡
             if (validPH) {
-                phUnworkedDays++; // 有排班的假期且没打卡，算 Paid PH Off，忽略任何其他 Leave 申请
+                const isSat = new Date(dateStr).getDay() === 6;
+                phUnworkedDays += isSat ? satMulti : 1;
+
+                // 🟢 精确获取排班的 PH 补偿时长
+                if (sched && sched.start && sched.end) {
+                    let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
+                    if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
+                    if (schedDurMs > 0) phUnworkedMs += schedDurMs;
+                }
             }
         }
     }
 
     let annualLeaveCount = 0, medicalLeaveCount = 0, unpaidLeaveCount = 0;
-
-    myLeavesSnap.forEach(d => {
-        const l = d.data();
-        const [sY, sM, sD] = l.startDate.split('-');
-        const [eY, eM, eD] = l.endDate.split('-');
-        let curr = new Date(sY, sM - 1, sD);
-        const endD = new Date(eY, eM - 1, eD);
-
-        while(curr <= endD) {
-            const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
-            // 🟢 如果当天是没有打卡的请假，且不是有效的公共假期，则累加请假天数
-            const validPH = !!holidaysMap[dStr] && !!mySchedules[dStr];
-            if(dStr >= startDate && dStr <= endDate && !attMap[dStr]?.in && !validPH) {
-                if (l.type === 'Annual Leave' || l.type === '年假' || l.type === 'Cuti Tahunan') annualLeaveCount++;
-                else if (l.type === 'Medical Leave' || l.type === '病假' || l.type === 'Cuti Sakit') medicalLeaveCount++;
-                else unpaidLeaveCount++; 
-            }
-            curr.setDate(curr.getDate() + 1);
+    for (const [dateStr, lType] of Object.entries(userLeaves)) {
+        const validPH = !!holidaysMap[dateStr] && !!mySchedules[dateStr];
+        // 忽略有打卡的日期，以及有效的公共假期
+        if (!attMap[dateStr]?.in && !validPH) {
+            if (lType.includes('Annual') || lType.includes('年假') || lType.includes('Cuti Tahunan')) annualLeaveCount++;
+            else if (lType.includes('Medical') || lType.includes('病假') || lType.includes('Cuti Sakit')) medicalLeaveCount++;
+            else unpaidLeaveCount++; 
         }
-    });
+    }
 
     const totalDecimalHrs = (totalWorkMs / 3600000).toFixed(2);
+    const phUnworkedHrsDec = (phUnworkedMs / 3600000).toFixed(2);
+    const phWorkedHrsDec = (phWorkedMs / 3600000).toFixed(2);
     const formattedTotalHrs = msToHM(totalWorkMs);
     const totalLateMins = Math.floor(totalLateMs / 60000);
 
@@ -510,141 +515,200 @@ async function calculateAttendanceStats(uid, monthStr) {
 
     let majorityHours = 208; let maxHrFreq = 0;
     for (let h in hrFreq) { 
-        if (hrFreq[h] > maxHrFreq) { 
-            maxHrFreq = hrFreq[h]; 
-            majorityHours = parseFloat(h); 
-        } 
+        if (hrFreq[h] > maxHrFreq) { maxHrFreq = hrFreq[h]; majorityHours = parseFloat(h); } 
     }
 
     const paidLeaveCount = annualLeaveCount + medicalLeaveCount; 
-
-    document.getElementById('metaTotalHrs').dataset.majorityHours = majorityHours;
-    document.getElementById('inpStdDays').value = majorityDays;
-    document.getElementById('dispSchDays').innerHTML = `${mySchedCount} <span style="font-size:0.6rem">Days</span>`;
-    document.getElementById('dispActDays').innerHTML = `${actWorkedDays} <span style="font-size:0.6rem">Days</span>`;
     
-    document.getElementById('dispPaidLeave').innerHTML = `${paidLeaveCount} <span style="font-size:0.6rem">Days (AL:${annualLeaveCount} ML:${medicalLeaveCount})</span>`;
-    
-    // PH Dashboard Stats
-    document.getElementById('dispPH').innerHTML = `${phUnworkedDays} / ${phWorkedDays} <span style="font-size:0.6rem">Off/Work</span>`;
-    
-    document.getElementById('dispPayableDays').innerHTML = `${actWorkedDays + paidLeaveCount + phUnworkedDays} <span style="font-size:0.6rem">Days</span>`;
-    
-    document.getElementById('dispTotalHrs').innerHTML = `${formattedTotalHrs}`;
-    document.getElementById('dispLateStats').innerHTML = `${lateCount} <span style="font-size:0.6rem">times (${totalLateMins}m)</span>`;
+    console.log(`[Analysis Result] Actual Worked: ${actWorkedDays} days (${totalDecimalHrs} hrs)`);
+    console.log(`[Analysis Result] Paid PH Unworked: ${phUnworkedDays} days (${phUnworkedHrsDec} hrs)`);
+    console.log(`[Analysis Result] Paid PH Worked: ${phWorkedDays} days (${phWorkedHrsDec} hrs)`);
+    console.log(`[Analysis Result] Baseline Standard: ${majorityDays} Days / ${majorityHours} Hrs`);
 
-    ['metaDaysSch', 'metaDaysAct', 'metaTotalHrs', 'metaLateMins', 'metaLateCount'].forEach((id, i) => {
-        document.getElementById(id).value = [mySchedCount, actWorkedDays, totalDecimalHrs, totalLateMins, lateCount][i];
-    });
+    const metaTotalHrsEl = document.getElementById('metaTotalHrs');
+    if(metaTotalHrsEl) {
+        metaTotalHrsEl.dataset.majorityHours = majorityHours;
+        metaTotalHrsEl.value = totalDecimalHrs;
+    }
+    
+    safeSetVal('inpStdDays', majorityDays);
+    safeSetText('dispSchDays', `${mySchedCount} Days`);
+    safeSetText('dispActDays', `${actWorkedDays} Days`);
+    safeSetText('dispPaidLeave', `${paidLeaveCount} Days (AL:${annualLeaveCount} ML:${medicalLeaveCount})`);
+    safeSetText('dispPH', `${phUnworkedDays} / ${phWorkedDays} Off/Work`);
+    safeSetText('dispPayableDays', `${actWorkedDays + paidLeaveCount + phUnworkedDays} Days`);
+    safeSetText('dispTotalHrs', `${formattedTotalHrs}`);
+    safeSetText('dispLateStats', `${lateCount} times (${totalLateMins}m)`);
 
-    document.getElementById('metaAnnualLeave').value = annualLeaveCount;
-    document.getElementById('metaMedicalLeave').value = medicalLeaveCount;
-    document.getElementById('metaUnpaidLeave').value = unpaidLeaveCount;
+    safeSetVal('metaDaysSch', mySchedCount);
+    safeSetVal('metaDaysAct', actWorkedDays);
+    safeSetVal('metaLateMins', totalLateMins);
+    safeSetVal('metaLateCount', lateCount);
+    safeSetVal('metaAnnualLeave', annualLeaveCount);
+    safeSetVal('metaMedicalLeave', medicalLeaveCount);
+    safeSetVal('metaUnpaidLeave', unpaidLeaveCount);
 
-    document.getElementById('metaPHUnworked').value = phUnworkedDays;
-    document.getElementById('metaPHWorked').value = phWorkedDays;
-    document.getElementById('metaPHWorkedHrs').value = (phWorkedMs / 3600000).toFixed(2);
+    safeSetVal('metaPHUnworked', phUnworkedDays);
+    safeSetVal('metaPHWorked', phWorkedDays);
+    safeSetVal('metaPHWorkedHrs', phWorkedHrsDec);
+    
+    // 🟢 将计算好的未上班 PH 的精确小时数传给算钱逻辑
+    const unworkedPhEl = document.getElementById('metaPHUnworked');
+    if (unworkedPhEl) unworkedPhEl.dataset.hrs = phUnworkedHrsDec;
+
+    console.log(`%c[ANALYSIS COMPLETE]\n`, `color:blue; font-weight:bold;`);
 }
 
 window.calcTotals = (autoUpdateStatutory = false) => {
-    const getVal = (id) => parseFloat(document.getElementById(id)?.value) || 0;
+    const getVal = (id) => { const el = document.getElementById(id); return el ? (parseFloat(el.value) || 0) : 0; };
     const fullBasic = getVal('inpBasic');
     let baseGross = 0, phExtraGross = 0, autoLateDeduct = 0;
-    const lateMins = parseFloat(document.getElementById('metaLateMins').value) || 0;
-    const lateCount = parseInt(document.getElementById('metaLateCount').value) || 0;
+    const lateMins = getVal('metaLateMins');
+    const lateCount = getVal('metaLateCount');
 
-    const phUnworked = parseFloat(document.getElementById('metaPHUnworked').value) || 0;
-    const phWorked = parseFloat(document.getElementById('metaPHWorked').value) || 0;
-    const phWorkedHrs = parseFloat(document.getElementById('metaPHWorkedHrs').value) || 0;
+    const phUnworked = getVal('metaPHUnworked');
+    const phWorked = getVal('metaPHWorked');
+    const phWorkedHrs = getVal('metaPHWorkedHrs');
+
+    console.log(`\n%c=========================================`, `color:green; font-weight:bold;`);
+    console.log(`%c[PAYROLL CALC] Computing Totals`, `color:green; font-weight:bold; font-size: 14px;`);
+    console.log(`Mode: ${globalSettings.calcMode} | Contract Basic: RM ${fullBasic}`);
 
     if (globalSettings.calcMode === 'hourly') {
-        const majorityHours = parseFloat(document.getElementById('metaTotalHrs').dataset.majorityHours) || 208;
+        const metaTotalHrsEl = document.getElementById('metaTotalHrs');
+        const majorityHours = parseFloat(metaTotalHrsEl?.dataset?.majorityHours) || 208;
+        console.log(`Hourly Setup -> Majority (Scheduled) Hours: ${majorityHours}`);
+
+        let exactHrRate = 0;
         if (fullBasic > 0 && majorityHours > 0) {
-            const autoHrRate = fullBasic / majorityHours;
-            document.getElementById('inpHourlyRate').value = autoHrRate.toFixed(2);
+            exactHrRate = fullBasic / majorityHours;
+            safeSetVal('inpHourlyRate', exactHrRate.toFixed(2));
         }
 
-        const hrRate = getVal('inpHourlyRate');
-        baseGross = hrRate * (parseFloat(document.getElementById('metaTotalHrs').value) || 0);
-        baseGross += hrRate * 8 * phUnworked; // Unworked PH gets 8 hours normal pay
-        
-        phExtraGross = hrRate * phWorkedHrs * 2; // Worked PH gets extra 2x pay
+        const uiRate = getVal('inpHourlyRate');
+        // 🟢 如果UI上面的值只是由精确计算四舍五入出来的，我们就继续用精确值算，避免精度丢失导致差几毛钱
+        const hrRateToUse = (Math.abs(uiRate - parseFloat(exactHrRate.toFixed(2))) <= 0.01) ? exactHrRate : uiRate;
 
-        document.getElementById('prorationMsg').style.visibility = 'hidden';
+        const workHrs = getVal('metaTotalHrs');
+        const phUnworkedEl = document.getElementById('metaPHUnworked');
+        const phUnworkedHrsPrecise = parseFloat(phUnworkedEl?.dataset?.hrs) || 0; 
+        
+        const totalPayableHrs = workHrs + phUnworkedHrsPrecise;
+
+        console.log(`Values -> HrRate(Exact): RM ${exactHrRate.toFixed(4)}, HrRate(Used): RM ${hrRateToUse.toFixed(4)}`);
+        console.log(`Values -> ActualWorkHrs: ${workHrs.toFixed(2)}, PH_Unworked_Hrs: ${phUnworkedHrsPrecise.toFixed(2)}, PH_Worked_Hrs: ${phWorkedHrs.toFixed(2)}`);
+
+        // 1. 基础工资计算 (Base Gross)
+        if (totalPayableHrs >= majorityHours && hrRateToUse === exactHrRate) {
+            baseGross = fullBasic; // 🟢 精准封顶：工作时长达标，直接给足满月底薪
+            console.log(`Base Gross = Capped to Full Basic (RM ${fullBasic.toFixed(2)}) because TotalHrs (${totalPayableHrs.toFixed(2)}) >= ScheduledHrs (${majorityHours})`);
+        } else {
+            baseGross = hrRateToUse * totalPayableHrs;
+            if (hrRateToUse === exactHrRate) baseGross = Math.min(baseGross, fullBasic); // 防止浮点误差轻微溢出
+            console.log(`Base Gross = ( ${workHrs.toFixed(2)} + ${phUnworkedHrsPrecise.toFixed(2)} ) * ${hrRateToUse.toFixed(4)} = RM ${baseGross.toFixed(2)}`);
+        }
+
+        // 2. PH上班额外2倍
+        phExtraGross = hrRateToUse * phWorkedHrs * 2; 
+        console.log(`PH Extra Gross = ${phWorkedHrs.toFixed(2)} * ${hrRateToUse.toFixed(4)} * 2 = RM ${phExtraGross.toFixed(2)}`);
+
+        const msgEl = document.getElementById('prorationMsg');
+        if (msgEl) msgEl.style.visibility = (totalPayableHrs < majorityHours) ? 'visible' : 'hidden';
 
         if (globalSettings.lateMode === 'times') {
             autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
-            document.getElementById('lateFormulaText').innerText = `Fine: ${lateCount} times x RM${globalSettings.lateFixedAmount}`;
-        } else document.getElementById('lateFormulaText').innerText = "Unpaid by default in Hourly mode.";
+            safeSetText('lateFormulaText', `Fine: ${lateCount} times x RM${globalSettings.lateFixedAmount}`);
+        } else safeSetText('lateFormulaText', "Unpaid by default in Hourly mode.");
+        
     } else {
         const stdDays = getVal('inpStdDays') || 26; 
+        const paidLeaveCount = getVal('metaAnnualLeave') + getVal('metaMedicalLeave');
         
-        const paidLeaveCount = (parseFloat(document.getElementById('metaAnnualLeave').value) || 0) + (parseFloat(document.getElementById('metaMedicalLeave').value) || 0);
         // Base Pay = Worked + Paid Leaves + Unworked PH
-        const basePayableDays = (parseFloat(document.getElementById('metaDaysAct').value) || 0) + paidLeaveCount + phUnworked;
-
-        const dailyRate = fullBasic / stdDays;
-        baseGross = Math.min(dailyRate * basePayableDays, fullBasic);
+        const basePayableDays = getVal('metaDaysAct') + paidLeaveCount + phUnworked;
+        const exactDailyRate = stdDays > 0 ? (fullBasic / stdDays) : 0;
         
-        // Worked PH gets extra 2x day rate (because 1x is already in actDays/baseGross)
-        phExtraGross = phWorked * 2 * dailyRate;
+        console.log(`Daily Setup -> StdDays: ${stdDays}, DailyRate: RM ${exactDailyRate.toFixed(4)}, BasePayableDays: ${basePayableDays}`);
+
+        if (basePayableDays >= stdDays) {
+            baseGross = fullBasic; // 🟢 达标完美封顶
+            console.log(`Base Gross = Capped to Full Basic (RM ${fullBasic.toFixed(2)}) because PayableDays >= StandardDays`);
+        } else {
+            baseGross = exactDailyRate * basePayableDays;
+            baseGross = Math.min(baseGross, fullBasic);
+            console.log(`Base Gross = RM ${baseGross.toFixed(2)}`);
+        }
+        
+        phExtraGross = phWorked * 2 * exactDailyRate;
+        console.log(`PH Extra Gross = ${phWorked} days * 2 * ${exactDailyRate.toFixed(4)} = RM ${phExtraGross.toFixed(2)}`);
 
         const msg = document.getElementById('prorationMsg');
-        if (basePayableDays < stdDays) { msg.style.visibility = 'visible'; msg.innerText = `Pro-rated: ${basePayableDays} / ${stdDays} days`; } 
-        else msg.style.visibility = 'hidden';
+        if(msg) {
+            if (basePayableDays < stdDays) { msg.style.visibility = 'visible'; msg.innerText = `Pro-rated: ${basePayableDays} / ${stdDays} days`; } 
+            else msg.style.visibility = 'hidden';
+        }
 
         if (globalSettings.lateMode === 'times') {
             autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
-            document.getElementById('lateFormulaText').innerText = `Fine: ${lateCount} times x RM${globalSettings.lateFixedAmount}`;
+            safeSetText('lateFormulaText', `Fine: ${lateCount} times x RM${globalSettings.lateFixedAmount}`);
         } else {
-            autoLateDeduct = ((dailyRate / 8) / 60) * lateMins;
-            document.getElementById('lateFormulaText').innerText = `Auto deduct: ${lateMins} mins`;
+            autoLateDeduct = ((exactDailyRate / 8) / 60) * lateMins;
+            safeSetText('lateFormulaText', `Auto deduct: ${lateMins} mins`);
         }
     }
     
-    document.getElementById('dispGrossBasic').value = formatMoney(baseGross);
-    document.getElementById('calcPHExtra').value = phExtraGross.toFixed(2);
+    safeSetVal('dispGrossBasic', formatMoney(baseGross));
+    safeSetVal('calcPHExtra', phExtraGross.toFixed(2));
 
-    if(!document.getElementById('inpLateDed').value && autoLateDeduct > 0) document.getElementById('inpLateDed').value = autoLateDeduct.toFixed(2);
+    const lateInputEl = document.getElementById('inpLateDed');
+    if(lateInputEl && !lateInputEl.value && autoLateDeduct > 0) lateInputEl.value = autoLateDeduct.toFixed(2);
 
     if (autoUpdateStatutory) {
-        const uid = document.getElementById('staffSelect').value;
+        const uid = document.getElementById('staffSelect')?.value;
         const staff = staffMap[uid]; 
         
         if (staff && staff.statutory) {
             const epfRaw = staff.statutory.epf?.contrib || '';
             const eisRaw = staff.statutory.eis || '';
 
-            document.getElementById('hintEPF').innerText = epfRaw ? `(${epfRaw}${epfRaw.toString().includes('%') ? '' : '%'})` : '';
-            document.getElementById('hintEIS').innerText = eisRaw ? `(${eisRaw}${eisRaw.toString().includes('%') ? '' : '%'})` : '';
+            safeSetText('hintEPF', epfRaw ? `(${epfRaw}${epfRaw.toString().includes('%') ? '' : '%'})` : '');
+            safeSetText('hintEIS', eisRaw ? `(${eisRaw}${eisRaw.toString().includes('%') ? '' : '%'})` : '');
 
             const epfAmt = calculateStatutoryAmount(epfRaw, baseGross, true); 
             const eisAmt = calculateStatutoryAmount(eisRaw, baseGross, true); 
 
-            if (epfAmt > 0) document.getElementById('inpEPF').value = epfAmt.toFixed(2);
-            if (eisAmt > 0) document.getElementById('inpEIS').value = eisAmt.toFixed(2);
+            if (epfAmt > 0) safeSetVal('inpEPF', epfAmt.toFixed(2));
+            if (eisAmt > 0) safeSetVal('inpEIS', eisAmt.toFixed(2));
         } else {
-            document.getElementById('hintEPF').innerText = ''; document.getElementById('hintEIS').innerText = '';
+            safeSetText('hintEPF', ''); safeSetText('hintEIS', '');
         }
     }
 
     const grossTotal = baseGross + phExtraGross + getVal('inpComm') + getVal('inpOT') + getVal('inpAllowance');
     const totalDed = getVal('inpEPF') + getVal('inpSOCSO') + getVal('inpEIS') + getVal('inpPCB') + getVal('inpLateDed') + getVal('inpAdvance'); 
-    document.getElementById('dispNet').innerText = "RM " + formatMoney(grossTotal - totalDed);
+    const finalNet = grossTotal - totalDed;
+    
+    console.log(`-----------------------------------------`);
+    console.log(`Gross Total: RM ${grossTotal.toFixed(2)} (Base: ${baseGross.toFixed(2)} + PHExtra: ${phExtraGross.toFixed(2)} + Others)`);
+    console.log(`Total Deduct: RM ${totalDed.toFixed(2)}`);
+    console.log(`%cFinal Net: RM ${finalNet.toFixed(2)}`, `color:green; font-weight:bold; font-size:14px;`);
+    console.log(`=========================================\n`);
+
+    safeSetText('dispNet', "RM " + formatMoney(finalNet));
 };
 
 window.savePayslipForm = async () => {
-    const uid = document.getElementById('staffSelect').value;
-    const month = document.getElementById('formMonthPicker').value;
+    const uid = document.getElementById('staffSelect')?.value;
+    const month = document.getElementById('formMonthPicker')?.value;
     if(!uid || !month) return showStatusAlert('statusMessage', "Select staff and month", false);
 
     showLoading();
     const staff = staffMap[uid];
-    const getVal = (id) => parseFloat(document.getElementById(id).value) || 0;
-    const status = document.getElementById('formStatus').value;
+    const getVal = (id) => { const el = document.getElementById(id); return el ? (parseFloat(el.value) || 0) : 0; };
+    const status = document.getElementById('formStatus')?.value || 'Draft';
     
-    const baseGross = parseFloat(document.getElementById('dispGrossBasic').value.replace(/,/g,'')) || 0;
-    const phExtraGross = parseFloat(document.getElementById('calcPHExtra').value) || 0;
+    const baseGross = parseFloat(document.getElementById('dispGrossBasic')?.value.replace(/,/g,'')) || 0;
+    const phExtraGross = getVal('calcPHExtra');
 
     const grossTotal = baseGross + phExtraGross + getVal('inpComm') + getVal('inpOT') + getVal('inpAllowance');
     const totalDed = getVal('inpEPF') + getVal('inpSOCSO') + getVal('inpEIS') + getVal('inpPCB') + getVal('inpLateDed') + getVal('inpAdvance');
@@ -667,15 +731,16 @@ window.savePayslipForm = async () => {
         employer_epf: getVal('inpEmpEPF'), employer_socso: getVal('inpEmpSOCSO'), employer_eis: getVal('inpEmpEIS'),
         attendanceStats: {
             stdDays: getVal('inpStdDays'), 
-            actDays: document.getElementById('metaDaysAct').value,
-            annualLeave: document.getElementById('metaAnnualLeave').value,
-            medicalLeave: document.getElementById('metaMedicalLeave').value,
-            unpaidLeave: document.getElementById('metaUnpaidLeave').value,
-            phUnworked: document.getElementById('metaPHUnworked').value,
-            phWorked: document.getElementById('metaPHWorked').value,
-            totalHrs: document.getElementById('metaTotalHrs').value,
-            lateMins: document.getElementById('metaLateMins').value, 
-            lateCount: document.getElementById('metaLateCount').value, 
+            actDays: getVal('metaDaysAct'),
+            annualLeave: getVal('metaAnnualLeave'),
+            medicalLeave: getVal('metaMedicalLeave'),
+            unpaidLeave: getVal('metaUnpaidLeave'),
+            phUnworked: getVal('metaPHUnworked'),
+            phWorked: getVal('metaPHWorked'),
+            phUnworkedHrs: parseFloat(document.getElementById('metaPHUnworked')?.dataset?.hrs) || 0,
+            totalHrs: getVal('metaTotalHrs'),
+            lateMins: getVal('metaLateMins'), 
+            lateCount: getVal('metaLateCount'), 
             mode: globalSettings.calcMode
         },
         gross: grossTotal, net: net, status: status,
@@ -683,7 +748,7 @@ window.savePayslipForm = async () => {
     };
 
     const payslipId = `${uid}_${month}`; 
-    const oldDocId = document.getElementById('editDocId').value;
+    const oldDocId = document.getElementById('editDocId')?.value;
 
     try {
         const psRef = doc(db, "payslips", payslipId);
@@ -711,7 +776,7 @@ window.savePayslipForm = async () => {
         await setDoc(psRef, payload);
 
         if (status === 'Published' && getVal('inpAdvance') > 0) {
-            const rawIds = document.getElementById('pendingAdvanceIds').value;
+            const rawIds = document.getElementById('pendingAdvanceIds')?.value;
             if (rawIds) {
                 const advIds = JSON.parse(rawIds);
                 const batch = writeBatch(db);
@@ -728,7 +793,7 @@ window.savePayslipForm = async () => {
             showStatusAlert('statusMessage', 'Saved! Moving to next...', true);
             window.navigatePayslip(1); 
         } else {
-            formModal.hide();
+            if(formModal) formModal.hide();
             showStatusAlert('statusMessage', 'Payslip saved successfully.', true); 
         }
         
@@ -740,10 +805,11 @@ window.savePayslipForm = async () => {
 };
 
 window.loadPayroll = async () => {
-    const month = document.getElementById('globalMonthPicker').value;
+    const month = document.getElementById('globalMonthPicker')?.value;
     if(!month) return;
     showLoading(); 
     const listDiv = document.getElementById('payrollList');
+    if(!listDiv) return;
     listDiv.innerHTML = '';
     
     try {
@@ -754,7 +820,7 @@ window.loadPayroll = async () => {
 
         if (snap.empty) {
             listDiv.innerHTML = `<div class="text-center py-5 text-muted fw-bold">No payslips found for ${month}.</div>`;
-            document.getElementById('statTotal').innerText = "RM 0.00"; document.getElementById('statEPF').innerText = "RM 0.00";
+            safeSetText('statTotal', "RM 0.00"); safeSetText('statEPF', "RM 0.00");
             return; 
         }
 
@@ -785,15 +851,11 @@ window.loadPayroll = async () => {
             listDiv.appendChild(row);
         });
 
-        document.getElementById('statTotal').innerText = "RM " + formatMoney(totalNet);
-        document.getElementById('statEPF').innerText = "RM " + formatMoney(totalEmpEPF);
+        safeSetText('statTotal', "RM " + formatMoney(totalNet));
+        safeSetText('statEPF', "RM " + formatMoney(totalEmpEPF));
         lucide.createIcons();
-    } catch (e) { 
-        console.error(e); 
-    } 
-    finally { 
-        hideLoading(); 
-    }
+    } catch (e) { console.error(e); } 
+    finally { hideLoading(); }
 };
 
 window.openCreateModal = () => {
@@ -801,24 +863,28 @@ window.openCreateModal = () => {
     const navGroup = document.getElementById('navPayslipGroup');
     if (navGroup) navGroup.style.display = 'none';
 
-    document.getElementById('payslipForm').reset();
-    document.getElementById('editDocId').value = "";
-    document.getElementById('pendingAdvanceIds').value = "";
-    document.getElementById('formModalTitle').innerText = "Create New Payslip";
-    document.getElementById('staffSelect').disabled = false;
-    document.getElementById('formMonthPicker').disabled = false;
+    document.getElementById('payslipForm')?.reset();
     
-    document.getElementById('dispNet').innerText = "RM 0.00";
-    document.getElementById('dispGrossBasic').value = "0.00";
-    document.getElementById('calcPHExtra').value = "0";
-    document.getElementById('hintEPF').innerText = "";
-    document.getElementById('hintEIS').innerText = "";
+    safeSetVal('editDocId', "");
+    safeSetVal('pendingAdvanceIds', "");
+    safeSetText('formModalTitle', "Create New Payslip");
     
-    const globalDate = document.getElementById('globalMonthPicker').value;
-    if(globalDate) document.getElementById('formMonthPicker').value = globalDate;
+    const staffSelect = document.getElementById('staffSelect');
+    const formMonthPicker = document.getElementById('formMonthPicker');
+    if (staffSelect) staffSelect.disabled = false;
+    if (formMonthPicker) formMonthPicker.disabled = false;
+    
+    safeSetText('dispNet', "RM 0.00");
+    safeSetVal('dispGrossBasic', "0.00");
+    safeSetVal('calcPHExtra', "0");
+    safeSetText('hintEPF', "");
+    safeSetText('hintEIS', "");
+    
+    const globalDate = document.getElementById('globalMonthPicker')?.value;
+    if(globalDate) safeSetVal('formMonthPicker', globalDate);
 
     window.toggleSettingsView(); 
-    formModal.show();
+    if(formModal) formModal.show();
 };
 
 window.openEditModal = (id) => {
@@ -829,50 +895,50 @@ window.openEditModal = (id) => {
     const navGroup = document.getElementById('navPayslipGroup');
     if (navGroup) navGroup.style.display = 'inline-flex';
 
-    document.getElementById('editDocId').value = id;
-    document.getElementById('formModalTitle').innerText = "Edit Payslip - " + d.staffName;
+    safeSetVal('editDocId', id);
+    safeSetText('formModalTitle', "Edit Payslip - " + d.staffName);
     
-    document.getElementById('staffSelect').value = d.uid;
-    document.getElementById('staffSelect').disabled = true; 
-    document.getElementById('formMonthPicker').value = d.month;
-    document.getElementById('formMonthPicker').disabled = true; 
+    const staffSelect = document.getElementById('staffSelect');
+    const formMonthPicker = document.getElementById('formMonthPicker');
+    if (staffSelect) { staffSelect.value = d.uid; staffSelect.disabled = true; }
+    if (formMonthPicker) { formMonthPicker.value = d.month; formMonthPicker.disabled = true; }
 
-    document.getElementById('inpBasic').value = d.basic; 
-    document.getElementById('calcPHExtra').value = d.earnings.phPay || 0;
-    document.getElementById('inpComm').value = d.earnings.commission || 0;
-    document.getElementById('inpOT').value = d.earnings.ot || 0;
-    document.getElementById('inpAllowance').value = d.earnings.allowance || 0;
+    safeSetVal('inpBasic', d.basic);
+    safeSetVal('calcPHExtra', d.earnings.phPay || 0);
+    safeSetVal('inpComm', d.earnings.commission || 0);
+    safeSetVal('inpOT', d.earnings.ot || 0);
+    safeSetVal('inpAllowance', d.earnings.allowance || 0);
 
-    document.getElementById('inpEPF').value = d.deductions.epf || 0;
-    document.getElementById('inpSOCSO').value = d.deductions.socso || 0;
-    document.getElementById('inpEIS').value = d.deductions.eis || 0;
-    document.getElementById('inpPCB').value = d.deductions.tax || 0;
-    document.getElementById('inpLateDed').value = d.deductions.late || 0;
-    document.getElementById('inpAdvance').value = d.deductions.advance || 0; 
+    safeSetVal('inpEPF', d.deductions.epf || 0);
+    safeSetVal('inpSOCSO', d.deductions.socso || 0);
+    safeSetVal('inpEIS', d.deductions.eis || 0);
+    safeSetVal('inpPCB', d.deductions.tax || 0);
+    safeSetVal('inpLateDed', d.deductions.late || 0);
+    safeSetVal('inpAdvance', d.deductions.advance || 0); 
 
-    document.getElementById('inpEmpEPF').value = d.employer_epf || 0;
-    document.getElementById('inpEmpSOCSO').value = d.employer_socso || 0;
-    document.getElementById('inpEmpEIS').value = d.employer_eis || 0;
+    safeSetVal('inpEmpEPF', d.employer_epf || 0);
+    safeSetVal('inpEmpSOCSO', d.employer_socso || 0);
+    safeSetVal('inpEmpEIS', d.employer_eis || 0);
 
-    document.getElementById('formStatus').value = d.status || 'Draft';
+    safeSetVal('formStatus', d.status || 'Draft');
     
     const staff = staffMap[d.uid];
     if (staff && staff.statutory) {
         const epfRaw = staff.statutory.epf?.contrib || '';
         const eisRaw = staff.statutory.eis || '';
-        document.getElementById('hintEPF').innerText = epfRaw ? `(${epfRaw}${epfRaw.toString().includes('%') ? '' : '%'})` : '';
-        document.getElementById('hintEIS').innerText = eisRaw ? `(${eisRaw}${eisRaw.toString().includes('%') ? '' : '%'})` : '';
+        safeSetText('hintEPF', epfRaw ? `(${epfRaw}${epfRaw.toString().includes('%') ? '' : '%'})` : '');
+        safeSetText('hintEIS', eisRaw ? `(${eisRaw}${eisRaw.toString().includes('%') ? '' : '%'})` : '');
     }
     
     if (d.attendanceStats) {
-        document.getElementById('inpStdDays').value = d.attendanceStats.stdDays || 26;
-        document.getElementById('metaDaysAct').value = d.attendanceStats.actDays || 0;
+        safeSetVal('inpStdDays', d.attendanceStats.stdDays || 26);
+        safeSetVal('metaDaysAct', d.attendanceStats.actDays || 0);
         
-        document.getElementById('metaAnnualLeave').value = d.attendanceStats.annualLeave || 0;
-        document.getElementById('metaMedicalLeave').value = d.attendanceStats.medicalLeave || 0;
-        document.getElementById('metaUnpaidLeave').value = d.attendanceStats.unpaidLeave || 0;
-        document.getElementById('metaPHUnworked').value = d.attendanceStats.phUnworked || 0;
-        document.getElementById('metaPHWorked').value = d.attendanceStats.phWorked || 0;
+        safeSetVal('metaAnnualLeave', d.attendanceStats.annualLeave || 0);
+        safeSetVal('metaMedicalLeave', d.attendanceStats.medicalLeave || 0);
+        safeSetVal('metaUnpaidLeave', d.attendanceStats.unpaidLeave || 0);
+        safeSetVal('metaPHUnworked', d.attendanceStats.phUnworked || 0);
+        safeSetVal('metaPHWorked', d.attendanceStats.phWorked || 0);
         
         const al = parseFloat(d.attendanceStats.annualLeave) || 0;
         const ml = parseFloat(d.attendanceStats.medicalLeave) || 0;
@@ -881,25 +947,32 @@ window.openEditModal = (id) => {
         const phOff = parseFloat(d.attendanceStats.phUnworked) || 0;
         const phWork = parseFloat(d.attendanceStats.phWorked) || 0;
         
-        document.getElementById('dispPaidLeave').innerHTML = `${totalPaidLeave} <span style="font-size:0.6rem">Days (AL:${al} ML:${ml})</span>`;
-        document.getElementById('dispActDays').innerHTML = `${d.attendanceStats.actDays || 0} <span style="font-size:0.6rem">Days</span>`;
-        document.getElementById('dispPH').innerHTML = `${phOff} / ${phWork} <span style="font-size:0.6rem">Off/Work</span>`;
-        document.getElementById('dispPayableDays').innerHTML = `${parseFloat(d.attendanceStats.actDays || 0) + totalPaidLeave + phOff} <span style="font-size:0.6rem">Days</span>`;
+        safeSetText('dispPaidLeave', `${totalPaidLeave} <span style="font-size:0.6rem">Days (AL:${al} ML:${ml})</span>`);
+        safeSetText('dispActDays', `${d.attendanceStats.actDays || 0} <span style="font-size:0.6rem">Days</span>`);
+        safeSetText('dispPH', `${phOff} / ${phWork} <span style="font-size:0.6rem">Off/Work</span>`);
+        safeSetText('dispPayableDays', `${parseFloat(d.attendanceStats.actDays || 0) + totalPaidLeave + phOff} <span style="font-size:0.6rem">Days</span>`);
 
-        document.getElementById('metaTotalHrs').value = d.attendanceStats.totalHrs || 0; 
-        document.getElementById('metaLateMins').value = d.attendanceStats.lateMins || 0;
-        document.getElementById('metaLateCount').value = d.attendanceStats.lateCount || 0;
+        safeSetVal('metaTotalHrs', d.attendanceStats.totalHrs || 0);
+        
+        // 恢复被保存的小数点
+        const unworkedPhEl = document.getElementById('metaPHUnworked');
+        if (unworkedPhEl && d.attendanceStats.phUnworkedHrs !== undefined) {
+            unworkedPhEl.dataset.hrs = d.attendanceStats.phUnworkedHrs;
+        }
+
+        safeSetVal('metaLateMins', d.attendanceStats.lateMins || 0);
+        safeSetVal('metaLateCount', d.attendanceStats.lateCount || 0);
         
         const savedTotalHrs = parseFloat(d.attendanceStats.totalHrs) || 0;
         const hrPart = Math.floor(savedTotalHrs);
         const minPart = Math.round((savedTotalHrs - hrPart) * 60);
-        document.getElementById('dispTotalHrs').innerHTML = `${hrPart}h ${minPart}m`;
+        safeSetText('dispTotalHrs', `${hrPart}h ${minPart}m`);
         
-        document.getElementById('dispLateStats').innerHTML = `${d.attendanceStats.lateCount || 0} <span style="font-size:0.6rem">times (${d.attendanceStats.lateMins || 0}m)</span>`;
+        safeSetText('dispLateStats', `${d.attendanceStats.lateCount || 0} <span style="font-size:0.6rem">times (${d.attendanceStats.lateMins || 0}m)</span>`);
         
         window.calcTotals(false);
     }
-    formModal.show();
+    if(formModal) formModal.show();
 };
 
 window.viewPayslip = (id) => {
@@ -989,7 +1062,7 @@ window.viewPayslip = (id) => {
         </div>
     `;
     document.getElementById('printArea').innerHTML = html;
-    printModal.show();
+    if(printModal) printModal.show();
 };
 
 window.publishAll = async () => {
@@ -1095,10 +1168,7 @@ window.generateAllDrafts = async () => {
 
         let majorityHours = 208; let maxHrFreq = 0;
         for (let h in hrFreq) { 
-            if (hrFreq[h] > maxHrFreq) { 
-                maxHrFreq = hrFreq[h]; 
-                majorityHours = parseFloat(h); 
-            } 
+            if (hrFreq[h] > maxHrFreq) { maxHrFreq = hrFreq[h]; majorityHours = parseFloat(h); } 
         }
 
         allLeavesSnap.forEach(d => leaves.push(d.data()));
@@ -1136,7 +1206,7 @@ window.generateAllDrafts = async () => {
             searchIds.forEach(sid => { if(schedules[sid]) mySchedCount += schedules[sid].length; });
 
             let actWorkedDays = 0, totalWorkMs = 0, totalLateMs = 0, lateCount = 0;
-            let phUnworkedDays = 0, phWorkedDays = 0, phWorkedMs = 0;
+            let phUnworkedDays = 0, phWorkedDays = 0, phWorkedMs = 0, phUnworkedMs = 0;
             const satMulti = parseFloat(globalSettings.satMultiplier || 1.0);
             
             const toDateObj = (t, dateStr) => {
@@ -1149,14 +1219,13 @@ window.generateAllDrafts = async () => {
             const myAtt = searchIds.map(sid => attendances[sid] || {}).reduce((acc, curr) => ({...acc, ...curr}), {});
             const mySchedsList = searchIds.map(sid => schedules[sid] || []).flat().reduce((acc, s) => { acc[s.date] = s; return acc; }, {});
 
-            // 🟢 核心按天计算逻辑
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
                 const records = myAtt[dateStr];
                 const sched = mySchedsList[dateStr];
                 const isScheduled = !!sched;
                 const isPH = !!holidaysMap[dateStr];
-                const validPH = isPH && isScheduled; // 必须有排班的假期才算数
+                const validPH = isPH && isScheduled;
 
                 if (records && records.in) {
                     const isSat = new Date(dateStr).getDay() === 6;
@@ -1181,7 +1250,6 @@ window.generateAllDrafts = async () => {
                             if (breakDur > 0) workMsThisDay -= breakDur;
                         }
 
-                        // 🟢 新增：工时上限逻辑 (Capping to Scheduled Hours)
                         if (sched && sched.start && sched.end) {
                             const sStart = toDateObj(sched.start, dateStr);
                             const sEnd = toDateObj(sched.end, dateStr);
@@ -1197,13 +1265,19 @@ window.generateAllDrafts = async () => {
                     }
                     
                     if (validPH) {
-                        phWorkedDays++;
+                        phWorkedDays += isSat ? satMulti : 1;
                         phWorkedMs += (workMsThisDay > 0 ? workMsThisDay : 0);
                     }
                 } else {
-                    // 没有打卡
                     if (validPH) {
-                        phUnworkedDays++; // 有排班的假期且没打卡，算 Paid PH Off，忽略任何其他 Leave 申请
+                        const isSat = new Date(dateStr).getDay() === 6;
+                        phUnworkedDays += isSat ? satMulti : 1;
+                        
+                        if (sched && sched.start && sched.end) {
+                            let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
+                            if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
+                            if (schedDurMs > 0) phUnworkedMs += schedDurMs;
+                        }
                     }
                 }
             }
@@ -1218,12 +1292,10 @@ window.generateAllDrafts = async () => {
 
                     while(curr <= endD) {
                         const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
-                        
-                        // 🟢 忽略有效的公共假期
                         const validPH = !!holidaysMap[dStr] && !!mySchedsList[dStr];
                         if(dStr >= startDate && dStr <= endDate && !myAtt[dStr]?.in && !validPH) {
-                            if (l.type === 'Annual Leave' || l.type === '年假' || l.type === 'Cuti Tahunan') annualLeaveCount++;
-                            else if (l.type === 'Medical Leave' || l.type === '病假' || l.type === 'Cuti Sakit') medicalLeaveCount++;
+                            if (l.type.includes('Annual') || l.type.includes('年假')) annualLeaveCount++;
+                            else if (l.type.includes('Medical') || l.type.includes('病假')) medicalLeaveCount++;
                             else unpaidLeaveCount++;
                         }
                         curr.setDate(curr.getDate() + 1);
@@ -1233,6 +1305,7 @@ window.generateAllDrafts = async () => {
 
             const paidLeaveCount = annualLeaveCount + medicalLeaveCount;
             const totalDecimalHrs = totalWorkMs / 3600000;
+            const phUnworkedHrsDec = phUnworkedMs / 3600000;
             const phWorkedHrsDec = phWorkedMs / 3600000;
             const totalLateMins = Math.floor(totalLateMs / 60000);
             
@@ -1243,26 +1316,38 @@ window.generateAllDrafts = async () => {
             let baseGross = 0, phExtraGross = 0, autoLateDeduct = 0;
 
             if (globalSettings.calcMode === 'hourly') {
-                const hrRate = parseFloat(staff.payroll?.hourlyRate) || (fullBasic > 0 ? (fullBasic / majorityHours) : 0);
+                const exactHrRate = (majorityHours > 0) ? (fullBasic / majorityHours) : 0;
+                const totalPayableHrs = totalDecimalHrs + phUnworkedHrsDec;
+
+                if (totalPayableHrs >= majorityHours) {
+                    baseGross = fullBasic; 
+                } else {
+                    baseGross = exactHrRate * totalPayableHrs;
+                    baseGross = Math.min(baseGross, fullBasic);
+                }
                 
-                baseGross = hrRate * totalDecimalHrs;
-                baseGross += hrRate * 8 * phUnworkedDays; 
-                phExtraGross = hrRate * phWorkedHrsDec * 2;
+                phExtraGross = exactHrRate * phWorkedHrsDec * 2;
 
                 if (globalSettings.lateMode === 'times') {
                     autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
                 }
             } else {
                 const basePayableDays = actWorkedDays + paidLeaveCount + phUnworkedDays;
-                const dailyRate = fullBasic / majorityDays;
-                baseGross = Math.min(dailyRate * basePayableDays, fullBasic); 
+                const exactDailyRate = majorityDays > 0 ? (fullBasic / majorityDays) : 0;
                 
-                phExtraGross = phWorkedDays * 2 * dailyRate;
+                if (basePayableDays >= majorityDays) {
+                    baseGross = fullBasic; 
+                } else {
+                    baseGross = exactDailyRate * basePayableDays;
+                    baseGross = Math.min(baseGross, fullBasic);
+                }
+                
+                phExtraGross = phWorkedDays * 2 * exactDailyRate;
 
                 if (globalSettings.lateMode === 'times') {
                     autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
                 } else {
-                    autoLateDeduct = ((dailyRate / 8) / 60) * totalLateMins;
+                    autoLateDeduct = ((exactDailyRate / 8) / 60) * totalLateMins;
                 }
             }
 
@@ -1297,6 +1382,7 @@ window.generateAllDrafts = async () => {
                     stdDays: majorityDays, actDays: actWorkedDays,
                     annualLeave: annualLeaveCount, medicalLeave: medicalLeaveCount, unpaidLeave: unpaidLeaveCount,
                     phUnworked: phUnworkedDays, phWorked: phWorkedDays,
+                    phUnworkedHrs: parseFloat(phUnworkedHrsDec),
                     totalHrs: totalDecimalHrs.toFixed(2),
                     lateMins: totalLateMins, lateCount: lateCount, 
                     mode: globalSettings.calcMode
