@@ -248,7 +248,7 @@ function showModalAlert(msg, type) {
 }
 
 // ==========================================
-// 3. CORE PAYROLL LOGIC
+// 3. CORE PAYROLL LOGIC (ABSENT / UNPAID / UNSCHEDULED)
 // ==========================================
 async function loadStaffData() {
     const snap = await getDocs(query(collection(db, "users")));
@@ -319,25 +319,7 @@ window.autoFillStaffData = async () => {
 };
 
 window.recalcStatutoryAndTotals = () => {
-    const uid = document.getElementById('staffSelect')?.value;
-    const staff = staffMap[uid]; 
-    const basicSalary = parseFloat(document.getElementById('inpBasic')?.value) || 0;
-
-    if (staff && staff.statutory) {
-        const epfRaw = staff.statutory.epf?.contrib || '';
-        const eisRaw = staff.statutory.eis || '';
-
-        safeSetText('hintEPF', epfRaw ? `(${epfRaw}${epfRaw.toString().includes('%') ? '' : '%'})` : '');
-        safeSetText('hintEIS', eisRaw ? `(${eisRaw}${eisRaw.toString().includes('%') ? '' : '%'})` : '');
-
-        const epfAmt = calculateStatutoryAmount(epfRaw, basicSalary, true); 
-        const eisAmt = calculateStatutoryAmount(eisRaw, basicSalary, true); 
-
-        if (epfAmt > 0) safeSetVal('inpEPF', epfAmt.toFixed(2));
-        if (eisAmt > 0) safeSetVal('inpEIS', eisAmt.toFixed(2));
-    } else {
-        safeSetText('hintEPF', ''); safeSetText('hintEIS', '');
-    }
+    // Moved statutory recalculation inside calcTotals logic to use true earned basic.
     window.calcTotals();
 };
 
@@ -412,6 +394,8 @@ async function calculateAttendanceStats(uid, monthStr) {
 
     let actWorkedDays = 0, totalWorkMs = 0, totalLateMs = 0, lateCount = 0; 
     let phUnworkedDays = 0, phWorkedDays = 0, phWorkedMs = 0, phUnworkedMs = 0;
+    let absentDays = 0, absentHrs = 0;
+
     const satMulti = parseFloat(globalSettings.satMultiplier || 1.0);
 
     const toDateObj = (t, dateStr) => {
@@ -430,7 +414,6 @@ async function calculateAttendanceStats(uid, monthStr) {
         const leaveType = userLeaves[dateStr];
         const isPH = !!holidaysMap[dateStr];
         
-        // 🟢 核心修复：如果是假期，且当天有排班 或者 有请假申请，都算作有效的带薪 PH！
         const validPH = isPH && (!!sched || !!leaveType);
 
         if (records && records.in) {
@@ -481,27 +464,46 @@ async function calculateAttendanceStats(uid, monthStr) {
                     if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
                     if (schedDurMs > 0) phUnworkedMs += schedDurMs;
                 } else if (leaveType) {
-                    // 🟢 如果没有排班但是因为请假激活了PH，补偿标准工时 8 小时
                     phUnworkedMs += 8 * 3600000; 
+                }
+            } else if (sched && !leaveType) {
+                // 🚩 Absent Detection: Has Schedule, No Clock-in, No Leave, No PH
+                const isSat = new Date(dateStr).getDay() === 6;
+                absentDays += isSat ? satMulti : 1;
+
+                if (sched.start && sched.end) {
+                    let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
+                    if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
+                    if (schedDurMs > 0) absentHrs += (schedDurMs / 3600000);
                 }
             }
         }
     }
 
     let annualLeaveCount = 0, medicalLeaveCount = 0, unpaidLeaveCount = 0;
+    let unpaidLeaveHrs = 0;
     for (const [dateStr, lType] of Object.entries(userLeaves)) {
-        // 🟢 请假是否被 PH 覆盖
         const validPH = !!holidaysMap[dateStr] && (!!mySchedules[dateStr] || !!lType);
         if (!attMap[dateStr]?.in && !validPH) {
             if (lType.includes('Annual') || lType.includes('年假') || lType.includes('Cuti Tahunan')) annualLeaveCount++;
             else if (lType.includes('Medical') || lType.includes('病假') || lType.includes('Cuti Sakit')) medicalLeaveCount++;
-            else unpaidLeaveCount++; 
+            else {
+                unpaidLeaveCount++; 
+                const sched = mySchedules[dateStr];
+                if (sched && sched.start && sched.end) {
+                    let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
+                    if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
+                    if (schedDurMs > 0) unpaidLeaveHrs += (schedDurMs / 3600000);
+                } else {
+                    unpaidLeaveHrs += 8;
+                }
+            }
         }
     }
 
-    const totalDecimalHrs = (totalWorkMs / 3600000).toFixed(2);
-    const phUnworkedHrsDec = (phUnworkedMs / 3600000).toFixed(2);
-    const phWorkedHrsDec = (phWorkedMs / 3600000).toFixed(2);
+    const totalDecimalHrs = totalWorkMs / 3600000;
+    const phUnworkedHrsDec = phUnworkedMs / 3600000;
+    const phWorkedHrsDec = phWorkedMs / 3600000;
     const formattedTotalHrs = msToHM(totalWorkMs);
     const totalLateMins = Math.floor(totalLateMs / 60000);
 
@@ -521,16 +523,21 @@ async function calculateAttendanceStats(uid, monthStr) {
     }
 
     const paidLeaveCount = annualLeaveCount + medicalLeaveCount; 
+    
+    // 🟢 UNSCHEDULED CALCULATION
+    const totalRecordedDays = actWorkedDays + paidLeaveCount + phUnworkedDays + unpaidLeaveCount + absentDays;
+    const unscheduledDays = Math.max(0, majorityDays - totalRecordedDays);
 
-    console.log(`[Result] Actual Worked: ${actWorkedDays} days (${totalDecimalHrs} hrs)`);
-    console.log(`[Result] Paid PH Unworked: ${phUnworkedDays} days (${phUnworkedHrsDec} hrs)`);
-    console.log(`[Result] Paid PH Worked: ${phWorkedDays} days (${phWorkedHrsDec} hrs)`);
-    console.log(`[Result] Baseline Standard: ${majorityDays} Days / ${majorityHours} Hrs`);
+    const totalRecordedHrs = totalDecimalHrs + phUnworkedHrsDec + (paidLeaveCount * 8) + unpaidLeaveHrs + absentHrs;
+    const unscheduledHrs = Math.max(0, majorityHours - totalRecordedHrs);
+
+    console.log(`[Result] Actual Worked: ${actWorkedDays} days (${totalDecimalHrs.toFixed(2)} hrs)`);
+    console.log(`[Result] Absent: ${absentDays} days | Unpaid: ${unpaidLeaveCount} days | Unscheduled: ${unscheduledDays} days`);
 
     const metaTotalHrsEl = document.getElementById('metaTotalHrs');
     if(metaTotalHrsEl) {
         metaTotalHrsEl.dataset.majorityHours = majorityHours;
-        metaTotalHrsEl.value = totalDecimalHrs;
+        metaTotalHrsEl.value = totalDecimalHrs.toFixed(2);
     }
     
     safeSetVal('inpStdDays', majorityDays);
@@ -542,13 +549,24 @@ async function calculateAttendanceStats(uid, monthStr) {
     safeSetText('dispTotalHrs', `${formattedTotalHrs}`);
     safeSetText('dispLateStats', `${lateCount} times (${totalLateMins}m)`);
 
+    // New stats DOM update
+    safeSetText('dispAbsent', `${absentDays} Days`);
+    safeSetText('dispUnpaidLeave', `${unpaidLeaveCount} Days`);
+    safeSetText('dispUnscheduled', `${unscheduledDays} Days`);
+
     safeSetVal('metaDaysSch', mySchedCount);
     safeSetVal('metaDaysAct', actWorkedDays);
     safeSetVal('metaLateMins', totalLateMins);
     safeSetVal('metaLateCount', lateCount);
     safeSetVal('metaAnnualLeave', annualLeaveCount);
     safeSetVal('metaMedicalLeave', medicalLeaveCount);
+    
+    safeSetVal('metaAbsentDays', absentDays);
+    safeSetVal('metaAbsentHrs', absentHrs);
     safeSetVal('metaUnpaidLeave', unpaidLeaveCount);
+    safeSetVal('metaUnpaidLeaveHrs', unpaidLeaveHrs);
+    safeSetVal('metaUnscheduledDays', unscheduledDays);
+    safeSetVal('metaUnscheduledHrs', unscheduledHrs);
 
     safeSetVal('metaPHUnworked', phUnworkedDays);
     safeSetVal('metaPHWorked', phWorkedDays);
@@ -563,11 +581,14 @@ async function calculateAttendanceStats(uid, monthStr) {
 window.calcTotals = (autoUpdateStatutory = false) => {
     const getVal = (id) => { const el = document.getElementById(id); return el ? (parseFloat(el.value) || 0) : 0; };
     const fullBasic = getVal('inpBasic');
-    let baseGross = 0, phExtraGross = 0, autoLateDeduct = 0;
+    let baseGross = fullBasic; // 🔴 BASE GROSS ALWAYS FULL BASIC NOW
+    
+    let phExtraGross = 0, autoLateDeduct = 0;
+    let absentDed = 0, unpaidDed = 0, unscheduledDed = 0;
+
     const lateMins = getVal('metaLateMins');
     const lateCount = getVal('metaLateCount');
 
-    const phUnworked = getVal('metaPHUnworked');
     const phWorked = getVal('metaPHWorked');
     const phWorkedHrs = getVal('metaPHWorkedHrs');
 
@@ -578,29 +599,17 @@ window.calcTotals = (autoUpdateStatutory = false) => {
         let exactHrRate = 0;
         if (fullBasic > 0 && majorityHours > 0) {
             exactHrRate = fullBasic / majorityHours;
-            safeSetVal('inpHourlyRate', exactHrRate.toFixed(2));
+            if(autoUpdateStatutory) safeSetVal('inpHourlyRate', exactHrRate.toFixed(2));
         }
 
         const uiRate = getVal('inpHourlyRate');
         const hrRateToUse = (Math.abs(uiRate - parseFloat(exactHrRate.toFixed(2))) <= 0.01) ? exactHrRate : uiRate;
 
-        const workHrs = getVal('metaTotalHrs');
-        const phUnworkedEl = document.getElementById('metaPHUnworked');
-        const phUnworkedHrsPrecise = parseFloat(phUnworkedEl?.dataset?.hrs) || 0; 
-        
-        const totalPayableHrs = workHrs + phUnworkedHrsPrecise;
-
-        if (totalPayableHrs >= majorityHours && hrRateToUse === exactHrRate) {
-            baseGross = fullBasic; 
-        } else {
-            baseGross = hrRateToUse * totalPayableHrs;
-            if (hrRateToUse === exactHrRate) baseGross = Math.min(baseGross, fullBasic); 
-        }
+        absentDed = hrRateToUse * getVal('metaAbsentHrs');
+        unpaidDed = hrRateToUse * getVal('metaUnpaidLeaveHrs');
+        unscheduledDed = hrRateToUse * getVal('metaUnscheduledHrs');
 
         phExtraGross = hrRateToUse * phWorkedHrs * 2; 
-
-        const msgEl = document.getElementById('prorationMsg');
-        if (msgEl) msgEl.style.visibility = (totalPayableHrs < majorityHours) ? 'visible' : 'hidden';
 
         if (globalSettings.lateMode === 'times') {
             autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
@@ -609,25 +618,13 @@ window.calcTotals = (autoUpdateStatutory = false) => {
         
     } else {
         const stdDays = getVal('inpStdDays') || 26; 
-        const paidLeaveCount = getVal('metaAnnualLeave') + getVal('metaMedicalLeave');
-        
-        const basePayableDays = getVal('metaDaysAct') + paidLeaveCount + phUnworked;
         const exactDailyRate = stdDays > 0 ? (fullBasic / stdDays) : 0;
         
-        if (basePayableDays >= stdDays) {
-            baseGross = fullBasic; 
-        } else {
-            baseGross = exactDailyRate * basePayableDays;
-            baseGross = Math.min(baseGross, fullBasic);
-        }
+        absentDed = exactDailyRate * getVal('metaAbsentDays');
+        unpaidDed = exactDailyRate * getVal('metaUnpaidLeave');
+        unscheduledDed = exactDailyRate * getVal('metaUnscheduledDays');
         
         phExtraGross = phWorked * 2 * exactDailyRate;
-
-        const msg = document.getElementById('prorationMsg');
-        if(msg) {
-            if (basePayableDays < stdDays) { msg.style.visibility = 'visible'; msg.innerText = `Pro-rated: ${basePayableDays} / ${stdDays} days`; } 
-            else msg.style.visibility = 'hidden';
-        }
 
         if (globalSettings.lateMode === 'times') {
             autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
@@ -638,11 +635,20 @@ window.calcTotals = (autoUpdateStatutory = false) => {
         }
     }
     
+    // Apply visual calculations only if instructed
+    if (autoUpdateStatutory) {
+        safeSetVal('inpAbsentDed', absentDed.toFixed(2));
+        safeSetVal('inpUnpaidDed', unpaidDed.toFixed(2));
+        safeSetVal('inpUnscheduledDed', unscheduledDed.toFixed(2));
+        safeSetVal('inpLateDed', autoLateDeduct.toFixed(2));
+    }
+
     safeSetVal('dispGrossBasic', formatMoney(baseGross));
     safeSetVal('calcPHExtra', phExtraGross.toFixed(2));
 
-    const lateInputEl = document.getElementById('inpLateDed');
-    if(lateInputEl && !lateInputEl.value && autoLateDeduct > 0) lateInputEl.value = autoLateDeduct.toFixed(2);
+    // Calculate Statutory strictly based on "Earned Basic"
+    let earnedBasicForStatutory = baseGross - getVal('inpAbsentDed') - getVal('inpUnpaidDed') - getVal('inpUnscheduledDed') - getVal('inpLateDed');
+    if (earnedBasicForStatutory < 0) earnedBasicForStatutory = 0;
 
     if (autoUpdateStatutory) {
         const uid = document.getElementById('staffSelect')?.value;
@@ -655,8 +661,8 @@ window.calcTotals = (autoUpdateStatutory = false) => {
             safeSetText('hintEPF', epfRaw ? `(${epfRaw}${epfRaw.toString().includes('%') ? '' : '%'})` : '');
             safeSetText('hintEIS', eisRaw ? `(${eisRaw}${eisRaw.toString().includes('%') ? '' : '%'})` : '');
 
-            const epfAmt = calculateStatutoryAmount(epfRaw, baseGross, true); 
-            const eisAmt = calculateStatutoryAmount(eisRaw, baseGross, true); 
+            const epfAmt = calculateStatutoryAmount(epfRaw, earnedBasicForStatutory, true); 
+            const eisAmt = calculateStatutoryAmount(eisRaw, earnedBasicForStatutory, true); 
 
             if (epfAmt > 0) safeSetVal('inpEPF', epfAmt.toFixed(2));
             if (eisAmt > 0) safeSetVal('inpEIS', eisAmt.toFixed(2));
@@ -665,8 +671,9 @@ window.calcTotals = (autoUpdateStatutory = false) => {
         }
     }
 
+    // 🔴 最终工资计算
     const grossTotal = baseGross + phExtraGross + getVal('inpComm') + getVal('inpOT') + getVal('inpAllowance');
-    const totalDed = getVal('inpEPF') + getVal('inpSOCSO') + getVal('inpEIS') + getVal('inpPCB') + getVal('inpLateDed') + getVal('inpAdvance'); 
+    const totalDed = getVal('inpAbsentDed') + getVal('inpUnpaidDed') + getVal('inpUnscheduledDed') + getVal('inpEPF') + getVal('inpSOCSO') + getVal('inpEIS') + getVal('inpPCB') + getVal('inpLateDed') + getVal('inpAdvance'); 
     const finalNet = grossTotal - totalDed;
     
     safeSetText('dispNet', "RM " + formatMoney(finalNet));
@@ -686,7 +693,7 @@ window.savePayslipForm = async () => {
     const phExtraGross = getVal('calcPHExtra');
 
     const grossTotal = baseGross + phExtraGross + getVal('inpComm') + getVal('inpOT') + getVal('inpAllowance');
-    const totalDed = getVal('inpEPF') + getVal('inpSOCSO') + getVal('inpEIS') + getVal('inpPCB') + getVal('inpLateDed') + getVal('inpAdvance');
+    const totalDed = getVal('inpAbsentDed') + getVal('inpUnpaidDed') + getVal('inpUnscheduledDed') + getVal('inpEPF') + getVal('inpSOCSO') + getVal('inpEIS') + getVal('inpPCB') + getVal('inpLateDed') + getVal('inpAdvance');
     const net = grossTotal - totalDed;
 
     const payload = {
@@ -702,7 +709,18 @@ window.savePayslipForm = async () => {
         basic: getVal('inpBasic'),
         final_basic: baseGross, 
         earnings: { commission: getVal('inpComm'), ot: getVal('inpOT'), allowance: getVal('inpAllowance'), phPay: phExtraGross, total: grossTotal },
-        deductions: { epf: getVal('inpEPF'), socso: getVal('inpSOCSO'), eis: getVal('inpEIS'), tax: getVal('inpPCB'), late: getVal('inpLateDed'), advance: getVal('inpAdvance'), total: totalDed },
+        deductions: { 
+            absent: getVal('inpAbsentDed'), 
+            unpaidLeave: getVal('inpUnpaidDed'), 
+            unscheduled: getVal('inpUnscheduledDed'), 
+            epf: getVal('inpEPF'), 
+            socso: getVal('inpSOCSO'), 
+            eis: getVal('inpEIS'), 
+            tax: getVal('inpPCB'), 
+            late: getVal('inpLateDed'), 
+            advance: getVal('inpAdvance'), 
+            total: totalDed 
+        },
         employer_epf: getVal('inpEmpEPF'), employer_socso: getVal('inpEmpSOCSO'), employer_eis: getVal('inpEmpEIS'),
         attendanceStats: {
             stdDays: getVal('inpStdDays'), 
@@ -710,6 +728,8 @@ window.savePayslipForm = async () => {
             annualLeave: getVal('metaAnnualLeave'),
             medicalLeave: getVal('metaMedicalLeave'),
             unpaidLeave: getVal('metaUnpaidLeave'),
+            absentDays: getVal('metaAbsentDays'),
+            unscheduledDays: getVal('metaUnscheduledDays'),
             phUnworked: getVal('metaPHUnworked'),
             phWorked: getVal('metaPHWorked'),
             phUnworkedHrs: parseFloat(document.getElementById('metaPHUnworked')?.dataset?.hrs) || 0,
@@ -856,7 +876,7 @@ window.openCreateModal = () => {
     safeSetText('hintEPF', "");
     safeSetText('hintEIS', "");
     
-    document.getElementById('btnDeletePayslip')?.classList.add('d-none'); // 隐藏删除按钮
+    document.getElementById('btnDeletePayslip')?.classList.add('d-none');
 
     const globalDate = document.getElementById('globalMonthPicker')?.value;
     if(globalDate) safeSetVal('formMonthPicker', globalDate);
@@ -887,6 +907,10 @@ window.openEditModal = (id) => {
     safeSetVal('inpOT', d.earnings.ot || 0);
     safeSetVal('inpAllowance', d.earnings.allowance || 0);
 
+    safeSetVal('inpAbsentDed', d.deductions?.absent || 0);
+    safeSetVal('inpUnpaidDed', d.deductions?.unpaidLeave || 0);
+    safeSetVal('inpUnscheduledDed', d.deductions?.unscheduled || 0);
+    
     safeSetVal('inpEPF', d.deductions.epf || 0);
     safeSetVal('inpSOCSO', d.deductions.socso || 0);
     safeSetVal('inpEIS', d.deductions.eis || 0);
@@ -900,7 +924,7 @@ window.openEditModal = (id) => {
 
     safeSetVal('formStatus', d.status || 'Draft');
 
-    document.getElementById('btnDeletePayslip')?.classList.remove('d-none'); // 显示删除按钮
+    document.getElementById('btnDeletePayslip')?.classList.remove('d-none');
     
     const staff = staffMap[d.uid];
     if (staff && staff.statutory) {
@@ -916,7 +940,11 @@ window.openEditModal = (id) => {
         
         safeSetVal('metaAnnualLeave', d.attendanceStats.annualLeave || 0);
         safeSetVal('metaMedicalLeave', d.attendanceStats.medicalLeave || 0);
+        
+        safeSetVal('metaAbsentDays', d.attendanceStats.absentDays || 0);
         safeSetVal('metaUnpaidLeave', d.attendanceStats.unpaidLeave || 0);
+        safeSetVal('metaUnscheduledDays', d.attendanceStats.unscheduledDays || 0);
+
         safeSetVal('metaPHUnworked', d.attendanceStats.phUnworked || 0);
         safeSetVal('metaPHWorked', d.attendanceStats.phWorked || 0);
         
@@ -931,6 +959,10 @@ window.openEditModal = (id) => {
         safeSetText('dispActDays', `${d.attendanceStats.actDays || 0} <span style="font-size:0.6rem">Days</span>`);
         safeSetText('dispPH', `${phOff} / ${phWork} <span style="font-size:0.6rem">Off/Work</span>`);
         safeSetText('dispPayableDays', `${parseFloat(d.attendanceStats.actDays || 0) + totalPaidLeave + phOff} <span style="font-size:0.6rem">Days</span>`);
+
+        safeSetText('dispAbsent', `${d.attendanceStats.absentDays || 0} <span style="font-size:0.6rem">Days</span>`);
+        safeSetText('dispUnpaidLeave', `${d.attendanceStats.unpaidLeave || 0} <span style="font-size:0.6rem">Days</span>`);
+        safeSetText('dispUnscheduled', `${d.attendanceStats.unscheduledDays || 0} <span style="font-size:0.6rem">Days</span>`);
 
         safeSetVal('metaTotalHrs', d.attendanceStats.totalHrs || 0);
         
@@ -966,6 +998,8 @@ window.viewPayslip = (id) => {
     const al = parseFloat(stats.annualLeave) || 0;
     const ml = parseFloat(stats.medicalLeave) || 0;
     const ul = parseFloat(stats.unpaidLeave) || 0;
+    const abs = parseFloat(stats.absentDays) || 0;
+    const unsched = parseFloat(stats.unscheduledDays) || 0;
     const phUnworked = parseFloat(stats.phUnworked) || 0;
     const phWorked = parseFloat(stats.phWorked) || 0;
     const actDays = parseFloat(stats.actDays) || 0;
@@ -984,39 +1018,22 @@ window.viewPayslip = (id) => {
     if (d.earnings.ot > 0) earningsList.push({ name: 'OVERTIME', amount: d.earnings.ot });
     if (d.earnings.allowance > 0) earningsList.push({ name: 'ALLOWANCE', amount: d.earnings.allowance });
 
-    // 2. DEDUCTIONS: 如果员工因为缺勤/无薪假导致 Final Basic 少于 Full Basic，在这里列出差额并标明原因
-    const unpaidDed = Math.max(0, (parseFloat(d.basic) || 0) - (parseFloat(d.final_basic) || 0));
-    if (unpaidDed > 0) {
-        let reasonStr = "ABSENT / UNPAID LEAVE";
-        if (stats.mode === 'hourly') {
-            const expectedHrs = parseFloat(stats.majorityHours) || 208; 
-            const actualHrs = parseFloat(stats.totalHrs) + parseFloat(stats.phUnworkedHrs || 0);
-            const shortHrs = Math.max(0, expectedHrs - actualHrs).toFixed(2);
-            if (shortHrs > 0) reasonStr += ` (Short ${shortHrs} hrs)`;
-        } else {
-            const basePayableDays = actDays + al + ml + phUnworked;
-            const shortDays = Math.max(0, stdDays - basePayableDays);
-            if (shortDays > 0) reasonStr += ` (-${shortDays} Days)`;
-        }
-        deductionsList.push({ name: reasonStr, amount: unpaidDed });
+    // 2. DEDUCTIONS: 彻底分列的考勤扣款
+    if (d.deductions.absent > 0) deductionsList.push({ name: `ABSENT (${abs} Days)`, amount: d.deductions.absent });
+    if (d.deductions.unpaidLeave > 0) deductionsList.push({ name: `UNPAID LEAVE (${ul} Days)`, amount: d.deductions.unpaidLeave });
+    if (d.deductions.unscheduled > 0) deductionsList.push({ name: `PRO-RATED / UNSCHEDULED (${unsched} Days)`, amount: d.deductions.unscheduled });
+
+    if (d.deductions.late > 0) {
+        let lateStr = "LATE DEDUCTION";
+        if (lateMins > 0 && stats.mode !== 'hourly') lateStr += ` (${lateMins} mins)`;
+        else if (lateCount > 0) lateStr += ` (${lateCount} times)`;
+        deductionsList.push({ name: lateStr, amount: d.deductions.late });
     }
 
     if (d.deductions.epf > 0) deductionsList.push({ name: 'EPF (Employee)', amount: d.deductions.epf });
     if (d.deductions.socso > 0) deductionsList.push({ name: 'SOCSO (Employee)', amount: d.deductions.socso });
     if (d.deductions.eis > 0) deductionsList.push({ name: 'EIS (Employee)', amount: d.deductions.eis });
     if (d.deductions.tax > 0) deductionsList.push({ name: 'PCB / TAX', amount: d.deductions.tax });
-
-    // 🟢 迟到罚款明细
-    if (d.deductions.late > 0) {
-        let lateStr = "LATE DEDUCTION";
-        if (lateMins > 0 && stats.mode !== 'hourly') {
-             lateStr += ` (${lateMins} mins)`;
-        } else if (lateCount > 0) {
-             lateStr += ` (${lateCount} times)`;
-        }
-        deductionsList.push({ name: lateStr, amount: d.deductions.late });
-    }
-
     if (d.deductions.advance > 0) deductionsList.push({ name: 'SALARY ADVANCE', amount: d.deductions.advance });
 
     // 3. 构建左右对照表格
@@ -1039,7 +1056,7 @@ window.viewPayslip = (id) => {
 
         let dedStyle = 'padding-left:20px;';
         let dedAmtStyle = 'text-align:right;';
-        if (ded.name.includes('LATE') || ded.name.includes('ADVANCE') || ded.name.includes('ABSENT') || ded.name.includes('UNPAID')) {
+        if (ded.name.includes('LATE') || ded.name.includes('ADVANCE') || ded.name.includes('ABSENT') || ded.name.includes('UNPAID') || ded.name.includes('PRO-RATED')) {
             dedStyle += ' color:red;';
             dedAmtStyle += ' color:red;';
         }
@@ -1110,8 +1127,8 @@ window.viewPayslip = (id) => {
             </div>
             
             <div style="margin-top:20px; font-size:0.75rem; border:1px dashed #ccc; padding:10px; border-radius:6px; color:#64748b;">
-                <b>Attendance Stats:</b> Payable Days: ${payableDays} / ${stats.stdDays || 26} (Worked: ${actDays}, AL: ${al}, ML: ${ml}, PH Off: ${phUnworked}, PH Worked: ${phWorked}, Unpaid: ${ul})
-                <br><b>Late Stats:</b> ${stats.lateCount || 0} times (${stats.lateMins || 0} minutes)
+                <b>Attendance Stats:</b> Payable Days: ${payableDays} / ${stats.stdDays || 26} (Worked: ${actDays}, AL: ${al}, ML: ${ml}, PH Off: ${phUnworked}, PH Worked: ${phWorked})
+                <br><b>Deduction Stats:</b> Absent: ${abs} Days | Unpaid: ${ul} Days | Unscheduled: ${unsched} Days | Late: ${stats.lateCount || 0} times (${stats.lateMins || 0} minutes)
             </div>
         </div>
     `;
@@ -1261,6 +1278,7 @@ window.generateAllDrafts = async () => {
 
             let actWorkedDays = 0, totalWorkMs = 0, totalLateMs = 0, lateCount = 0;
             let phUnworkedDays = 0, phWorkedDays = 0, phWorkedMs = 0, phUnworkedMs = 0;
+            let absentDays = 0, absentHrs = 0;
             const satMulti = parseFloat(globalSettings.satMultiplier || 1.0);
             
             const toDateObj = (t, dateStr) => {
@@ -1273,7 +1291,6 @@ window.generateAllDrafts = async () => {
             const myAtt = searchIds.map(sid => attendances[sid] || {}).reduce((acc, curr) => ({...acc, ...curr}), {});
             const mySchedsList = searchIds.map(sid => schedules[sid] || []).flat().reduce((acc, s) => { acc[s.date] = s; return acc; }, {});
 
-            // 🟢 提前构建好个人的请假列表
             const userLeaves = {};
             leaves.forEach(l => {
                 if (searchIds.includes(l.uid) || searchIds.includes(l.authUid)) {
@@ -1297,7 +1314,6 @@ window.generateAllDrafts = async () => {
                 const leaveType = userLeaves[dateStr];
                 const isPH = !!holidaysMap[dateStr];
                 
-                // 🟢 同样核心修复：有排班或者有请假，遇上 PH 则判定为有效
                 const validPH = isPH && (!!sched || !!leaveType);
 
                 if (records && records.in) {
@@ -1352,17 +1368,36 @@ window.generateAllDrafts = async () => {
                         } else if (leaveType) {
                             phUnworkedMs += 8 * 3600000;
                         }
+                    } else if (sched && !leaveType) {
+                        const isSat = new Date(dateStr).getDay() === 6;
+                        absentDays += isSat ? satMulti : 1;
+                        if (sched.start && sched.end) {
+                            let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
+                            if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
+                            if (schedDurMs > 0) absentHrs += (schedDurMs / 3600000);
+                        }
                     }
                 }
             }
 
             let annualLeaveCount = 0, medicalLeaveCount = 0, unpaidLeaveCount = 0;
+            let unpaidLeaveHrs = 0;
             for (const [dateStr, lType] of Object.entries(userLeaves)) {
                 const validPH = !!holidaysMap[dateStr] && (!!mySchedsList[dateStr] || !!lType);
                 if (!myAtt[dateStr]?.in && !validPH) {
                     if (lType.includes('Annual') || lType.includes('年假') || lType.includes('Cuti Tahunan')) annualLeaveCount++;
                     else if (lType.includes('Medical') || lType.includes('病假') || lType.includes('Cuti Sakit')) medicalLeaveCount++;
-                    else unpaidLeaveCount++;
+                    else {
+                        unpaidLeaveCount++;
+                        const sched = mySchedsList[dateStr];
+                        if (sched && sched.start && sched.end) {
+                            let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
+                            if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
+                            if (schedDurMs > 0) unpaidLeaveHrs += (schedDurMs / 3600000);
+                        } else {
+                            unpaidLeaveHrs += 8;
+                        }
+                    }
                 }
             }
 
@@ -1372,22 +1407,26 @@ window.generateAllDrafts = async () => {
             const phWorkedHrsDec = phWorkedMs / 3600000;
             const totalLateMins = Math.floor(totalLateMs / 60000);
             
+            const totalRecordedDays = actWorkedDays + paidLeaveCount + phUnworkedDays + unpaidLeaveCount + absentDays;
+            const unscheduledDays = Math.max(0, majorityDays - totalRecordedDays);
+
+            const totalRecordedHrs = totalDecimalHrs + phUnworkedHrsDec + (paidLeaveCount * 8) + unpaidLeaveHrs + absentHrs;
+            const unscheduledHrs = Math.max(0, majorityHours - totalRecordedHrs);
+
             let totalAdvanceDed = 0;
             searchIds.forEach(sid => { if(advances[sid]) totalAdvanceDed += advances[sid]; });
 
             const fullBasic = parseFloat(staff.payroll?.basic) || 0;
-            let baseGross = 0, phExtraGross = 0, autoLateDeduct = 0;
+            let baseGross = fullBasic; // 🔴 BASE GROSS ALWAYS FULL BASIC NOW
+            let phExtraGross = 0, autoLateDeduct = 0;
+            let absentDed = 0, unpaidDed = 0, unscheduledDed = 0;
 
             if (globalSettings.calcMode === 'hourly') {
                 const exactHrRate = (majorityHours > 0) ? (fullBasic / majorityHours) : 0;
-                const totalPayableHrs = totalDecimalHrs + parseFloat(phUnworkedHrsDec);
-
-                if (totalPayableHrs >= majorityHours) {
-                    baseGross = fullBasic; 
-                } else {
-                    baseGross = exactHrRate * totalPayableHrs;
-                    baseGross = Math.min(baseGross, fullBasic);
-                }
+                
+                absentDed = exactHrRate * absentHrs;
+                unpaidDed = exactHrRate * unpaidLeaveHrs;
+                unscheduledDed = exactHrRate * unscheduledHrs;
                 
                 phExtraGross = exactHrRate * phWorkedHrsDec * 2;
 
@@ -1395,15 +1434,11 @@ window.generateAllDrafts = async () => {
                     autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
                 }
             } else {
-                const basePayableDays = actWorkedDays + paidLeaveCount + phUnworkedDays;
                 const exactDailyRate = majorityDays > 0 ? (fullBasic / majorityDays) : 0;
                 
-                if (basePayableDays >= majorityDays) {
-                    baseGross = fullBasic; 
-                } else {
-                    baseGross = exactDailyRate * basePayableDays;
-                    baseGross = Math.min(baseGross, fullBasic);
-                }
+                absentDed = exactDailyRate * absentDays;
+                unpaidDed = exactDailyRate * unpaidLeaveCount;
+                unscheduledDed = exactDailyRate * unscheduledDays;
                 
                 phExtraGross = phWorkedDays * 2 * exactDailyRate;
 
@@ -1414,16 +1449,19 @@ window.generateAllDrafts = async () => {
                 }
             }
 
+            let earnedBasicForStatutory = baseGross - absentDed - unpaidDed - unscheduledDed - autoLateDeduct;
+            if (earnedBasicForStatutory < 0) earnedBasicForStatutory = 0;
+
             let epfAmt = 0, eisAmt = 0;
             if (staff.statutory) {
                 const epfRaw = staff.statutory.epf?.contrib || '';
                 const eisRaw = staff.statutory.eis || '';
-                epfAmt = calculateStatutoryAmount(epfRaw, baseGross, true);
-                eisAmt = calculateStatutoryAmount(eisRaw, baseGross, true);
+                epfAmt = calculateStatutoryAmount(epfRaw, earnedBasicForStatutory, true);
+                eisAmt = calculateStatutoryAmount(eisRaw, earnedBasicForStatutory, true);
             }
 
             const grossTotal = baseGross + phExtraGross; 
-            const totalDed = epfAmt + eisAmt + autoLateDeduct + totalAdvanceDed;
+            const totalDed = epfAmt + eisAmt + autoLateDeduct + absentDed + unpaidDed + unscheduledDed + totalAdvanceDed;
             const net = grossTotal - totalDed;
 
             const payload = {
@@ -1439,11 +1477,23 @@ window.generateAllDrafts = async () => {
                 basic: fullBasic,
                 final_basic: parseFloat(baseGross.toFixed(2)), 
                 earnings: { commission: 0, ot: 0, allowance: 0, phPay: parseFloat(phExtraGross.toFixed(2)), total: parseFloat(grossTotal.toFixed(2)) },
-                deductions: { epf: parseFloat(epfAmt.toFixed(2)), socso: 0, eis: parseFloat(eisAmt.toFixed(2)), tax: 0, late: parseFloat(autoLateDeduct.toFixed(2)), advance: parseFloat(totalAdvanceDed.toFixed(2)), total: parseFloat(totalDed.toFixed(2)) },
+                deductions: { 
+                    absent: parseFloat(absentDed.toFixed(2)), 
+                    unpaidLeave: parseFloat(unpaidDed.toFixed(2)), 
+                    unscheduled: parseFloat(unscheduledDed.toFixed(2)), 
+                    epf: parseFloat(epfAmt.toFixed(2)), 
+                    socso: 0, 
+                    eis: parseFloat(eisAmt.toFixed(2)), 
+                    tax: 0, 
+                    late: parseFloat(autoLateDeduct.toFixed(2)), 
+                    advance: parseFloat(totalAdvanceDed.toFixed(2)), 
+                    total: parseFloat(totalDed.toFixed(2)) 
+                },
                 employer_epf: 0, employer_socso: 0, employer_eis: 0,
                 attendanceStats: {
                     stdDays: majorityDays, actDays: actWorkedDays,
                     annualLeave: annualLeaveCount, medicalLeave: medicalLeaveCount, unpaidLeave: unpaidLeaveCount,
+                    absentDays: absentDays, unscheduledDays: unscheduledDays,
                     phUnworked: phUnworkedDays, phWorked: phWorkedDays,
                     phUnworkedHrs: parseFloat(phUnworkedHrsDec),
                     totalHrs: totalDecimalHrs,
