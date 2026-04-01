@@ -21,7 +21,8 @@ let currentPayrollData = [];
 let staffMap = {}; 
 let holidaysMap = {}; 
 let formModal, printModal, advancesModal, settingsModal;
-let globalSettings = { calcMode: 'daily', satMultiplier: 1.0, lateMode: 'minutes', lateFixedAmount: 10 }; 
+// 🟢 新增：加入 defaultCompany 全局变量
+let globalSettings = { calcMode: 'daily', satMultiplier: 1.0, lateMode: 'minutes', lateFixedAmount: 10, defaultCompany: 'RH RIDER HUB MOTOR (M) SDN. BHD.' }; 
 
 const safeSetVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
 const safeSetText = (id, text) => { const el = document.getElementById(id); if (el) el.innerText = text; };
@@ -72,6 +73,8 @@ async function loadSettings() {
         safeSetVal('configSatMulti', globalSettings.satMultiplier);
         safeSetVal('configLateMode', globalSettings.lateMode || 'minutes');
         safeSetVal('configLateAmount', globalSettings.lateFixedAmount || 10);
+        // 🟢 新增：读取设置中的默认公司
+        safeSetVal('configDefaultCompany', globalSettings.defaultCompany || 'RH RIDER HUB MOTOR (M) SDN. BHD.');
         
         window.toggleSettingsView();
         window.toggleLateSettings();
@@ -111,7 +114,9 @@ window.saveSettings = async () => {
         calcMode: document.getElementById('configCalcMode').value, 
         satMultiplier: parseFloat(document.getElementById('configSatMulti').value), 
         lateMode: document.getElementById('configLateMode').value, 
-        lateFixedAmount: parseFloat(document.getElementById('configLateAmount').value) || 0 
+        lateFixedAmount: parseFloat(document.getElementById('configLateAmount').value) || 0,
+        // 🟢 新增：保存用户设置的默认公司
+        defaultCompany: document.getElementById('configDefaultCompany').value
     };
     
     showLoading();
@@ -319,7 +324,6 @@ window.autoFillStaffData = async () => {
 };
 
 window.recalcStatutoryAndTotals = () => {
-    // Moved statutory recalculation inside calcTotals logic to use true earned basic.
     window.calcTotals();
 };
 
@@ -467,7 +471,6 @@ async function calculateAttendanceStats(uid, monthStr) {
                     phUnworkedMs += 8 * 3600000; 
                 }
             } else if (sched && !leaveType) {
-                // 🚩 Absent Detection: Has Schedule, No Clock-in, No Leave, No PH
                 const isSat = new Date(dateStr).getDay() === 6;
                 absentDays += isSat ? satMulti : 1;
 
@@ -549,7 +552,6 @@ async function calculateAttendanceStats(uid, monthStr) {
     safeSetText('dispTotalHrs', `${formattedTotalHrs}`);
     safeSetText('dispLateStats', `${lateCount} times (${totalLateMins}m)`);
 
-    // New stats DOM update
     safeSetText('dispAbsent', `${absentDays} Days`);
     safeSetText('dispUnpaidLeave', `${unpaidLeaveCount} Days`);
     safeSetText('dispUnscheduled', `${unscheduledDays} Days`);
@@ -581,7 +583,7 @@ async function calculateAttendanceStats(uid, monthStr) {
 window.calcTotals = (autoUpdateStatutory = false) => {
     const getVal = (id) => { const el = document.getElementById(id); return el ? (parseFloat(el.value) || 0) : 0; };
     const fullBasic = getVal('inpBasic');
-    let baseGross = fullBasic; // 🔴 BASE GROSS ALWAYS FULL BASIC NOW
+    let baseGross = fullBasic; 
     
     let phExtraGross = 0, autoLateDeduct = 0;
     let absentDed = 0, unpaidDed = 0, unscheduledDed = 0;
@@ -635,7 +637,6 @@ window.calcTotals = (autoUpdateStatutory = false) => {
         }
     }
     
-    // Apply visual calculations only if instructed
     if (autoUpdateStatutory) {
         safeSetVal('inpAbsentDed', absentDed.toFixed(2));
         safeSetVal('inpUnpaidDed', unpaidDed.toFixed(2));
@@ -646,7 +647,6 @@ window.calcTotals = (autoUpdateStatutory = false) => {
     safeSetVal('dispGrossBasic', formatMoney(baseGross));
     safeSetVal('calcPHExtra', phExtraGross.toFixed(2));
 
-    // Calculate Statutory strictly based on "Earned Basic"
     let earnedBasicForStatutory = baseGross - getVal('inpAbsentDed') - getVal('inpUnpaidDed') - getVal('inpUnscheduledDed') - getVal('inpLateDed');
     if (earnedBasicForStatutory < 0) earnedBasicForStatutory = 0;
 
@@ -671,7 +671,6 @@ window.calcTotals = (autoUpdateStatutory = false) => {
         }
     }
 
-    // 🔴 最终工资计算
     const grossTotal = baseGross + phExtraGross + getVal('inpComm') + getVal('inpOT') + getVal('inpAllowance');
     const totalDed = getVal('inpAbsentDed') + getVal('inpUnpaidDed') + getVal('inpUnscheduledDed') + getVal('inpEPF') + getVal('inpSOCSO') + getVal('inpEIS') + getVal('inpPCB') + getVal('inpLateDed') + getVal('inpAdvance'); 
     const finalNet = grossTotal - totalDed;
@@ -698,6 +697,7 @@ window.savePayslipForm = async () => {
 
     const payload = {
         uid, month,
+        companyName: document.getElementById('inpCompany')?.value || 'RH RIDER HUB MOTOR (M) SDN. BHD.', // 🟢 新增：保存公司名字
         staffName: staff ? staff.displayName : 'Unknown',
         staffCode: staff ? staff.displayId : '',
         icNo: staff?.personal?.icNo || '-',
@@ -876,6 +876,9 @@ window.openCreateModal = () => {
     safeSetText('hintEPF', "");
     safeSetText('hintEIS', "");
     
+    // 🟢 新增：新建时应用系统默认设置的公司
+    safeSetVal('inpCompany', globalSettings.defaultCompany || 'RH RIDER HUB MOTOR (M) SDN. BHD.');
+
     document.getElementById('btnDeletePayslip')?.classList.add('d-none');
 
     const globalDate = document.getElementById('globalMonthPicker')?.value;
@@ -900,6 +903,9 @@ window.openEditModal = (id) => {
     const formMonthPicker = document.getElementById('formMonthPicker');
     if (staffSelect) { staffSelect.value = d.uid; staffSelect.disabled = true; }
     if (formMonthPicker) { formMonthPicker.value = d.month; formMonthPicker.disabled = true; }
+
+    // 🟢 新增：加载旧数据的公司名称，或使用默认值
+    safeSetVal('inpCompany', d.companyName || globalSettings.defaultCompany || 'RH RIDER HUB MOTOR (M) SDN. BHD.');
 
     safeSetVal('inpBasic', d.basic);
     safeSetVal('calcPHExtra', d.earnings.phPay || 0);
@@ -994,8 +1000,6 @@ window.viewPayslip = (id) => {
     const d = currentPayrollData.find(x => x.id === id);
     if(!d) return;
 
-    // 🟢 核心修改 1：提前组合好 PDF 导出的专属文件名
-    // 格式：[月份] Payslip-[员工ID] [员工名字]
     window.currentPrintTitle = `${d.month} Payslip-${d.staffCode || 'NoID'} ${d.staffName}`;
 
     const stats = d.attendanceStats || {};
@@ -1014,7 +1018,6 @@ window.viewPayslip = (id) => {
     const earningsList = [];
     const deductionsList = [];
 
-    // 1. EARNINGS: 恒定展示满月底薪
     earningsList.push({ name: 'BASIC PAY', amount: parseFloat(d.basic) || 0 });
     
     if (d.earnings.phPay > 0) earningsList.push({ name: 'PUBLIC HOLIDAY PAY (EXTRA 2x)', amount: d.earnings.phPay });
@@ -1022,7 +1025,6 @@ window.viewPayslip = (id) => {
     if (d.earnings.ot > 0) earningsList.push({ name: 'OVERTIME', amount: d.earnings.ot });
     if (d.earnings.allowance > 0) earningsList.push({ name: 'ALLOWANCE', amount: d.earnings.allowance });
 
-    // 2. DEDUCTIONS: 彻底分列的考勤扣款
     if (d.deductions.absent > 0) deductionsList.push({ name: `ABSENT (${abs} Days)`, amount: d.deductions.absent });
     if (d.deductions.unpaidLeave > 0) deductionsList.push({ name: `UNPAID LEAVE (${ul} Days)`, amount: d.deductions.unpaidLeave });
     if (d.deductions.unscheduled > 0) deductionsList.push({ name: `PRO-RATED / UNSCHEDULED (${unsched} Days)`, amount: d.deductions.unscheduled });
@@ -1040,7 +1042,6 @@ window.viewPayslip = (id) => {
     if (d.deductions.tax > 0) deductionsList.push({ name: 'PCB / TAX', amount: d.deductions.tax });
     if (d.deductions.advance > 0) deductionsList.push({ name: 'SALARY ADVANCE', amount: d.deductions.advance });
 
-    // 3. 构建左右对照表格
     let tableRows = '';
     const maxRows = Math.max(earningsList.length, deductionsList.length);
     let visualGross = 0;
@@ -1084,11 +1085,18 @@ window.viewPayslip = (id) => {
 
     const payableDays = actDays + al + ml + phUnworked;
 
+    // 🟢 新增：动态判断当前工资单的公司名，如果没记录则采用系统默认
+    const compName = d.companyName || globalSettings.defaultCompany || "RH RIDER HUB MOTOR (M) SDN. BHD.";
+    // 动态地址：如果是 H Digital，显示简略地址或其专属地址，否则显示原长地址
+    const compAddress = compName.includes("DIGITAL") 
+        ? "IPOH, PERAK" 
+        : "NO.26&28, JALAN MERU IMPIAN B3, CASA KAYANGAN @ PUSAT PERNIAGAAN MERU IMPIAN,<br>BANDAR MERU RAYA, 30020 IPOH, Perak";
+
     const html = `
         <div class="payslip-preview bg-white shadow-sm border rounded">
             <div class="payslip-header border-bottom border-dark pb-3 mb-3">
-                <div class="company-name fs-4">RH RIDER HUB MOTOR (M) SDN. BHD.</div>
-                <div class="company-address text-secondary mt-1">NO.26&28, JALAN MERU IMPIAN B3, CASA KAYANGAN @ PUSAT PERNIAGAAN MERU IMPIAN,<br>BANDAR MERU RAYA, 30020 IPOH, Perak</div>
+                <div class="company-name fs-4">${compName}</div>
+                <div class="company-address text-secondary mt-1">${compAddress}</div>
             </div>
 
             <div class="info-grid bg-light p-3 rounded mb-3 border">
@@ -1140,22 +1148,15 @@ window.viewPayslip = (id) => {
     if(printModal) printModal.show();
 };
 
-// 🟢 核心修改 2：新增专属打印函数，接管打印行为并临时修改网页标题
 window.printPayslip = () => {
-    // 1. 备份原始网页标题
     const originalTitle = document.title;
-    
-    // 2. 将网页标题替换为预设的专属名字，浏览器导出 PDF 会默认抓取这个名字
     document.title = window.currentPrintTitle || 'Payslip';
-    
-    // 3. 呼出系统打印/保存为PDF视窗
     window.print();
-    
-    // 4. 延迟 1 秒后恢复原有标题 (防止打印组件还没读取到就变回去了)
     setTimeout(() => { 
         document.title = originalTitle; 
     }, 1000);
 };
+
 window.publishAll = async () => {
     const drafts = currentPayrollData.filter(d => d.status === 'Draft');
     if(drafts.length === 0) return showStatusAlert('statusMessage', "No draft payslips found to publish.", false);
@@ -1437,7 +1438,7 @@ window.generateAllDrafts = async () => {
             searchIds.forEach(sid => { if(advances[sid]) totalAdvanceDed += advances[sid]; });
 
             const fullBasic = parseFloat(staff.payroll?.basic) || 0;
-            let baseGross = fullBasic; // 🔴 BASE GROSS ALWAYS FULL BASIC NOW
+            let baseGross = fullBasic; 
             let phExtraGross = 0, autoLateDeduct = 0;
             let absentDed = 0, unpaidDed = 0, unscheduledDed = 0;
 
@@ -1486,6 +1487,7 @@ window.generateAllDrafts = async () => {
 
             const payload = {
                 uid, month: monthStr,
+                companyName: globalSettings.defaultCompany || 'RH RIDER HUB MOTOR (M) SDN. BHD.', // 🟢 新增：批量生成时采用全局公司配置
                 staffName: staff.displayName,
                 staffCode: staff.displayId,
                 icNo: staff.personal?.icNo || '-',
@@ -1581,7 +1583,6 @@ window.deletePayslip = async () => {
     const docId = document.getElementById('editDocId')?.value;
     if (!docId) return;
 
-    // 双重确认机制
     if (!confirm("⚠️ Are you sure you want to DELETE this payslip?")) return;
     if (!confirm("🚨 DOUBLE CONFIRMATION:\n\nDeleting this payslip will permanently remove it from the system. If it was already Published, any deducted salary advances will NOT be automatically reverted.\n\nProceed with deletion?")) return;
 
@@ -1611,7 +1612,7 @@ document.addEventListener('keydown', (e) => {
     
     if (formModalEl && formModalEl.classList.contains('show') && window.currentViewingPayslipId) {
         
-        if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
             if (e.altKey && e.key === 'ArrowLeft') window.navigatePayslip(-1);
             if (e.altKey && e.key === 'ArrowRight') window.navigatePayslip(1);
             return; 
