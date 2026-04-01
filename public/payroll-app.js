@@ -994,6 +994,10 @@ window.viewPayslip = (id) => {
     const d = currentPayrollData.find(x => x.id === id);
     if(!d) return;
 
+    // 🟢 核心修改 1：提前组合好 PDF 导出的专属文件名
+    // 格式：[月份] Payslip-[员工ID] [员工名字]
+    window.currentPrintTitle = `${d.month} Payslip-${d.staffCode || 'NoID'} ${d.staffName}`;
+
     const stats = d.attendanceStats || {};
     const al = parseFloat(stats.annualLeave) || 0;
     const ml = parseFloat(stats.medicalLeave) || 0;
@@ -1136,6 +1140,22 @@ window.viewPayslip = (id) => {
     if(printModal) printModal.show();
 };
 
+// 🟢 核心修改 2：新增专属打印函数，接管打印行为并临时修改网页标题
+window.printPayslip = () => {
+    // 1. 备份原始网页标题
+    const originalTitle = document.title;
+    
+    // 2. 将网页标题替换为预设的专属名字，浏览器导出 PDF 会默认抓取这个名字
+    document.title = window.currentPrintTitle || 'Payslip';
+    
+    // 3. 呼出系统打印/保存为PDF视窗
+    window.print();
+    
+    // 4. 延迟 1 秒后恢复原有标题 (防止打印组件还没读取到就变回去了)
+    setTimeout(() => { 
+        document.title = originalTitle; 
+    }, 1000);
+};
 window.publishAll = async () => {
     const drafts = currentPayrollData.filter(d => d.status === 'Draft');
     if(drafts.length === 0) return showStatusAlert('statusMessage', "No draft payslips found to publish.", false);

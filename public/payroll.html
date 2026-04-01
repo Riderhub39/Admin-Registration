@@ -9,6 +9,39 @@
     <link href="style.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #printArea, #printArea * {
+                visibility: visible;
+            }
+            #printArea {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                margin: 0;
+                padding: 0;
+                box-shadow: none !important;
+                border: none !important;
+            }
+            .modal-dialog, .modal-content, .modal-body {
+                margin: 0 !important;
+                padding: 0 !important;
+                border: none !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                background: transparent !important;
+            }
+            /* 强制打印背景色 */
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+        }
+    </style>
 </head>
 <body class="bg-light">
 
@@ -396,8 +429,8 @@
                 <div class="modal-header no-print bg-light">
                     <h5 class="modal-title fw-bold"><i data-lucide="file-text" class="size-5 me-2"></i>Payslip Preview</h5>
                     <div>
-                        <button type="button" class="btn btn-dark btn-sm me-2 fw-bold" onclick="window.print()">
-                            <i data-lucide="printer" class="size-4 me-1"></i> Print
+                        <button type="button" class="btn btn-dark btn-sm me-2 fw-bold" onclick="window.printPayslip()">
+                            <i data-lucide="printer" class="size-4 me-1"></i> Print / Export
                         </button>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
