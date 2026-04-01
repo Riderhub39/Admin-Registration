@@ -11,35 +11,59 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @media print {
+            /* 1. 隐藏页面上所有的元素 */
             body * {
                 visibility: hidden;
             }
+            
+            /* 2. 解除 Body 和 Modal 的滚动/定位限制 (关键修复) */
+            body, body.modal-open {
+                overflow: visible !important;
+                padding: 0 !important;
+            }
+            .modal {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: visible !important;
+            }
+            .modal-dialog {
+                transform: none !important; /* 🚨 必须解除：消除 Bootstrap 动画导致的缩放偏移 */
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+            }
+            .modal-content, .modal-body {
+                border: none !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+                overflow: visible !important;
+                background: transparent !important;
+            }
+
+            /* 3. 仅让工资单区域可见，并重置到页面最左上角 */
             #printArea, #printArea * {
                 visibility: visible;
             }
             #printArea {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                margin: 0;
-                padding: 0;
-                box-shadow: none !important;
-                border: none !important;
-            }
-            .modal-dialog, .modal-content, .modal-body {
-                margin: 0 !important;
-                padding: 0 !important;
-                border: none !important;
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
                 width: 100% !important;
-                max-width: 100% !important;
-                background: transparent !important;
             }
-            /* 强制打印背景色 */
+
+            /* 4. 强制打印背景色 */
             * {
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
             }
+        }
+        
+        /* 设置 PDF 打印时的页边距，让排版更好看 */
+        @page {
+            margin: 1cm;
         }
     </style>
 </head>
