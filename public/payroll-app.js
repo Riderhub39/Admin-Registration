@@ -1084,19 +1084,24 @@ window.viewPayslip = (id) => {
     }
 
     const payableDays = actDays + al + ml + phUnworked;
-
-    // 🟢 新增：动态判断当前工资单的公司名，如果没记录则采用系统默认
     const compName = d.companyName || globalSettings.defaultCompany || "RH RIDER HUB MOTOR (M) SDN. BHD.";
-    // 动态地址：如果是 H Digital，显示简略地址或其专属地址，否则显示原长地址
-    const compAddress = compName.includes("DIGITAL") 
-        ? "IPOH, PERAK" 
-        : "NO.26&28, JALAN MERU IMPIAN B3, CASA KAYANGAN @ PUSAT PERNIAGAAN MERU IMPIAN,<br>BANDAR MERU RAYA, 30020 IPOH, Perak";
+
+    // 🟢 核心修改：动态分配 Letterhead 图片路径
+    // 请确保这些图片与你的 HTML/JS 文件处于正确的相对路径。建议改名避免混淆。
+    let letterheadSrc = "";
+    if (compName === "RH RIDER HUB MOTOR (M) SDN. BHD.") {
+        letterheadSrc = "assets/images/Header_RH_RIDER_HUB_MOTOR(M).jpeg"; // 对应 Rider Hub
+    } else if (compName === "H DIGITAL MARKETING SDN BHD") {
+        letterheadSrc = "assets/images/Header_H_DIGITAL_CARRIER_MARKETING.jpeg"; // 对应 H Digital
+    } else {
+        letterheadSrc = "assets/images/Header_H_DIGITAL_CARRIER_MARKETING.jpeg"; // 对应第三张图
+    }
 
     const html = `
         <div class="payslip-preview bg-white shadow-sm border rounded">
-            <div class="payslip-header border-bottom border-dark pb-3 mb-3">
-                <div class="company-name fs-4">${compName}</div>
-                <div class="company-address text-secondary mt-1">${compAddress}</div>
+            
+            <div class="payslip-header border-bottom border-dark pb-3 mb-3 text-center">
+                <img src="${letterheadSrc}" alt="${compName} Letterhead" style="width: 100%; max-height: 140px; object-fit: contain;">
             </div>
 
             <div class="info-grid bg-light p-3 rounded mb-3 border">
@@ -1147,7 +1152,6 @@ window.viewPayslip = (id) => {
     document.getElementById('printArea').innerHTML = html;
     if(printModal) printModal.show();
 };
-
 window.printPayslip = () => {
     const originalTitle = document.title;
     document.title = window.currentPrintTitle || 'Payslip';
