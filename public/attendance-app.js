@@ -262,9 +262,11 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
 function renderDayUserCard(uid, records, container, targetDate, currentTodayStr) {
     const user = usersMap[uid];
     const sched = schedulesMap[uid + "_" + targetDate];
-    const isPH = !!holidaysMap[targetDate] && !!sched; 
     let leave = leavesMap[uid + "_" + targetDate];
-    if (isPH) leave = null; // 🟢 PH priority
+    
+    // 🟢 核心修复：只要有排班或者有请假，且碰到公共假期，就强制判定为有效 PH
+    const isPH = !!holidaysMap[targetDate] && (!!sched || !!leave); 
+    if (isPH) leave = null; // 屏蔽请假
     
     if (!sched && records.length === 0 && !leave && !isPH) return false;
 
@@ -442,7 +444,12 @@ function renderDashboard(data, pUids, missingOutData = []) {
         if(usersMap[uid].status === 'disabled') return;
         active++;
         const sched = schedulesMap[uid+"_"+target];
-        if(leavesMap[uid+"_"+target] || (holidaysMap[target] && sched)) {
+        const leaveType = leavesMap[uid+"_"+target];
+        
+        // 🟢 如果是假期且（有排班或有请假），优先判定为假期
+        const isPH = !!holidaysMap[target] && (!!sched || !!leaveType);
+        
+        if(isPH || leaveType) {
             leave++; 
         } else if(sched && !pUids.has(uid)) { 
             absent++; 
@@ -959,11 +966,12 @@ window.generateMonthlyReport = async () => {
             const dayRec = dailyData[dateStr];
             
             const hasSched = userSchedules[dateStr];
-            const isPH = !!holidaysMap[dateStr] && !!hasSched; 
+            let leaveType = leavesMap[uid + "_" + dateStr] || userLeaves[dateStr];
+            
+            // 🟢 只有有排班或有请假的假期，才视为有效的 PH
+            const isPH = !!holidaysMap[dateStr] && (!!hasSched || !!leaveType); 
             const phName = holidaysMap[dateStr] || '';
             
-            // 🟢 核心：强制公共假期优先级
-            let leaveType = leavesMap[uid + "_" + dateStr] || userLeaves[dateStr];
             if (isPH) leaveType = null; 
 
             let inStr = '-';
@@ -991,7 +999,6 @@ window.generateMonthlyReport = async () => {
                         if (breakDurationMs > 0) dailyWorkedMs -= breakDurationMs;
                     }
                     
-                    // 🟢 封顶逻辑 (Capping to Scheduled Hours)
                     if (hasSched && hasSched.start && hasSched.end) {
                         const sStart = toDateObj(hasSched.start, dateStr);
                         const sEnd = toDateObj(hasSched.end, dateStr);

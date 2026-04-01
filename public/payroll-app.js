@@ -342,6 +342,10 @@ window.recalcStatutoryAndTotals = () => {
 };
 
 async function calculateAttendanceStats(uid, monthStr) {
+    console.log(`\n%c=========================================`, `color:blue; font-weight:bold;`);
+    console.log(`%c[ANALYSIS START] Staff: ${staffMap[uid]?.displayName} | Month: ${monthStr}`, `color:blue; font-weight:bold; font-size: 14px;`);
+    console.log(`=========================================`);
+
     const staff = staffMap[uid];
     if (!staff) return;
 
@@ -417,13 +421,17 @@ async function calculateAttendanceStats(uid, monthStr) {
         return new Date(t);
     };
 
+    console.log(`[Process] Starting loop over ${daysInMonth} days...`);
+
     for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
-        const isPH = !!holidaysMap[dateStr];
         const records = attMap[dateStr];
         const sched = mySchedules[dateStr];
-        const isScheduled = !!sched;
-        const validPH = isPH && isScheduled; 
+        const leaveType = userLeaves[dateStr];
+        const isPH = !!holidaysMap[dateStr];
+        
+        // 🟢 核心修复：如果是假期，且当天有排班 或者 有请假申请，都算作有效的带薪 PH！
+        const validPH = isPH && (!!sched || !!leaveType);
 
         if (records && records.in) {
             const isSat = new Date(dateStr).getDay() === 6;
@@ -472,6 +480,9 @@ async function calculateAttendanceStats(uid, monthStr) {
                     let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
                     if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
                     if (schedDurMs > 0) phUnworkedMs += schedDurMs;
+                } else if (leaveType) {
+                    // 🟢 如果没有排班但是因为请假激活了PH，补偿标准工时 8 小时
+                    phUnworkedMs += 8 * 3600000; 
                 }
             }
         }
@@ -479,7 +490,8 @@ async function calculateAttendanceStats(uid, monthStr) {
 
     let annualLeaveCount = 0, medicalLeaveCount = 0, unpaidLeaveCount = 0;
     for (const [dateStr, lType] of Object.entries(userLeaves)) {
-        const validPH = !!holidaysMap[dateStr] && !!mySchedules[dateStr];
+        // 🟢 请假是否被 PH 覆盖
+        const validPH = !!holidaysMap[dateStr] && (!!mySchedules[dateStr] || !!lType);
         if (!attMap[dateStr]?.in && !validPH) {
             if (lType.includes('Annual') || lType.includes('年假') || lType.includes('Cuti Tahunan')) annualLeaveCount++;
             else if (lType.includes('Medical') || lType.includes('病假') || lType.includes('Cuti Sakit')) medicalLeaveCount++;
@@ -490,7 +502,6 @@ async function calculateAttendanceStats(uid, monthStr) {
     const totalDecimalHrs = (totalWorkMs / 3600000).toFixed(2);
     const phUnworkedHrsDec = (phUnworkedMs / 3600000).toFixed(2);
     const phWorkedHrsDec = (phWorkedMs / 3600000).toFixed(2);
-
     const formattedTotalHrs = msToHM(totalWorkMs);
     const totalLateMins = Math.floor(totalLateMs / 60000);
 
@@ -510,6 +521,11 @@ async function calculateAttendanceStats(uid, monthStr) {
     }
 
     const paidLeaveCount = annualLeaveCount + medicalLeaveCount; 
+
+    console.log(`[Result] Actual Worked: ${actWorkedDays} days (${totalDecimalHrs} hrs)`);
+    console.log(`[Result] Paid PH Unworked: ${phUnworkedDays} days (${phUnworkedHrsDec} hrs)`);
+    console.log(`[Result] Paid PH Worked: ${phWorkedDays} days (${phWorkedHrsDec} hrs)`);
+    console.log(`[Result] Baseline Standard: ${majorityDays} Days / ${majorityHours} Hrs`);
 
     const metaTotalHrsEl = document.getElementById('metaTotalHrs');
     if(metaTotalHrsEl) {
@@ -540,6 +556,8 @@ async function calculateAttendanceStats(uid, monthStr) {
     
     const unworkedPhEl = document.getElementById('metaPHUnworked');
     if (unworkedPhEl) unworkedPhEl.dataset.hrs = phUnworkedHrsDec;
+
+    console.log(`%c[ANALYSIS COMPLETE]\n`, `color:blue; font-weight:bold;`);
 }
 
 window.calcTotals = (autoUpdateStatutory = false) => {
@@ -1255,13 +1273,32 @@ window.generateAllDrafts = async () => {
             const myAtt = searchIds.map(sid => attendances[sid] || {}).reduce((acc, curr) => ({...acc, ...curr}), {});
             const mySchedsList = searchIds.map(sid => schedules[sid] || []).flat().reduce((acc, s) => { acc[s.date] = s; return acc; }, {});
 
+            // 🟢 提前构建好个人的请假列表
+            const userLeaves = {};
+            leaves.forEach(l => {
+                if (searchIds.includes(l.uid) || searchIds.includes(l.authUid)) {
+                    const [sY, sM, sD] = l.startDate.split('-');
+                    const [eY, eM, eD] = l.endDate.split('-');
+                    let curr = new Date(sY, sM - 1, sD);
+                    const endD = new Date(eY, eM - 1, eD);
+
+                    while(curr <= endD) {
+                        const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
+                        if (dStr >= startDate && dStr <= endDate) { userLeaves[dStr] = l.type; }
+                        curr.setDate(curr.getDate() + 1);
+                    }
+                }
+            });
+
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
                 const records = myAtt[dateStr];
                 const sched = mySchedsList[dateStr];
-                const isScheduled = !!sched;
+                const leaveType = userLeaves[dateStr];
                 const isPH = !!holidaysMap[dateStr];
-                const validPH = isPH && isScheduled; 
+                
+                // 🟢 同样核心修复：有排班或者有请假，遇上 PH 则判定为有效
+                const validPH = isPH && (!!sched || !!leaveType);
 
                 if (records && records.in) {
                     const isSat = new Date(dateStr).getDay() === 6;
@@ -1312,31 +1349,22 @@ window.generateAllDrafts = async () => {
                             let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
                             if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
                             if (schedDurMs > 0) phUnworkedMs += schedDurMs;
+                        } else if (leaveType) {
+                            phUnworkedMs += 8 * 3600000;
                         }
                     }
                 }
             }
 
             let annualLeaveCount = 0, medicalLeaveCount = 0, unpaidLeaveCount = 0;
-            leaves.forEach(l => {
-                if (searchIds.includes(l.uid) || searchIds.includes(l.authUid)) {
-                    const [sY, sM, sD] = l.startDate.split('-');
-                    const [eY, eM, eD] = l.endDate.split('-');
-                    let curr = new Date(sY, sM - 1, sD);
-                    const endD = new Date(eY, eM - 1, eD);
-
-                    while(curr <= endD) {
-                        const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
-                        const validPH = !!holidaysMap[dStr] && !!mySchedsList[dStr];
-                        if(dStr >= startDate && dStr <= endDate && !myAtt[dStr]?.in && !validPH) {
-                            if (l.type.includes('Annual') || l.type.includes('年假')) annualLeaveCount++;
-                            else if (l.type.includes('Medical') || l.type.includes('病假')) medicalLeaveCount++;
-                            else unpaidLeaveCount++;
-                        }
-                        curr.setDate(curr.getDate() + 1);
-                    }
+            for (const [dateStr, lType] of Object.entries(userLeaves)) {
+                const validPH = !!holidaysMap[dateStr] && (!!mySchedsList[dateStr] || !!lType);
+                if (!myAtt[dateStr]?.in && !validPH) {
+                    if (lType.includes('Annual') || lType.includes('年假') || lType.includes('Cuti Tahunan')) annualLeaveCount++;
+                    else if (lType.includes('Medical') || lType.includes('病假') || lType.includes('Cuti Sakit')) medicalLeaveCount++;
+                    else unpaidLeaveCount++;
                 }
-            });
+            }
 
             const paidLeaveCount = annualLeaveCount + medicalLeaveCount;
             const totalDecimalHrs = totalWorkMs / 3600000;
