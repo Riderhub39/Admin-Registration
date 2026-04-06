@@ -1,4 +1,4 @@
-import { collection, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { collection, getDocs, query, orderBy, writeBatch, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 let db;
 let allTasks = []; // 用于在本地保存所有拉取到的数据
@@ -24,6 +24,46 @@ export async function initDailyTasksApp(dbInstance) {
         currentSortDesc = true;
         renderTable();
     });
+
+    // 🟢 绑定 Mark Read 按钮事件 (一键已读当前页面上的未读任务)
+    const markReadBtn = document.getElementById('markReadBtn');
+    if (markReadBtn) {
+        markReadBtn.addEventListener('click', async () => {
+            // 找出所有在内存中被标记为未读的任务
+            const unreadTasks = allTasks.filter(t => t.isRead === false);
+            
+            if (unreadTasks.length === 0) {
+                alert("No unread tasks to mark.");
+                return;
+            }
+
+            if (confirm(`Are you sure you want to mark ${unreadTasks.length} task(s) as read?`)) {
+                const originalHtml = markReadBtn.innerHTML;
+                markReadBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Updating...`;
+                markReadBtn.disabled = true;
+
+                try {
+                    // 使用 Firestore 批量写入
+                    const batch = writeBatch(db);
+                    unreadTasks.forEach(task => {
+                        const taskRef = doc(db, 'daily_tasks', task.id);
+                        batch.update(taskRef, { isRead: true });
+                        task.isRead = true; // 同步更新本地内存数据
+                    });
+
+                    await batch.commit();
+                    renderTable(); // 重新渲染表格，去掉 New 标签
+                } catch (error) {
+                    console.error("Error marking tasks as read:", error);
+                    alert("Failed to mark tasks as read.");
+                } finally {
+                    markReadBtn.innerHTML = originalHtml;
+                    markReadBtn.disabled = false;
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            }
+        });
+    }
 
     // 🟢 绑定表头点击排序事件
     document.querySelectorAll('.sortable').forEach(th => {
@@ -124,15 +164,19 @@ function renderTable() {
     });
 
     // 4. 更新表头的排序图标 (重置所有箭头为上下，并高亮当前的排序列箭头)
-    document.querySelectorAll('.sortable i').forEach(icon => {
+    document.querySelectorAll('.sortable [data-lucide]').forEach(icon => {
         icon.setAttribute('data-lucide', 'arrow-up-down');
-        icon.classList.replace('text-primary', 'text-muted');
+        icon.classList.remove('text-primary');
+        icon.classList.add('text-muted');
     });
     const activeTh = document.querySelector(`.sortable[data-sort="${currentSortCol}"]`);
     if (activeTh) {
-        const activeIcon = activeTh.querySelector('i');
-        activeIcon.setAttribute('data-lucide', currentSortDesc ? 'arrow-down' : 'arrow-up');
-        activeIcon.classList.replace('text-muted', 'text-primary'); // 变成蓝色高亮
+        const activeIcon = activeTh.querySelector('[data-lucide]');
+        if (activeIcon) {
+            activeIcon.setAttribute('data-lucide', currentSortDesc ? 'arrow-down' : 'arrow-up');
+            activeIcon.classList.remove('text-muted');
+            activeIcon.classList.add('text-primary'); // 变成蓝色高亮
+        }
     }
 
     // 5. 渲染表格 HTML
@@ -161,9 +205,14 @@ function renderTable() {
                 ? `<span class="badge bg-success-subtle text-success border border-success-subtle">Yes</span>`
                 : `<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">No</span>`;
 
+            // 🟢 如果是未读，显示一个显眼的 New 徽章
+            const newBadge = data.isRead === false 
+                ? `<span class="badge bg-danger ms-2" style="font-size: 0.65rem;">New</span>` 
+                : '';
+
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td class="ps-4 py-3 fw-medium text-dark">${dateStr}</td>
+                <td class="ps-4 py-3 fw-medium text-dark">${dateStr} ${newBadge}</td>
                 <td>
                     <div class="d-flex align-items-center">
                         <div class="bg-primary bg-opacity-10 text-primary rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px;">

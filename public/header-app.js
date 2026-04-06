@@ -229,7 +229,7 @@ function initNotificationSystem(db) {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0); // 今天的 00:00:00
     
-    onSnapshot(query(collection(db, "daily_tasks"), where("date", ">=", todayStart)), (snap) => {
+    onSnapshot(query(collection(db, "daily_tasks"), where("isRead", "==", false)), (snap) => {
         counts.dailyTasks = snap.size;
         updateUI();
     });
