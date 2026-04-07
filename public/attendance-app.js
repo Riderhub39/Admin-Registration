@@ -449,14 +449,16 @@ function renderRecordItem(item) {
 
 function renderDashboard(data, pUids, missingOutData = []) {
     const target = document.getElementById('dateFilter').value;
-    let active=0, leave=0, absent=0;
+    let scheduled=0, leave=0, absent=0;
     const aList = [];
     Object.keys(usersMap).forEach(uid => {
         if(usersMap[uid].status === 'disabled') return;
-        active++;
+
         const sched = schedulesMap[uid+"_"+target];
         const leaveType = leavesMap[uid+"_"+target];
-        
+        if (sched) {
+            scheduled++;
+        }
         // 🟢 如果是假期且（有排班或有请假），优先判定为假期
         const isPH = !!holidaysMap[target] && (!!sched || !!leaveType);
         
@@ -468,7 +470,7 @@ function renderDashboard(data, pUids, missingOutData = []) {
         }
     });
     
-    document.getElementById('statTotalStaff').innerText = active;
+    document.getElementById('statTotalStaff').innerText = scheduled;
     document.getElementById('statPresent').innerText = pUids.size;
     document.getElementById('statAbsent').innerText = absent;
     document.getElementById('statLeave').innerText = leave;
