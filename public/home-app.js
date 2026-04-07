@@ -216,7 +216,7 @@ async function loadAttendanceStats() {
     const todayStr = normalizeDate(`${new Date().getFullYear()}-${new Date().getMonth() + 1}-${new Date().getDate()}`);
     try {
         const [usersSnap, attSnap, schedSnap] = await Promise.all([
-            getDocs(query(collection(db, "users"), where("role", "in", ["staff", "admin"]))),
+            getDocs(query(collection(db, "users"))),
             getDocs(query(collection(db, "attendance"), where("date", "==", todayStr))),
             getDocs(query(collection(db, "schedules"), where("date", "==", todayStr)))
         ]);

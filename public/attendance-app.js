@@ -83,7 +83,7 @@ async function fetchHolidays() {
 }
 
 async function fetchUsers() {
-    const snap = await getDocs(query(collection(db, "users"), where("role", "==", "staff")));
+    const snap = await getDocs(query(collection(db, "users")));
     snap.forEach(docSnap => {
         const d = docSnap.data();
         if (d.authUid) docIdToAuthMap[docSnap.id] = d.authUid;

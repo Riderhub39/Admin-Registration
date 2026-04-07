@@ -1,8 +1,7 @@
-
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+// 🟢 补全 Firestore 查询所需的 import
+import { doc, getDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { initUnifiedHeader } from "./header-app.js";
-
 
 export function requireAdmin(app, db, onReadyCallback) {
     const auth = getAuth(app);
@@ -27,13 +26,30 @@ export function requireAdmin(app, db, onReadyCallback) {
         }
 
         try {
+            let userData = null;
+            let userDocExists = false;
+
+            // 🟢 尝试 1：假设 Document ID 就是 Firebase Auth UID (适用于原始的 Manager/Admin)
             const userDoc = await getDoc(doc(db, "users", user.uid));
-            const userData = userDoc.data();
+            if (userDoc.exists()) {
+                userData = userDoc.data();
+                userDocExists = true;
+            } else {
+                // 🟢 尝试 2：如果直接找 ID 找不到 (针对从 Staff 提升上来的新 Admin)
+                // 查找 users 集合中 authUid 字段等于当前登录 UID 的文档
+                const q = query(collection(db, "users"), where("authUid", "==", user.uid));
+                const querySnapshot = await getDocs(q);
+                if (!querySnapshot.empty) {
+                    userData = querySnapshot.docs[0].data();
+                    userDocExists = true;
+                }
+            }
 
             // 🟢 定义允许进入管理后台的角色列表
             const authorizedRoles = ['admin', 'manager'];
 
-            if (userDoc.exists() && authorizedRoles.includes(userData.role)) {
+            // 🟢 使用新获取的 userData 来验证权限
+            if (userDocExists && userData && authorizedRoles.includes(userData.role)) {
                 
                 // 1. 初始化顶部导航栏 (传入 userData 以便根据角色定制菜单)
                 initUnifiedHeader(auth, db, userData);

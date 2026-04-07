@@ -1,4 +1,4 @@
-<nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm border-bottom">
+<nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm border-bottom position-relative" style="z-index: 1050;">
     <div class="container-fluid">
         <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="home.html">
             <div class="bg-primary bg-opacity-10 p-1 rounded">
@@ -26,25 +26,62 @@
                     <a class="nav-link" href="leave_approval.html">Leaves</a>
                 </li>
                 <li class="nav-item">
+                    <a class="nav-link" href="schedule_planner.html">Schedules</a>
+                </li>
+                <li class="nav-item">
                     <a class="nav-link" href="payroll.html">Payroll</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="live_tracking.html">Live GPS</a>
+                    <a class="nav-link" href="daily_tasks.html">Daily Tasks</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="live_tracking.html">Map</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="evidence_gallery.html">Gallery</a>
                 </li>
             </ul>
 
-            <div class="d-flex align-items-center gap-2">
-                <div class="dropdown me-2">
-                    <button class="btn btn-white position-relative border-0 p-2" type="button" data-bs-toggle="dropdown">
+            <div class="d-flex align-items-center ms-auto gap-3 mt-3 mt-lg-0 pb-3 pb-lg-0">
+                
+                <div class="dropdown">
+                    <button class="btn btn-light position-relative p-2 rounded-circle border-0" type="button" data-bs-toggle="dropdown">
                         <i data-lucide="bell" class="size-5 text-secondary"></i>
-                        <span id="notificationBadge" class="position-absolute top-0 start-75 translate-middle p-1 bg-danger border border-light rounded-circle d-none">
-                            <span class="visually-hidden">New alerts</span>
+                        <span id="headerTotalBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none" style="font-size: 0.65rem;">
+                            0
                         </span>
                     </button>
-                    
-                    <ul class="dropdown-menu dropdown-menu-end shadow border-0" id="notificationList" style="width: 280px;">
-                        <li><span class="dropdown-header">Notifications</span></li>
-                        <li class="text-center p-3 text-muted small">Loading...</li>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 mt-2 p-0" style="width: 280px; overflow: hidden; border-radius: 0.5rem;" id="notificationList">
+                        <li><span class="dropdown-header bg-light fw-bold text-dark py-2 border-bottom"><i data-lucide="bell-ring" class="size-4 me-2 d-inline-block align-text-bottom"></i>Notifications</span></li>
+                        
+                        <li>
+                            <a class="dropdown-item py-2 border-bottom d-flex justify-content-between align-items-center" href="leave_approval.html">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="bg-warning bg-opacity-10 text-warning p-1 rounded"><i data-lucide="calendar-clock" class="size-4"></i></div>
+                                    <span class="small fw-medium">Pending Leaves</span>
+                                </div>
+                                <span class="badge bg-warning text-dark rounded-pill" id="notifLeaveBadge">0</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item py-2 border-bottom d-flex justify-content-between align-items-center" href="evidence_gallery.html">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="bg-primary bg-opacity-10 text-primary p-1 rounded"><i data-lucide="image" class="size-4"></i></div>
+                                    <span class="small fw-medium">Evidence Edits</span>
+                                </div>
+                                <span class="badge bg-primary rounded-pill" id="notifEditBadge">0</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item py-2 border-bottom d-flex justify-content-between align-items-center" href="daily_tasks.html">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="bg-success bg-opacity-10 text-success p-1 rounded"><i data-lucide="clipboard-check" class="size-4"></i></div>
+                                    <span class="small fw-medium">Daily Tasks</span>
+                                </div>
+                                <span class="badge bg-success rounded-pill" id="notifTaskBadge">0</span>
+                            </a>
+                        </li>
+                        <li><div class="text-center p-2"><a href="#" class="text-muted small text-decoration-none" onclick="location.reload()">Refresh Data</a></div></li>
                     </ul>
                 </div>
 

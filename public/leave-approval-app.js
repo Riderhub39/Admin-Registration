@@ -45,7 +45,7 @@ async function fetchHolidays() {
 }
 
 async function fetchUsers() {
-    const snap = await getDocs(query(collection(db, "users"), where("role", "==", "staff")));
+    const snap = await getDocs(query(collection(db, "users")));
     const staffSelect = document.getElementById('addLeaveStaff');
     if(staffSelect) staffSelect.innerHTML = '<option value="">-- Select Employee --</option>';
     
