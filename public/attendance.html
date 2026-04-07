@@ -46,18 +46,12 @@
                             <option value="clockedIn">Clocked In Only</option>
                             <option value="unverified">Unverified Only</option>
                             <option value="missingOut">Missing Out</option>
-                        </select>
+                            <option value="absent">Show Absent Only</option> </select>
                     </div>
 
                     <div id="monthControls" class="d-flex align-items-center gap-2 d-none">
                         <input type="month" id="monthFilter" class="form-control fw-bold border-primary text-primary" style="width: 160px;" onchange="window.loadData()">
-                        <select id="monthStatusFilter" class="form-select fw-bold border-primary" style="width: 180px;" onchange="window.loadData()">
-                            <option value="all">Show All Status</option>
-                            <option value="late">Show Late Only</option>
-                            <option value="absent">Show Absent Only</option>
-                            <option value="under">Show Undertime</option>
-                        </select>
-                    </div>
+                        </div>
 
                     <div class="position-relative ms-2">
                         <input type="text" id="searchInput" class="form-control ps-5 border-primary" placeholder="Search staff..." style="width: 200px;" onkeyup="window.handleSearch()">

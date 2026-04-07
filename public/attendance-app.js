@@ -202,8 +202,11 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
              const hasOut = dayRecords.some(r => r.session === 'Clock Out');
              const hasUnverified = dayRecords.some(r => r.verificationStatus !== 'Verified');
              
-             const targetDate = startDate; 
-             const isMissingOut = hasIn && !hasOut && (targetDate < currentTodayStr);
+             const sched = schedulesMap[uid + "_" + targetDate];
+             let leave = leavesMap[uid + "_" + targetDate];
+             const isPH = !!holidaysMap[targetDate] && (!!sched || !!leave);
+             if (isPH) leave = null; 
+             const isAbsent = (targetDate <= currentTodayStr) && !hasIn && sched && !leave && !isPH;
 
              if (isMissingOut) missingOutData.push(usersMap[uid].name);
 
@@ -212,6 +215,7 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
              else if (dayFilter === 'clockedIn' && hasIn) showUser = true; 
              else if (dayFilter === 'unverified' && hasUnverified) showUser = true;
              else if (dayFilter === 'missingOut' && isMissingOut) showUser = true;
+             else if (dayFilter === 'absent' && isAbsent) showUser = true;
 
              if (showUser) {
                  recordsToRender.push(uid);
@@ -240,10 +244,10 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
                 bulkBtn.classList.add('d-none');
             }
         }
-    } else {
-        const statusFilter = document.getElementById('monthStatusFilter').value; 
+   } else {
+        // 🔴 移除了 statusFilter，并向卡片渲染函数中传 null
         sortedUids.forEach(uid => { 
-            if(usersMap[uid].status !== 'disabled' && renderMonthUserCard(uid, grouped[uid] || [], listContainer, statusFilter, currentTodayStr)) count++; 
+            if(usersMap[uid].status !== 'disabled' && renderMonthUserCard(uid, grouped[uid] || [], listContainer, null, currentTodayStr)) count++; 
         });
         
         const bulkBtn = document.getElementById('bulkVerifyBtn');
