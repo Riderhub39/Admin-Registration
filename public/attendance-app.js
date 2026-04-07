@@ -190,8 +190,12 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
     const grouped = {};
     attendanceData.forEach(r => { if(!grouped[r.uid]) grouped[r.uid] = []; grouped[r.uid].push(r); });
 
-    const dayFilter = document.getElementById('dayStatusFilter') ? document.getElementById('dayStatusFilter').value : 'all';
+    const dayFilterEl = document.getElementById('dayStatusFilter');
+    const dayFilter = dayFilterEl ? dayFilterEl.value : 'all';
     let recordsToRender = [];
+
+    // 🟢 将 targetDate 提取到外层作用域，这样下面的所有循环都能共享并识别它
+    const targetDate = normalizeDate(startDate);
 
     if(currentMode === 'day') {
          Object.keys(usersMap).forEach(uid => {
@@ -202,6 +206,9 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
              const hasOut = dayRecords.some(r => r.session === 'Clock Out');
              const hasUnverified = dayRecords.some(r => r.verificationStatus !== 'Verified');
              
+             const isMissingOut = hasIn && !hasOut && (targetDate < currentTodayStr);
+
+             // 🟢 计算是否缺勤 (Absent)
              const sched = schedulesMap[uid + "_" + targetDate];
              let leave = leavesMap[uid + "_" + targetDate];
              const isPH = !!holidaysMap[targetDate] && (!!sched || !!leave);
@@ -231,7 +238,8 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
 
     if(currentMode === 'day') {
         recordsToRender.sort((a,b) => usersMap[a].name.localeCompare(usersMap[b].name)).forEach(uid => {
-            if(renderDayUserCard(uid, grouped[uid] || [], listContainer, normalizeDate(startDate), currentTodayStr)) count++; 
+            // 🟢 这里调用刚刚在外层定义好的 targetDate，完美解决 undefined 报错
+            if(renderDayUserCard(uid, grouped[uid] || [], listContainer, targetDate, currentTodayStr)) count++; 
         });
         renderDashboard(attendanceData, presentUids, missingOutData);
 
@@ -244,9 +252,9 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
                 bulkBtn.classList.add('d-none');
             }
         }
-   } else {
-        // 🔴 移除了 statusFilter，并向卡片渲染函数中传 null
+    } else {
         sortedUids.forEach(uid => { 
+            // 🔴 移除了过期的 statusFilter，传入 null 防止月度视图报错
             if(usersMap[uid].status !== 'disabled' && renderMonthUserCard(uid, grouped[uid] || [], listContainer, null, currentTodayStr)) count++; 
         });
         
@@ -262,7 +270,6 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
     
     if (window.lucide) window.lucide.createIcons();
 }
-
 function renderDayUserCard(uid, records, container, targetDate, currentTodayStr) {
     const user = usersMap[uid];
     const sched = schedulesMap[uid + "_" + targetDate];
