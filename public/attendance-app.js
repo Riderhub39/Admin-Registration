@@ -194,7 +194,6 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
     const dayFilter = dayFilterEl ? dayFilterEl.value : 'all';
     let recordsToRender = [];
 
-    // 🟢 将 targetDate 提取到外层作用域，这样下面的所有循环都能共享并识别它
     const targetDate = normalizeDate(startDate);
 
     if(currentMode === 'day') {
@@ -208,7 +207,6 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
              
              const isMissingOut = hasIn && !hasOut && (targetDate < currentTodayStr);
 
-             // 🟢 计算是否缺勤 (Absent)
              const sched = schedulesMap[uid + "_" + targetDate];
              let leave = leavesMap[uid + "_" + targetDate];
              const isPH = !!holidaysMap[targetDate] && (!!sched || !!leave);
@@ -238,7 +236,6 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
 
     if(currentMode === 'day') {
         recordsToRender.sort((a,b) => usersMap[a].name.localeCompare(usersMap[b].name)).forEach(uid => {
-            // 🟢 这里调用刚刚在外层定义好的 targetDate，完美解决 undefined 报错
             if(renderDayUserCard(uid, grouped[uid] || [], listContainer, targetDate, currentTodayStr)) count++; 
         });
         renderDashboard(attendanceData, presentUids, missingOutData);
@@ -254,7 +251,6 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
         }
     } else {
         sortedUids.forEach(uid => { 
-            // 🔴 移除了过期的 statusFilter，传入 null 防止月度视图报错
             if(usersMap[uid].status !== 'disabled' && renderMonthUserCard(uid, grouped[uid] || [], listContainer, null, currentTodayStr)) count++; 
         });
         
@@ -270,14 +266,14 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
     
     if (window.lucide) window.lucide.createIcons();
 }
+
 function renderDayUserCard(uid, records, container, targetDate, currentTodayStr) {
     const user = usersMap[uid];
     const sched = schedulesMap[uid + "_" + targetDate];
     let leave = leavesMap[uid + "_" + targetDate];
     
-    // 🟢 核心修复：只要有排班或者有请假，且碰到公共假期，就强制判定为有效 PH
     const isPH = !!holidaysMap[targetDate] && (!!sched || !!leave); 
-    if (isPH) leave = null; // 屏蔽请假
+    if (isPH) leave = null; 
     
     if (!sched && records.length === 0 && !leave && !isPH) return false;
 
@@ -828,6 +824,7 @@ window.handleSearch = () => {
 
 window.changeDate = (days) => { const el = document.getElementById('dateFilter'); const d = new Date(el.value); d.setDate(d.getDate() + days); el.value = d.toISOString().split('T')[0]; window.loadData(); }
 
+// 🟢 这里是负责渲染考勤更正请求(Correction Request)的部分，新增了照片逻辑
 function listenToCorrections() {
     onSnapshot(query(collection(db, "attendance_corrections"), where("status", "==", "Pending")), (snap) => {
         const badge = document.getElementById('tabCorrectionBadge');
@@ -839,37 +836,112 @@ function listenToCorrections() {
             document.getElementById('noCorrectionsMsg').classList.add('d-none');
             snap.forEach(docSnap => {
                 const d = docSnap.data();
-                tbody.innerHTML += `<tr><td class="ps-4"><b>${d.empName || d.email?.split('@')[0]}</b><br><small>${d.targetDate}</small></td><td>${d.originalIn}<br>${d.originalOut}</td><td class="text-primary fw-bold">${d.requestedIn}<br>${d.requestedOut}</td><td><small>${d.remarks||'-'}</small></td><td class="text-end pe-4"><button class="btn btn-sm btn-success me-1" onclick="window.handleCorrection('${docSnap.id}', '${d.attendanceId}', '${d.requestedIn}', '${d.requestedOut}', 'approve')"><i data-lucide="check" class="size-3"></i></button><button class="btn btn-sm btn-danger" onclick="window.handleCorrection('${docSnap.id}', null, null, null, 'reject')"><i data-lucide="x" class="size-3"></i></button></td></tr>`;
+                
+                // 🟢 插入刚刚提取出来的照片渲染代码
+                const evidenceHtml = d.attachmentUrl 
+                    ? `<a href="${d.attachmentUrl}" target="_blank" class="d-inline-block">
+                        <img src="${d.attachmentUrl}" class="rounded border shadow-sm" style="width: 40px; height: 40px; object-fit: cover; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+                       </a>` 
+                    : `<span class="text-muted small">None</span>`;
+
+                tbody.innerHTML += `<tr>
+                    <td class="ps-4 fw-medium text-dark">${d.empName || d.email?.split('@')[0]}</td>
+                    <td><span class="badge bg-light text-secondary border">${d.targetDate}</span></td>
+                    <td class="text-muted">${d.originalIn || '--:--'} <br> ${d.originalOut || '--:--'}</td>
+                    <td class="text-primary fw-bold">${d.requestedIn || '--:--'} <br> ${d.requestedOut || '--:--'}</td>
+                    
+                    <td>
+                        <div class="text-truncate text-muted small" title="${d.remarks || ''}">${d.remarks || '-'}</div>
+                    </td>
+                    
+                    <td class="text-center">${evidenceHtml}</td>
+                    
+                    <td class="text-end pe-4">
+                        <button class="btn btn-sm btn-success me-1 shadow-sm" onclick="window.handleCorrection('${docSnap.id}', 'approve')"><i data-lucide="check" class="size-3"></i></button>
+                        <button class="btn btn-sm btn-danger shadow-sm" onclick="window.handleCorrection('${docSnap.id}', 'reject')"><i data-lucide="x" class="size-3"></i></button>
+                    </td>
+                </tr>`;
             });
             if (window.lucide) window.lucide.createIcons();
         }
     });
 }
 
-window.handleCorrection = async (correctionId, attId, newIn, newOut, decision) => {
+window.handleCorrection = async (correctionId, decision) => {
     if(!confirm(`Confirm ${decision} this correction request?`)) return;
     
     showLoading();
     try {
+        // 1. 获取这个 Correction Request 的完整数据
+        const correctionRef = doc(db, "attendance_corrections", correctionId);
+        const correctionSnap = await getDoc(correctionRef);
+        
+        if (!correctionSnap.exists()) throw new Error("Correction request not found.");
+        const reqData = correctionSnap.data();
+
         if (decision === 'approve') {
-            await updateDoc(doc(db, "attendance_corrections", correctionId), { status: "Approved", reviewedAt: serverTimestamp(), reviewer: auth.currentUser.email });
-            if (attId) {
-                await updateDoc(doc(db, "attendance", attId), { verificationStatus: "Archived" });
+            const batch = writeBatch(db);
+            
+            // 2. 更新请求状态为 Approved
+            batch.update(correctionRef, { status: "Approved", reviewedAt: serverTimestamp(), reviewer: auth.currentUser.email });
+            
+            // 3. 找出该员工当天旧的 Clock In 和 Clock Out 记录，并将它们作废 (Archived)
+            // 这样能保留他们当天可能存在的 Break In / Break Out 记录不受影响
+            const q = query(collection(db, "attendance"), where("uid", "==", reqData.uid), where("date", "==", reqData.targetDate));
+            const oldAttSnap = await getDocs(q);
+            
+            oldAttSnap.forEach(d => {
+                const sessionType = d.data().session;
+                if (sessionType === 'Clock In' || sessionType === 'Clock Out') {
+                    batch.update(d.ref, { verificationStatus: "Archived" });
+                }
+            });
+
+            // 4. 准备写入新的时间记录
+            const baseRecord = {
+                uid: reqData.uid,
+                name: reqData.empName || reqData.email?.split('@')[0] || "Unknown Staff",
+                email: reqData.email || "",
+                date: reqData.targetDate,
+                verificationStatus: "Verified", // 自动标记为已核实
+                address: "Approved Correction Request",
+            };
+
+            // 如果员工申请了新的 Clock In 时间
+            if (reqData.requestedIn && reqData.requestedIn !== '--:--' && reqData.requestedIn !== '-') {
+                const preciseInDate = new Date(`${reqData.targetDate}T${reqData.requestedIn}:00`);
+                const inRef = doc(collection(db, "attendance"));
+                batch.set(inRef, { ...baseRecord, session: "Clock In", timestamp: Timestamp.fromDate(preciseInDate) });
             }
+
+            // 如果员工申请了新的 Clock Out 时间
+            if (reqData.requestedOut && reqData.requestedOut !== '--:--' && reqData.requestedOut !== '-') {
+                const preciseOutDate = new Date(`${reqData.targetDate}T${reqData.requestedOut}:00`);
+                const outRef = doc(collection(db, "attendance"));
+                batch.set(outRef, { ...baseRecord, session: "Clock Out", timestamp: Timestamp.fromDate(preciseOutDate) });
+            }
+
+            // 5. 提交所有更改
+            await batch.commit();
+            await logAdminAction(db, auth.currentUser, "CORRECTION_APPROVE", reqData.uid, null, reqData);
+
         } else {
-            await updateDoc(doc(db, "attendance_corrections", correctionId), { status: "Rejected", reviewedAt: serverTimestamp(), reviewer: auth.currentUser.email });
+            // 如果是 Reject，只改状态，不动考勤数据
+            await updateDoc(correctionRef, { status: "Rejected", reviewedAt: serverTimestamp(), reviewer: auth.currentUser.email });
+            await logAdminAction(db, auth.currentUser, "CORRECTION_REJECT", reqData.uid, null, reqData);
         }
         
-        await logAdminAction(db, auth.currentUser, `CORRECTION_${decision.toUpperCase()}`, attId || "N/A", null, { correctionId, newIn, newOut });
-        
         hideLoading();
-        showStatusAlert('statusMessage', `Correction ${decision}d.`, true);
+        showStatusAlert('statusMessage', `Correction ${decision}d successfully.`, true);
+        
+        // 刷新一下页面数据以显示新的考勤时间
+        window.loadData(); 
+        
     } catch (e) {
         hideLoading();
         showStatusAlert('statusMessage', `Error: ${e.message}`, false);
     }
 }
-
 window.viewPhoto = (url) => {
     document.getElementById('modalImg').src = url;
     photoModal.show();
