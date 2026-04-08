@@ -58,7 +58,7 @@ function applyRolePermissions(userData) {
  * Logic: Manage Notification State & Render Dropdown
  */
 function initNotificationSystem(db) {
-    const badge = document.getElementById('notificationBadge');
+    const badge = document.getElementById('headerTotalBadge');
     const list = document.getElementById('notificationList');
     
     // 🟢 添加了 dailyTasks 计数
