@@ -1,7 +1,10 @@
 // manage-admins-app.js
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, query, where, getDocs, doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { 
+    getFirestore, collection, query, where, getDocs, doc, 
+    updateDoc, serverTimestamp, setDoc, deleteDoc, getDoc // 🟢 补全 setDoc, deleteDoc, getDoc
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 import { firebaseConfig } from "./firebase-config.js";
@@ -125,10 +128,21 @@ window.handlePromotion = async () => {
     showLoading(); 
     try {
         const userRef = doc(db, "users", staffId);
+        
+        // 🟢 先获取该用户的真实 authUid
+        const userSnap = await getDoc(userRef);
+        const userData = userSnap.data();
+
+        // 1. 更新主文档角色
         await updateDoc(userRef, {
             role: 'admin',
             updatedAt: serverTimestamp()
         });
+
+        // 🟢 2. 专门为 Firestore 规则创建一个“身份通行证”，强制使用 authUid 作为文档 ID
+        if (userData && userData.authUid) {
+            await setDoc(doc(db, "user_roles", userData.authUid), { role: 'admin' });
+        }
 
         await logAdminAction(db, auth.currentUser, "PROMOTE_TO_ADMIN", staffId, {role: 'staff'}, {role: 'admin'});
 
@@ -150,10 +164,21 @@ window.demoteAdmin = async (adminId, name) => {
     showLoading(); 
     try {
         const userRef = doc(db, "users", adminId);
+        
+        // 🟢 先获取该用户的真实 authUid
+        const userSnap = await getDoc(userRef);
+        const userData = userSnap.data();
+
+        // 1. 更新主文档角色
         await updateDoc(userRef, {
             role: 'staff',
             updatedAt: serverTimestamp()
         });
+
+        // 🟢 2. 降级时收回身份通行证
+        if (userData && userData.authUid) {
+            await deleteDoc(doc(db, "user_roles", userData.authUid));
+        }
 
         await logAdminAction(db, auth.currentUser, "DEMOTE_TO_STAFF", adminId, {role: 'admin'}, {role: 'staff'});
 
