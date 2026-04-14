@@ -93,6 +93,7 @@ async function fetchUsers() {
             photo: d.faceIdPhoto || null,
             email: d.personal?.email,
             status: d.status || 'active',
+            role: d.role || 'staff',
             docId: docSnap.id,
             authUid: d.authUid,
             empCode: d.personal?.empCode || d.empCode || d.staffId || "" 
@@ -986,7 +987,7 @@ window.openMonthlyReportModal = () => {
     const userList = Object.values(usersMap).sort((a, b) => a.name.localeCompare(b.name));
 
     userList.forEach(u => {
-        if (u.status !== 'disabled'&&u.role!== 'manager') {
+        if (u.status !== 'disabled' && u.role !== 'manager') {
            staffSelect.innerHTML += `<option value="${u.authUid || u.docId}">[${u.docId || 'N/A'}] ${u.name}</option>`;
         }
     });
