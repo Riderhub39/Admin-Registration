@@ -158,13 +158,23 @@
                 <div class="row g-2 mb-3">
                     <div class="col-6">
                         <label class="small fw-bold text-dark">Start Date</label>
-                        <input type="date" id="addLeaveStart" class="form-control border-success">
+                        <input type="date" id="addLeaveStart" class="form-control border-success" onchange="window.checkSingleDay && window.checkSingleDay()">
                     </div>
                     <div class="col-6">
                         <label class="small fw-bold text-dark">End Date</label>
-                        <input type="date" id="addLeaveEnd" class="form-control border-success">
+                        <input type="date" id="addLeaveEnd" class="form-control border-success" onchange="window.checkSingleDay && window.checkSingleDay()">
                     </div>
                 </div>
+
+                <div class="mb-3" id="addLeaveDurationGroup">
+                    <label class="form-label small fw-bold text-dark">Duration (时长)</label>
+                    <select id="addLeaveDuration" class="form-select border-success fw-bold">
+                        <option value="Full Day">Full Day (全天)</option>
+                        <option value="Half Day (AM)">Half Day AM (上午半天 9am-1pm)</option>
+                        <option value="Half Day (PM)">Half Day PM (下午半天 2pm-6pm)</option>
+                    </select>
+                </div>
+
                 <div class="mb-3">
                     <label class="small fw-bold text-dark">Reason / Remarks</label>
                     <input type="text" id="addLeaveReason" class="form-control border-secondary" placeholder="Admin manual entry...">

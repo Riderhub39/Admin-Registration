@@ -16,7 +16,7 @@ const storage = getStorage(app);
 let fullHistoryList = [];
 let attachmentModal, rejectModal, editStatusModal, addLeaveModalInst;
 let usersMap = {}; 
-let holidaysMap = {}; // 🟢 缓存公共假期
+let holidaysMap = {}; 
 
 export async function initLeaveApprovalApp() {
     document.getElementById('loadingText').innerText = "Loading Requests...";
@@ -29,7 +29,7 @@ export async function initLeaveApprovalApp() {
         addLeaveModalInst = new bootstrap.Modal(document.getElementById('addLeaveModal'));
     }
 
-    await fetchHolidays(); // 🟢 加载公共假期
+    await fetchHolidays(); 
     await fetchUsers(); 
     listenToPendingLeaves();
     listenToLeaveHistory();
@@ -52,7 +52,7 @@ async function fetchUsers() {
     let users = [];
     snap.forEach(docSnap => {
         const d = docSnap.data();
-        if (d.status !== 'disabled') {
+        if (d.status !== 'disabled' && d.role !== 'manager') {
             users.push({
                 id: docSnap.id,
                 authUid: d.authUid || "",
@@ -70,7 +70,6 @@ async function fetchUsers() {
     });
 }
 
-// 🟢 核心：计算这段请假期间，有多少天是“有排班且属于公共假期”的，这些天不该扣除假期余额
 async function getValidPhCount(uid, authUid, startDate, endDate) {
     const searchIds = [uid];
     if (authUid) searchIds.push(authUid);
@@ -127,6 +126,11 @@ function listenToPendingLeaves() {
             if (data.type === 'Medical Leave') typeColor = "text-danger bg-danger";
             if (data.type === 'Unpaid Leave') typeColor = "text-warning text-dark bg-warning";
 
+            // 🟢 新增：如果含有半天假标识，显示 (AM) 或 (PM)
+            const durationDisplay = (data.duration && data.duration !== 'Full Day') 
+                ? ` <span class="badge bg-secondary ms-1">${data.duration.replace('Half Day ', '')}</span>` 
+                : '';
+
             listContainer.innerHTML += `
                 <div class="card border-0 shadow-sm rounded-4 mb-3">
                     <div class="card-body p-4">
@@ -139,7 +143,7 @@ function listenToPendingLeaves() {
                             <div class="col-md-6 px-4">
                                 <div class="d-flex align-items-center mb-2">
                                     <span class="badge ${typeColor} bg-opacity-10 ${typeColor.split(' ')[0]} border border-opacity-25 me-2">${data.type}</span>
-                                    <span class="fw-bold text-dark">${data.days} Day(s)</span>
+                                    <span class="fw-bold text-dark">${data.days} Day(s) ${durationDisplay}</span>
                                 </div>
                                 <div class="fw-medium text-dark mb-2">
                                     <i data-lucide="calendar-range" class="size-4 text-muted me-2"></i>
@@ -215,9 +219,13 @@ window.filterHistory = function() {
             ? `<button class="btn btn-link btn-sm p-0 text-info text-decoration-none ms-3" onclick="window.viewAttachment('${data.attachmentUrl}', '${data.fileType || ''}')"><i data-lucide="paperclip" class="size-3 me-1"></i>Proof</button>`
             : '';
 
-        // 🟢 追加扣除天数信息显示，让人知道有没有被 PH 抵消
         const deductInfo = (data.deductibleDays !== undefined && data.deductibleDays < data.days) 
             ? `<br><small class="text-warning">(-${data.deductibleDays} deducted)</small>` 
+            : '';
+
+        // 🟢 新增：如果含有半天假标识，显示 (AM) 或 (PM)
+        const durationDisplay = (data.duration && data.duration !== 'Full Day') 
+            ? ` <small class="text-muted">(${data.duration.replace('Half Day ', '')})</small>` 
             : '';
 
         tbody.innerHTML += `
@@ -226,7 +234,7 @@ window.filterHistory = function() {
                     <div class="fw-bold text-dark">${data.empName || 'Unknown'}</div>
                     <div class="small text-muted" style="font-size: 0.75rem;">${data.uid}</div>
                 </td>
-                <td class="fw-bold ${typeClass}">${data.type}</td>
+                <td class="fw-bold ${typeClass}">${data.type}${durationDisplay}</td>
                 <td>
                     <div class="small text-dark">${formatDate(data.startDate)}</div>
                     <div class="small text-muted">to ${formatDate(data.endDate)}</div>
@@ -258,7 +266,6 @@ window.approveLeave = async function(leaveId, targetUid, days, type, startDate, 
     document.getElementById('loadingText').innerText = "Processing Approval...";
     
     try {
-        // 🟢 拦截计算：排除掉当中的 Public Holidays
         const phOverlap = await getValidPhCount(targetUid, usersMap[targetUid]?.authUid, startDate, endDate);
         const actualDeductibleDays = Math.max(0, days - phOverlap);
 
@@ -281,8 +288,8 @@ window.approveLeave = async function(leaveId, targetUid, days, type, startDate, 
                 reviewedAt: serverTimestamp(), 
                 reviewer: auth.currentUser.email, 
                 isPayrollDeductible: (type === 'Unpaid Leave'), 
-                deductibleDays: actualDeductibleDays, // 🟢 记录实际扣除的余额/无薪天数
-                phOverlap: phOverlap // 🟢 记录这段时间含有多少天公共假期
+                deductibleDays: actualDeductibleDays, 
+                phOverlap: phOverlap 
             });
 
             logAdminAction(db, auth.currentUser, "APPROVE_LEAVE", targetUid, 
@@ -301,13 +308,31 @@ window.approveLeave = async function(leaveId, targetUid, days, type, startDate, 
     }
 }
 
+// 🟢 新增：检查是否为单日，如果是单日则允许选择半天假
+window.checkSingleDay = function() {
+    const startStr = document.getElementById('addLeaveStart').value;
+    const endStr = document.getElementById('addLeaveEnd').value;
+    const durationGroup = document.getElementById('addLeaveDurationGroup');
+    const durationSelect = document.getElementById('addLeaveDuration');
+
+    if (startStr && endStr && startStr === endStr) {
+        durationGroup.classList.remove('d-none');
+    } else {
+        durationGroup.classList.add('d-none');
+        durationSelect.value = 'Full Day';
+    }
+};
+
 window.openAddLeaveModal = () => {
     document.getElementById('addLeaveStaff').value = "";
     document.getElementById('addLeaveType').value = "Annual Leave";
     document.getElementById('addLeaveStart').value = "";
     document.getElementById('addLeaveEnd').value = "";
+    document.getElementById('addLeaveDuration').value = "Full Day"; // 🟢 重置时长
     document.getElementById('addLeaveReason').value = "";
     document.getElementById('addLeaveAttachment').value = ""; 
+    
+    window.checkSingleDay(); // 初始化显示状态
     addLeaveModalInst.show();
 };
 
@@ -316,6 +341,7 @@ window.submitAddLeave = async () => {
     const type = document.getElementById('addLeaveType').value;
     const startStr = document.getElementById('addLeaveStart').value;
     const endStr = document.getElementById('addLeaveEnd').value;
+    const duration = document.getElementById('addLeaveDuration').value; // 🟢 获取请假时长
     const reason = document.getElementById('addLeaveReason').value || "Added by Admin";
     
     const fileInput = document.getElementById('addLeaveAttachment');
@@ -333,7 +359,12 @@ window.submitAddLeave = async () => {
         return;
     }
 
-    const days = Math.round((eDate - sDate) / (1000 * 60 * 60 * 24)) + 1;
+    // 🟢 调整：如果选了半天假，并且是同一天，天数算作 0.5
+    let days = Math.round((eDate - sDate) / (1000 * 60 * 60 * 24)) + 1;
+    if (startStr === endStr && duration !== 'Full Day') {
+        days = 0.5;
+    }
+
     const user = usersMap[staffId];
     if (!confirm(`Add ${days} day(s) of ${type} for ${user.name}?`)) return;
 
@@ -357,7 +388,6 @@ window.submitAddLeave = async () => {
 
         document.getElementById('loadingText').innerText = "Saving Record...";
 
-        // 🟢 拦截计算：排除掉当中的 Public Holidays
         const phOverlap = await getValidPhCount(staffId, user.authUid, startStr, endStr);
         const actualDeductibleDays = Math.max(0, days - phOverlap);
 
@@ -383,9 +413,10 @@ window.submitAddLeave = async () => {
                 type: type,
                 startDate: startStr,
                 endDate: endStr,
-                days: days,
-                deductibleDays: actualDeductibleDays, // 🟢 记录
-                phOverlap: phOverlap, // 🟢 记录
+                days: days, // 🟢 存入计算后的 0.5 或整数
+                duration: duration, // 🟢 存入具体的时段 (Full Day, Half Day AM, Half Day PM)
+                deductibleDays: actualDeductibleDays, 
+                phOverlap: phOverlap, 
                 reason: reason,
                 status: 'Approved',
                 appliedAt: serverTimestamp(),
@@ -529,7 +560,6 @@ window.submitStatusChange = async function() {
             
             const isAnnual = (leaveData.type === 'Annual Leave' || leaveData.type === '年假' || leaveData.type === 'Cuti Tahunan');
 
-            // 🟢 如果旧数据没有存 deductibleDays，我们在这补算一次
             let actualDeductibleDays = leaveData.deductibleDays;
             if (actualDeductibleDays === undefined) {
                 const phOverlap = await getValidPhCount(targetUid, usersMap[targetUid]?.authUid, leaveData.startDate, leaveData.endDate);
@@ -540,7 +570,6 @@ window.submitStatusChange = async function() {
                 const userRef = doc(db, "users", targetUid);
                 const userDoc = await transaction.get(userRef);
                 const currentBal = userDoc.data().leave_balance?.annual || 0;
-                // 退还实际扣除的额度
                 transaction.update(userRef, { "leave_balance.annual": currentBal + actualDeductibleDays });
             }
 
@@ -549,7 +578,6 @@ window.submitStatusChange = async function() {
                 const userDoc = await transaction.get(userRef);
                 const currentBal = userDoc.data().leave_balance?.annual || 0;
                 if (currentBal < actualDeductibleDays) throw new Error("Insufficient Balance for this reversal!");
-                // 再次扣除实际应该扣除的额度
                 transaction.update(userRef, { "leave_balance.annual": currentBal - actualDeductibleDays });
             }
 
@@ -557,7 +585,7 @@ window.submitStatusChange = async function() {
                 status: newStatus,
                 reviewedAt: serverTimestamp(),
                 reviewer: auth.currentUser.email,
-                deductibleDays: actualDeductibleDays // 保存回数据库，防止老数据没有这个字段
+                deductibleDays: actualDeductibleDays 
             };
             
             if (newStatus === 'Rejected') updatePayload.rejectionReason = reason;

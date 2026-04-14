@@ -389,9 +389,15 @@ async function calculateAttendanceStats(uid, monthStr) {
         const [eY, eM, eD] = l.endDate.split('-');
         let curr = new Date(sY, sM - 1, sD);
         const endD = new Date(eY, eM - 1, eD);
+        
+        // 🟢 记录请假天数，因为可能是半天 0.5
+        const leaveValue = l.days || 1; 
+
         while(curr <= endD) {
             const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
-            if (dStr >= startDate && dStr <= endDate) { userLeaves[dStr] = l.type; }
+            if (dStr >= startDate && dStr <= endDate) { 
+                userLeaves[dStr] = { type: l.type, val: leaveValue }; 
+            }
             curr.setDate(curr.getDate() + 1);
         }
     });
@@ -415,14 +421,21 @@ async function calculateAttendanceStats(uid, monthStr) {
         const dateStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
         const records = attMap[dateStr];
         const sched = mySchedules[dateStr];
-        const leaveType = userLeaves[dateStr];
-        const isPH = !!holidaysMap[dateStr];
+        const leaveObj = userLeaves[dateStr];
+        const leaveType = leaveObj?.type;
+        const leaveVal = leaveObj?.val || 0; // 可能是 0.5 或 1
         
+        const isPH = !!holidaysMap[dateStr];
         const validPH = isPH && (!!sched || !!leaveType);
 
         if (records && records.in) {
             const isSat = new Date(dateStr).getDay() === 6;
-            actWorkedDays += isSat ? satMulti : 1;
+            
+            // 🟢 如果这天有打卡但是又请了半天假，那么实际上工作天数只算一半
+            let actAdd = isSat ? satMulti : 1;
+            if (leaveVal === 0.5) actAdd = 0.5;
+
+            actWorkedDays += actAdd;
 
             if (sched && sched.start) {
                 const inTime = toDateObj(records.in, dateStr);
@@ -485,20 +498,35 @@ async function calculateAttendanceStats(uid, monthStr) {
 
     let annualLeaveCount = 0, medicalLeaveCount = 0, unpaidLeaveCount = 0;
     let unpaidLeaveHrs = 0;
-    for (const [dateStr, lType] of Object.entries(userLeaves)) {
+
+    for (const [dateStr, leaveObj] of Object.entries(userLeaves)) {
+        const lType = leaveObj.type;
+        const lVal = parseFloat(leaveObj.val) || 1; // 🟢 读取具体天数 (0.5 或 1)
+
         const validPH = !!holidaysMap[dateStr] && (!!mySchedules[dateStr] || !!lType);
-        if (!attMap[dateStr]?.in && !validPH) {
-            if (lType.includes('Annual') || lType.includes('年假') || lType.includes('Cuti Tahunan')) annualLeaveCount++;
-            else if (lType.includes('Medical') || lType.includes('病假') || lType.includes('Cuti Sakit')) medicalLeaveCount++;
+        
+        // 🟢 如果是半天假，即使有打卡（records.in），这半天假也应该被计入
+        // 否则原本代码只有 !attMap[dateStr]?.in 才会计入请假天数
+        if (!attMap[dateStr]?.in || lVal < 1 || !validPH) {
+            
+            if (lType.includes('Annual') || lType.includes('年假') || lType.includes('Cuti Tahunan')) {
+                annualLeaveCount += lVal;
+            }
+            else if (lType.includes('Medical') || lType.includes('病假') || lType.includes('Cuti Sakit')) {
+                medicalLeaveCount += lVal;
+            }
             else {
-                unpaidLeaveCount++; 
+                unpaidLeaveCount += lVal; 
+                
                 const sched = mySchedules[dateStr];
                 if (sched && sched.start && sched.end) {
                     let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
                     if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
-                    if (schedDurMs > 0) unpaidLeaveHrs += (schedDurMs / 3600000);
+                    if (schedDurMs > 0) {
+                        unpaidLeaveHrs += (schedDurMs / 3600000) * lVal; // 🟢 按比例扣时间
+                    }
                 } else {
-                    unpaidLeaveHrs += 8;
+                    unpaidLeaveHrs += 8 * lVal; // 🟢 按比例扣时间
                 }
             }
         }
@@ -1323,10 +1351,13 @@ window.generateAllDrafts = async () => {
                     const [eY, eM, eD] = l.endDate.split('-');
                     let curr = new Date(sY, sM - 1, sD);
                     const endD = new Date(eY, eM - 1, eD);
+                    const lVal = l.days || 1; // 🟢 允许小数天数
 
                     while(curr <= endD) {
                         const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
-                        if (dStr >= startDate && dStr <= endDate) { userLeaves[dStr] = l.type; }
+                        if (dStr >= startDate && dStr <= endDate) { 
+                            userLeaves[dStr] = { type: l.type, val: lVal }; 
+                        }
                         curr.setDate(curr.getDate() + 1);
                     }
                 }
@@ -1336,14 +1367,21 @@ window.generateAllDrafts = async () => {
                 const dateStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
                 const records = myAtt[dateStr];
                 const sched = mySchedsList[dateStr];
-                const leaveType = userLeaves[dateStr];
+                const leaveObj = userLeaves[dateStr];
+                const leaveType = leaveObj?.type;
+                const leaveVal = leaveObj?.val || 0; // 🟢 读取半天
                 const isPH = !!holidaysMap[dateStr];
                 
                 const validPH = isPH && (!!sched || !!leaveType);
 
                 if (records && records.in) {
                     const isSat = new Date(dateStr).getDay() === 6;
-                    actWorkedDays += isSat ? satMulti : 1;
+                    
+                    // 🟢 计算当天实际工作天数
+                    let actAdd = isSat ? satMulti : 1;
+                    if (leaveVal === 0.5) actAdd = 0.5;
+                    
+                    actWorkedDays += actAdd;
 
                     if (sched && sched.start) {
                         const inTime = toDateObj(records.in, dateStr);
@@ -1407,20 +1445,30 @@ window.generateAllDrafts = async () => {
 
             let annualLeaveCount = 0, medicalLeaveCount = 0, unpaidLeaveCount = 0;
             let unpaidLeaveHrs = 0;
-            for (const [dateStr, lType] of Object.entries(userLeaves)) {
+            
+            for (const [dateStr, leaveObj] of Object.entries(userLeaves)) {
+                const lType = leaveObj.type;
+                const lVal = parseFloat(leaveObj.val) || 1; // 🟢 支持计算小数天数
+                
                 const validPH = !!holidaysMap[dateStr] && (!!mySchedsList[dateStr] || !!lType);
-                if (!myAtt[dateStr]?.in && !validPH) {
-                    if (lType.includes('Annual') || lType.includes('年假') || lType.includes('Cuti Tahunan')) annualLeaveCount++;
-                    else if (lType.includes('Medical') || lType.includes('病假') || lType.includes('Cuti Sakit')) medicalLeaveCount++;
+                
+                // 🟢 匹配单日打卡却有半天假的情况
+                if (!myAtt[dateStr]?.in || lVal < 1 || !validPH) {
+                    if (lType.includes('Annual') || lType.includes('年假') || lType.includes('Cuti Tahunan')) {
+                        annualLeaveCount += lVal;
+                    }
+                    else if (lType.includes('Medical') || lType.includes('病假') || lType.includes('Cuti Sakit')) {
+                        medicalLeaveCount += lVal;
+                    }
                     else {
-                        unpaidLeaveCount++;
+                        unpaidLeaveCount += lVal;
                         const sched = mySchedsList[dateStr];
                         if (sched && sched.start && sched.end) {
                             let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
                             if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
-                            if (schedDurMs > 0) unpaidLeaveHrs += (schedDurMs / 3600000);
+                            if (schedDurMs > 0) unpaidLeaveHrs += (schedDurMs / 3600000) * lVal;
                         } else {
-                            unpaidLeaveHrs += 8;
+                            unpaidLeaveHrs += 8 * lVal;
                         }
                     }
                 }

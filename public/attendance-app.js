@@ -17,7 +17,7 @@ const auth = getAuth(app);
 let schedulesMap = {}; 
 let leavesMap = {};
 let usersMap = {};
-let holidaysMap = {}; // 缓存 Public Holidays
+let holidaysMap = {}; 
 let docIdToAuthMap = {}; 
 let attendanceData = []; 
 let currentMode = 'day'; 
@@ -140,7 +140,8 @@ window.loadData = async function() {
             while(curr <= endD) {
                 const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
                 if(dStr >= startDate && dStr <= endDate) {
-                    leavesMap[eUid + "_" + dStr] = data.type;
+                    // 🟢 修改：存储整个请假对象以便读取 duration
+                    leavesMap[eUid + "_" + dStr] = data; 
                 }
                 curr.setDate(curr.getDate() + 1);
             }
@@ -208,10 +209,15 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
              const isMissingOut = hasIn && !hasOut && (targetDate < currentTodayStr);
 
              const sched = schedulesMap[uid + "_" + targetDate];
-             let leave = leavesMap[uid + "_" + targetDate];
+             let leaveObj = leavesMap[uid + "_" + targetDate];
+             let leave = leaveObj ? leaveObj.type : null;
+             let duration = leaveObj?.duration || 'Full Day';
+             
              const isPH = !!holidaysMap[targetDate] && (!!sched || !!leave);
              if (isPH) leave = null; 
-             const isAbsent = (targetDate <= currentTodayStr) && !hasIn && sched && !leave && !isPH;
+             
+             // 🟢 如果只是请了半天假又没打卡，算作缺勤（部分缺勤）
+             const isAbsent = (targetDate <= currentTodayStr) && !hasIn && sched && (!leave || duration !== 'Full Day') && !isPH;
 
              if (isMissingOut) missingOutData.push(usersMap[uid].name);
 
@@ -270,7 +276,9 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
 function renderDayUserCard(uid, records, container, targetDate, currentTodayStr) {
     const user = usersMap[uid];
     const sched = schedulesMap[uid + "_" + targetDate];
-    let leave = leavesMap[uid + "_" + targetDate];
+    let leaveObj = leavesMap[uid + "_" + targetDate];
+    let leave = leaveObj ? leaveObj.type : null;
+    let duration = leaveObj?.duration || 'Full Day';
     
     const isPH = !!holidaysMap[targetDate] && (!!sched || !!leave); 
     if (isPH) leave = null; 
@@ -291,7 +299,8 @@ function renderDayUserCard(uid, records, container, targetDate, currentTodayStr)
         if(r.session === 'Clock Out') outT = formatTime(r.timestamp);
     });
 
-    const isAbsent = (targetDate <= currentTodayStr) && inT === "--:--" && sched && !leave && !isPH; 
+    // 🟢 如果是半天假而且没打卡，算作 Absent（部分）
+    const isAbsent = (targetDate <= currentTodayStr) && inT === "--:--" && sched && (!leave || duration !== 'Full Day') && !isPH; 
     const isMissingOut = inT !== "--:--" && outT === "--:--" && targetDate < currentTodayStr;
     const isClockedInToday = inT !== "--:--" && outT === "--:--" && targetDate === currentTodayStr;
 
@@ -299,22 +308,29 @@ function renderDayUserCard(uid, records, container, targetDate, currentTodayStr)
     card.className = `user-card user-card-container ${isAbsent ? 'row-absent' : (leave ? 'row-leave' : '')}`;
     card.setAttribute('data-name', user.name);
     
-    let statusColor = isAbsent ? "bg-danger" : 
-                      (isPH && inT === "--:--" ? "bg-warning" :
-                      (leave ? "bg-info" : 
-                      (isMissingOut ? "bg-danger" : 
-                      (isClockedInToday ? "bg-warning" : 
-                      (pending > 0 ? "bg-warning" : 
-                      (inT !== "--:--" ? "bg-success" : "bg-secondary"))))));
+    let statusColor = "bg-secondary";
+    if (isAbsent) statusColor = "bg-danger";
+    else if (isPH && inT === "--:--") statusColor = "bg-warning";
+    else if (isMissingOut) statusColor = "bg-danger";
+    else if (isClockedInToday) statusColor = "bg-warning";
+    else if (pending > 0) statusColor = "bg-warning";
+    else if (inT !== "--:--") statusColor = "bg-success";
+    else if (leave) statusColor = "bg-info";
 
-    let statusLabel = isAbsent ? `<span class="badge bg-danger">ABSENT</span>` : 
-                      (isPH && inT === "--:--" ? `<span class="badge bg-warning text-dark border"><i data-lucide="star" class="size-3 me-1"></i> PUBLIC HOLIDAY</span>` :
-                      (leave ? `<span class="badge bg-info text-dark">${leave.toUpperCase()}</span>` : 
-                      (isMissingOut ? `<span class="badge bg-danger">MISSING OUT</span>` : 
-                      (isClockedInToday ? `<span class="badge bg-warning text-dark">CLOCKED IN</span>` : ""))));
+    // 🟢 构建动态状态标签，允许多标签共存（例如：Absent + Half Day Leave）
+    let statusLabel = "";
+    if (isAbsent) statusLabel += `<span class="badge bg-danger me-1">ABSENT</span>`;
+    else if (isMissingOut) statusLabel += `<span class="badge bg-danger me-1">MISSING OUT</span>`;
+    else if (isClockedInToday) statusLabel += `<span class="badge bg-warning text-dark me-1">CLOCKED IN</span>`;
+    else if (inT !== "--:--") statusLabel += `<span class="badge bg-success me-1">PRESENT</span>`;
 
-    if (isPH && inT !== "--:--") {
-        statusLabel += `<span class="badge bg-warning text-dark ms-1">PH (3x)</span>`;
+    if (isPH && inT === "--:--") statusLabel += `<span class="badge bg-warning text-dark border me-1"><i data-lucide="star" class="size-3 me-1"></i> PUBLIC HOLIDAY</span>`;
+    else if (isPH && inT !== "--:--") statusLabel += `<span class="badge bg-warning text-dark ms-1">PH (3x)</span>`;
+
+    if (leave) {
+        let lText = leave.toUpperCase();
+        if (duration !== 'Full Day') lText += ` (${duration.replace('Half Day ', '')})`;
+        statusLabel += `<span class="badge bg-info text-dark">${lText}</span>`;
     }
 
     card.innerHTML = `
@@ -362,11 +378,12 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
         const sched = schedulesMap[uid + "_" + dateStr];
         const isPH = !!holidaysMap[dateStr] && !!sched; 
         
-        let leave = leavesMap[uid + "_" + dateStr];
-        if (isPH) leave = null; // 🟢 PH priority
+        let leaveObj = leavesMap[uid + "_" + dateStr];
+        let leave = leaveObj ? leaveObj.type : null;
+        let duration = leaveObj?.duration || 'Full Day';
+        if (isPH) leave = null; // PH priority
 
         const dayRecords = allRecords.filter(r => r.date === dateStr && r.verificationStatus === 'Verified');
-
         if (sched) scheduledCount++;
 
         let inT = null;
@@ -378,9 +395,13 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
 
         let isML = leave && (leave.includes('Medical') || leave.includes('病假') || leave.includes('Cuti Sakit'));
         let isAL = leave && (leave.includes('Annual') || leave.includes('年假') || leave.includes('Cuti Tahunan'));
+        let isHalfDay = duration !== 'Full Day';
         
-        if(inT || isPH || isML || isAL) {
-            present++;
+        // 🟢 半天假算作 0.5 天的出席天数
+        if(inT || isPH) {
+            present += 1;
+        } else if (isML || isAL) {
+            present += isHalfDay ? 0.5 : 1;
         }
 
         if (dayRecords.length > 0 || sched || leave || isPH) {
@@ -388,9 +409,22 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
 
             if (isPH && !inT) statusHtml = `<span class="badge bg-warning text-dark border border-warning-subtle">PUBLIC HOLIDAY</span>`;
             else if (isPH && inT) statusHtml = `<b>Worked <span class="text-warning">(3x PH)</span></b>`;
-            else if (leave && !inT) statusHtml = `<span class="text-info fw-bold">${leave.toUpperCase()}</span>`;
             else if (inT && !hasOut && dateStr < currentTodayStr) statusHtml = '<span class="text-danger fw-bold">MISSING OUT</span>';
+            else if (inT && leave) {
+                let lText = leave.toUpperCase();
+                if (isHalfDay) lText += ` (${duration.replace('Half Day ', '')})`;
+                statusHtml = `<b>Verified Present</b> <span class="text-info small fw-bold ms-1">+ ${lText}</span>`;
+            }
             else if (inT) statusHtml = '<b>Verified Present</b>';
+            else if (leave && !inT) {
+                let lText = leave.toUpperCase();
+                if (isHalfDay) lText += ` (${duration.replace('Half Day ', '')})`;
+                if (isHalfDay && sched) {
+                    statusHtml = `<span class="text-danger fw-bold me-2">ABSENT</span> <span class="text-info fw-bold">${lText}</span>`;
+                } else {
+                    statusHtml = `<span class="text-info fw-bold">${lText}</span>`;
+                }
+            }
             else if (dateStr <= currentTodayStr && sched) statusHtml = '<span class="text-danger fw-bold">ABSENT</span>';
             else statusHtml = 'Off';
 
@@ -451,15 +485,21 @@ function renderDashboard(data, pUids, missingOutData = []) {
         if(usersMap[uid].status === 'disabled') return;
 
         const sched = schedulesMap[uid+"_"+target];
-        const leaveType = leavesMap[uid+"_"+target];
-        if (sched) {
-            scheduled++;
-        }
-        // 🟢 如果是假期且（有排班或有请假），优先判定为假期
+        let leaveObj = leavesMap[uid+"_"+target];
+        let leaveType = leaveObj ? leaveObj.type : null;
+        let duration = leaveObj ? leaveObj.duration : 'Full Day';
+
+        if (sched) scheduled++;
+
         const isPH = !!holidaysMap[target] && (!!sched || !!leaveType);
         
         if(isPH || leaveType) {
             leave++; 
+            // 🟢 如果只是请了半天，且没有打卡记录，仍视为缺勤另一半
+            if (duration !== 'Full Day' && sched && !pUids.has(uid)) {
+                absent++;
+                aList.push(`${usersMap[uid].name} <span class="text-warning small ms-2 border px-1 rounded">(Missing Half)</span>`);
+            }
         } else if(sched && !pUids.has(uid)) { 
             absent++; 
             aList.push(usersMap[uid].name); 
@@ -696,7 +736,7 @@ window.submitManualAction = async () => {
                 
                 const eUid = userObj.authUid || userObj.docId;
                 const isPH = !!holidaysMap[dateStr] && !!schedulesMap[eUid+"_"+dateStr];
-                const deductAmt = isPH ? 0 : 1;
+                const deductAmt = isPH ? 0 : 1; // 默认手动设定的假为全天
 
                 if(type === 'Annual Leave' && deductAmt > 0) {
                     tx.update(uRef, { "leave_balance.annual": oldBal - deductAmt });
@@ -824,7 +864,6 @@ window.handleSearch = () => {
 
 window.changeDate = (days) => { const el = document.getElementById('dateFilter'); const d = new Date(el.value); d.setDate(d.getDate() + days); el.value = d.toISOString().split('T')[0]; window.loadData(); }
 
-// 🟢 这里是负责渲染考勤更正请求(Correction Request)的部分，新增了照片逻辑
 function listenToCorrections() {
     onSnapshot(query(collection(db, "attendance_corrections"), where("status", "==", "Pending")), (snap) => {
         const badge = document.getElementById('tabCorrectionBadge');
@@ -837,7 +876,6 @@ function listenToCorrections() {
             snap.forEach(docSnap => {
                 const d = docSnap.data();
                 
-                // 🟢 插入刚刚提取出来的照片渲染代码
                 const evidenceHtml = d.attachmentUrl 
                     ? `<a href="${d.attachmentUrl}" target="_blank" class="d-inline-block">
                         <img src="${d.attachmentUrl}" class="rounded border shadow-sm" style="width: 40px; height: 40px; object-fit: cover; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
@@ -872,7 +910,6 @@ window.handleCorrection = async (correctionId, decision) => {
     
     showLoading();
     try {
-        // 1. 获取这个 Correction Request 的完整数据
         const correctionRef = doc(db, "attendance_corrections", correctionId);
         const correctionSnap = await getDoc(correctionRef);
         
@@ -882,11 +919,8 @@ window.handleCorrection = async (correctionId, decision) => {
         if (decision === 'approve') {
             const batch = writeBatch(db);
             
-            // 2. 更新请求状态为 Approved
             batch.update(correctionRef, { status: "Approved", reviewedAt: serverTimestamp(), reviewer: auth.currentUser.email });
             
-            // 3. 找出该员工当天旧的 Clock In 和 Clock Out 记录，并将它们作废 (Archived)
-            // 这样能保留他们当天可能存在的 Break In / Break Out 记录不受影响
             const q = query(collection(db, "attendance"), where("uid", "==", reqData.uid), where("date", "==", reqData.targetDate));
             const oldAttSnap = await getDocs(q);
             
@@ -897,36 +931,31 @@ window.handleCorrection = async (correctionId, decision) => {
                 }
             });
 
-            // 4. 准备写入新的时间记录
             const baseRecord = {
                 uid: reqData.uid,
                 name: reqData.empName || reqData.email?.split('@')[0] || "Unknown Staff",
                 email: reqData.email || "",
                 date: reqData.targetDate,
-                verificationStatus: "Verified", // 自动标记为已核实
+                verificationStatus: "Verified", 
                 address: "Approved Correction Request",
             };
 
-            // 如果员工申请了新的 Clock In 时间
             if (reqData.requestedIn && reqData.requestedIn !== '--:--' && reqData.requestedIn !== '-') {
                 const preciseInDate = new Date(`${reqData.targetDate}T${reqData.requestedIn}:00`);
                 const inRef = doc(collection(db, "attendance"));
                 batch.set(inRef, { ...baseRecord, session: "Clock In", timestamp: Timestamp.fromDate(preciseInDate) });
             }
 
-            // 如果员工申请了新的 Clock Out 时间
             if (reqData.requestedOut && reqData.requestedOut !== '--:--' && reqData.requestedOut !== '-') {
                 const preciseOutDate = new Date(`${reqData.targetDate}T${reqData.requestedOut}:00`);
                 const outRef = doc(collection(db, "attendance"));
                 batch.set(outRef, { ...baseRecord, session: "Clock Out", timestamp: Timestamp.fromDate(preciseOutDate) });
             }
 
-            // 5. 提交所有更改
             await batch.commit();
             await logAdminAction(db, auth.currentUser, "CORRECTION_APPROVE", reqData.uid, null, reqData);
 
         } else {
-            // 如果是 Reject，只改状态，不动考勤数据
             await updateDoc(correctionRef, { status: "Rejected", reviewedAt: serverTimestamp(), reviewer: auth.currentUser.email });
             await logAdminAction(db, auth.currentUser, "CORRECTION_REJECT", reqData.uid, null, reqData);
         }
@@ -934,7 +963,6 @@ window.handleCorrection = async (correctionId, decision) => {
         hideLoading();
         showStatusAlert('statusMessage', `Correction ${decision}d successfully.`, true);
         
-        // 刷新一下页面数据以显示新的考勤时间
         window.loadData(); 
         
     } catch (e) {
@@ -1011,7 +1039,8 @@ window.generateMonthlyReport = async () => {
                 while(curr <= endD) {
                     const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
                     if (dStr >= startDate && dStr <= endDate) {
-                        userLeaves[dStr] = data.type;
+                        // 🟢 存储完整的请假数据
+                        userLeaves[dStr] = data;
                     }
                     curr.setDate(curr.getDate() + 1);
                 }
@@ -1051,12 +1080,13 @@ window.generateMonthlyReport = async () => {
             const dayRec = dailyData[dateStr];
             
             const hasSched = userSchedules[dateStr];
-            let leaveType = leavesMap[uid + "_" + dateStr] || userLeaves[dateStr];
             
-            // 🟢 只有有排班或有请假的假期，才视为有效的 PH
+            let leaveObj = leavesMap[uid + "_" + dateStr] || userLeaves[dateStr];
+            let leaveType = leaveObj ? leaveObj.type : null;
+            let duration = leaveObj?.duration || 'Full Day';
+            
             const isPH = !!holidaysMap[dateStr] && (!!hasSched || !!leaveType); 
             const phName = holidaysMap[dateStr] || '';
-            
             if (isPH) leaveType = null; 
 
             let inStr = '-';
@@ -1108,7 +1138,15 @@ window.generateMonthlyReport = async () => {
             } else if (isPH && inStr !== '-') {
                 inDisplay = `<span class="badge bg-success-subtle text-success border border-success-subtle">${inStr}</span> <span class="badge bg-warning text-dark ms-1" title="${phName}">PH (3x)</span>`;
             } else if (leaveType && inStr === '-') {
-                inDisplay = `<span class="badge bg-info text-dark border border-info-subtle">${leaveType.toUpperCase()}</span>`;
+                let lText = leaveType.toUpperCase();
+                if (duration !== 'Full Day') lText += ` (${duration.replace('Half Day ', '')})`;
+                inDisplay = `<span class="badge bg-info text-dark border border-info-subtle">${lText}</span>`;
+                
+                // 🟢 报表中提示如果只有半天假但没打卡，算作Absent
+                if (duration !== 'Full Day' && hasSched) {
+                    inDisplay += ` <span class="badge bg-danger-subtle text-danger border border-danger-subtle ms-1">Absent</span>`;
+                }
+
             } else if (dayRec && dayRec.in) {
                 inDisplay = `<span class="badge bg-success-subtle text-success border border-success-subtle">${inStr}</span>`;
             } else if (dateStr > currentTodayStr) {
