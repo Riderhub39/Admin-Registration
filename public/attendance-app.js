@@ -986,7 +986,7 @@ window.openMonthlyReportModal = () => {
     const userList = Object.values(usersMap).sort((a, b) => a.name.localeCompare(b.name));
 
     userList.forEach(u => {
-        if (u.status !== 'disabled') {
+        if (u.status !== 'disabled'&&u.role!== 'manager') {
            staffSelect.innerHTML += `<option value="${u.authUid || u.docId}">[${u.docId || 'N/A'}] ${u.name}</option>`;
         }
     });
