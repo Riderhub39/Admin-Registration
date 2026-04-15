@@ -93,7 +93,7 @@ async function fetchUsers() {
             photo: d.faceIdPhoto || null,
             email: d.personal?.email,
             status: d.status || 'active',
-            role: d.role || 'staff',
+            role: d.role || 'staff', // 🟢 确保 role 被加载，供报表过滤使用
             docId: docSnap.id,
             authUid: d.authUid,
             empCode: d.personal?.empCode || d.empCode || d.staffId || "" 
@@ -141,7 +141,6 @@ window.loadData = async function() {
             while(curr <= endD) {
                 const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
                 if(dStr >= startDate && dStr <= endDate) {
-                    // 🟢 修改：存储整个请假对象以便读取 duration
                     leavesMap[eUid + "_" + dStr] = data; 
                 }
                 curr.setDate(curr.getDate() + 1);
@@ -217,7 +216,6 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
              const isPH = !!holidaysMap[targetDate] && (!!sched || !!leave);
              if (isPH) leave = null; 
              
-             // 🟢 如果只是请了半天假又没打卡，算作缺勤（部分缺勤）
              const isAbsent = (targetDate <= currentTodayStr) && !hasIn && sched && (!leave || duration !== 'Full Day') && !isPH;
 
              if (isMissingOut) missingOutData.push(usersMap[uid].name);
@@ -300,7 +298,6 @@ function renderDayUserCard(uid, records, container, targetDate, currentTodayStr)
         if(r.session === 'Clock Out') outT = formatTime(r.timestamp);
     });
 
-    // 🟢 如果是半天假而且没打卡，算作 Absent（部分）
     const isAbsent = (targetDate <= currentTodayStr) && inT === "--:--" && sched && (!leave || duration !== 'Full Day') && !isPH; 
     const isMissingOut = inT !== "--:--" && outT === "--:--" && targetDate < currentTodayStr;
     const isClockedInToday = inT !== "--:--" && outT === "--:--" && targetDate === currentTodayStr;
@@ -318,7 +315,6 @@ function renderDayUserCard(uid, records, container, targetDate, currentTodayStr)
     else if (inT !== "--:--") statusColor = "bg-success";
     else if (leave) statusColor = "bg-info";
 
-    // 🟢 构建动态状态标签，允许多标签共存（例如：Absent + Half Day Leave）
     let statusLabel = "";
     if (isAbsent) statusLabel += `<span class="badge bg-danger me-1">ABSENT</span>`;
     else if (isMissingOut) statusLabel += `<span class="badge bg-danger me-1">MISSING OUT</span>`;
@@ -382,7 +378,7 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
         let leaveObj = leavesMap[uid + "_" + dateStr];
         let leave = leaveObj ? leaveObj.type : null;
         let duration = leaveObj?.duration || 'Full Day';
-        if (isPH) leave = null; // PH priority
+        if (isPH) leave = null;
 
         const dayRecords = allRecords.filter(r => r.date === dateStr && r.verificationStatus === 'Verified');
         if (sched) scheduledCount++;
@@ -398,7 +394,6 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
         let isAL = leave && (leave.includes('Annual') || leave.includes('年假') || leave.includes('Cuti Tahunan'));
         let isHalfDay = duration !== 'Full Day';
         
-        // 🟢 半天假算作 0.5 天的出席天数
         if(inT || isPH) {
             present += 1;
         } else if (isML || isAL) {
@@ -488,7 +483,9 @@ function renderDashboard(data, pUids, missingOutData = []) {
         const sched = schedulesMap[uid+"_"+target];
         let leaveObj = leavesMap[uid+"_"+target];
         let leaveType = leaveObj ? leaveObj.type : null;
-        let duration = leaveObj ? leaveObj.duration : 'Full Day';
+        
+        // 🟢 修复重点：如果对象存在但没有 duration 字段，必须安全地 fallback 为 'Full Day'
+        let duration = leaveObj?.duration || 'Full Day';
 
         if (sched) scheduled++;
 
@@ -722,7 +719,20 @@ window.submitManualAction = async () => {
 
         } else if (type === 'Absent') {
             const leaveRef = doc(collection(db, "leaves"));
-            const leaveData = { uid: userObj.docId, authUid: userObj.authUid, empName: userObj.name, type: 'Absent', startDate: dateStr, endDate: dateStr, days: 1, status: 'Approved', reviewedAt: serverTimestamp(), isPayrollDeductible: true, reason: document.getElementById('manualReason').value || "Admin Manual Absent" };
+            const leaveData = { 
+                uid: userObj.docId, 
+                authUid: userObj.authUid, 
+                empName: userObj.name, 
+                type: 'Absent', 
+                startDate: dateStr, 
+                endDate: dateStr, 
+                days: 1, 
+                duration: 'Full Day', // 🟢 补足默认值
+                status: 'Approved', 
+                reviewedAt: serverTimestamp(), 
+                isPayrollDeductible: true, 
+                reason: document.getElementById('manualReason').value || "Admin Manual Absent" 
+            };
             batch.set(leaveRef, leaveData);
             
             await logAdminAction(db, auth.currentUser, "MANUAL_ATTENDANCE_ABSENT", userObj.docId, oldDataSnapshot, leaveData);
@@ -737,7 +747,7 @@ window.submitManualAction = async () => {
                 
                 const eUid = userObj.authUid || userObj.docId;
                 const isPH = !!holidaysMap[dateStr] && !!schedulesMap[eUid+"_"+dateStr];
-                const deductAmt = isPH ? 0 : 1; // 默认手动设定的假为全天
+                const deductAmt = isPH ? 0 : 1; 
 
                 if(type === 'Annual Leave' && deductAmt > 0) {
                     tx.update(uRef, { "leave_balance.annual": oldBal - deductAmt });
@@ -751,6 +761,7 @@ window.submitManualAction = async () => {
                     startDate: dateStr, 
                     endDate: dateStr, 
                     days: 1, 
+                    duration: 'Full Day', // 🟢 确保后台手动添加的请假自带 Full Day 标识
                     deductibleDays: deductAmt, 
                     phOverlap: isPH ? 1 : 0,
                     status: 'Approved', 
@@ -1040,7 +1051,6 @@ window.generateMonthlyReport = async () => {
                 while(curr <= endD) {
                     const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
                     if (dStr >= startDate && dStr <= endDate) {
-                        // 🟢 存储完整的请假数据
                         userLeaves[dStr] = data;
                     }
                     curr.setDate(curr.getDate() + 1);
@@ -1143,7 +1153,6 @@ window.generateMonthlyReport = async () => {
                 if (duration !== 'Full Day') lText += ` (${duration.replace('Half Day ', '')})`;
                 inDisplay = `<span class="badge bg-info text-dark border border-info-subtle">${lText}</span>`;
                 
-                // 🟢 报表中提示如果只有半天假但没打卡，算作Absent
                 if (duration !== 'Full Day' && hasSched) {
                     inDisplay += ` <span class="badge bg-danger-subtle text-danger border border-danger-subtle ms-1">Absent</span>`;
                 }

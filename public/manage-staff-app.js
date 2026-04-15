@@ -43,7 +43,13 @@ function initData() {
     const q = query(collection(db, "users"));
     onSnapshot(q, (snapshot) => {
         staffList = [];
-        snapshot.forEach(doc => staffList.push({ id: doc.id, ...doc.data() }));
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            // 🟢 新增：过滤掉 role 为 'manager' 的用户
+            if (data.role !== 'manager') {
+                staffList.push({ id: doc.id, ...data });
+            }
+        });
         renderTable(); 
     });
 
@@ -325,6 +331,7 @@ window.recalculateAllBalances = async function() {
 
         staffSnap.forEach((docSnap) => {
             const d = docSnap.data();
+            if (d.role === 'manager') return;
             if (d.employment?.joinDate) {
                 const yrs = (new Date() - new Date(d.employment.joinDate)) / (1000 * 60 * 60 * 24 * 365.25);
                 const aE = getEntitlement(yrs, rules.annual || []);

@@ -215,11 +215,18 @@ window.inspectLog = async (id) => {
 async function loadAttendanceStats() {
     const todayStr = normalizeDate(`${new Date().getFullYear()}-${new Date().getMonth() + 1}-${new Date().getDate()}`);
     try {
-        const [usersSnap, attSnap, schedSnap] = await Promise.all([
+        const [usersSnap, attSnap, schedSnap, leaveSnap, holSnap] = await Promise.all([
             getDocs(query(collection(db, "users"))),
             getDocs(query(collection(db, "attendance"), where("date", "==", todayStr))),
-            getDocs(query(collection(db, "schedules"), where("date", "==", todayStr)))
+            getDocs(query(collection(db, "schedules"), where("date", "==", todayStr))),
+            getDocs(query(collection(db, "leaves"), where("status", "==", "Approved"), where("endDate", ">=", todayStr))),
+            getDoc(doc(db, "settings", "holidays"))
         ]);
+
+        const holidaysMap = {};
+        if (holSnap.exists() && holSnap.data().holiday_list) {
+            holSnap.data().holiday_list.forEach(h => { holidaysMap[h.date] = true; });
+        }
 
         const staffDocIds = new Set();
         const authUidToDocId = {}; 
@@ -252,20 +259,52 @@ async function loadAttendanceStats() {
             }
         });
 
+        const leaveMap = {};
+        leaveSnap.forEach(doc => {
+            const data = doc.data();
+            const eUid = data.authUid || docIdToAuthMap[data.uid] || data.uid;
+            
+            const [sY, sM, sD] = data.startDate.split('-');
+            const [eY, eM, eD] = data.endDate.split('-');
+            let curr = new Date(sY, sM - 1, sD);
+            const endD = new Date(eY, eM - 1, eD);
+            
+            while(curr <= endD) {
+                const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
+                if(dStr === todayStr) {
+                    let docId = authUidToDocId[eUid] || (staffDocIds.has(eUid) ? eUid : null);
+                    if (docId) leaveMap[docId] = data; 
+                }
+                curr.setDate(curr.getDate() + 1);
+            }
+        });
+
         let present = 0, late = 0, absent = 0;
+        let expectedCount = 0; // 🟢 新增：今天真正需要出勤的人数
+
         staffDocIds.forEach(docId => {
             const records = attendanceMap[docId] || [];
             const schedStart = scheduleMap[docId];
             
+            let leaveObj = leaveMap[docId];
+            let leaveType = leaveObj ? leaveObj.type : null;
+            let duration = leaveObj?.duration || 'Full Day';
+            const isPH = holidaysMap[todayStr] && (!!schedStart || !!leaveType);
+
+            // 🟢 如果有排班，判定是否应当算作应出勤基数
+            if (schedStart) {
+                // 如果不是公共假期，且不是“全天假”，才需要他来上班
+                if (!isPH && !(leaveType && duration === 'Full Day')) {
+                    expectedCount++;
+                }
+            }
+
             if (records.length > 0) {
                 present++;
                 const clockIn = records.filter(r => r.session === 'Clock In').sort((a,b) => (a.timestamp?.seconds||0)-(b.timestamp?.seconds||0))[0];
                 
-                // 🟢 只有在有排班的前提下，才去计算是否迟到
                 if (clockIn && schedStart) {
                     const time = clockIn.manualIn ? new Date(`${todayStr}T${clockIn.manualIn}:00`) : clockIn.timestamp.toDate();
-                    
-                    // 阈值为排班时间 + 1分钟 (60000毫秒)
                     const lateThreshold = new Date(schedStart.getTime() + 60000); 
                     
                     if (time >= lateThreshold) {
@@ -273,16 +312,22 @@ async function loadAttendanceStats() {
                     }
                 }
             } else if (schedStart) {
-                // 有排班但没记录，算 Absent
-                absent++;
+                if (!isPH && !leaveType) {
+                    absent++; 
+                } else if (leaveType && duration !== 'Full Day') {
+                    absent++; 
+                }
             }
         });
 
         document.getElementById('countPresent').innerText = Math.max(0, present - late);
         document.getElementById('countLate').innerText = late;
         document.getElementById('countAbsent').innerText = absent;
-        const total = Math.max(Object.keys(scheduleMap).length, present);
+        
+        // 🟢 修改：将计算分母换成 expectedCount
+        const total = Math.max(expectedCount, present);
         document.getElementById('attPercent').innerText = total ? Math.round((present / total) * 100) + '%' : '0%';
+        
         updateChart(present, absent, late);
     } catch (e) { console.error(e); }
 }
