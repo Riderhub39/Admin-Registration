@@ -15,10 +15,10 @@ export function requireAdmin(app, db, onReadyCallback) {
         }
 
         const loginTime = localStorage.getItem('adminLoginTime');
-        const SESSION_DURATION = 8 * 60 * 60 * 1000;
+        const SESSION_DURATION = 12 * 60 * 60 * 1000;
 
         if (!loginTime || (Date.now() - parseInt(loginTime)) > SESSION_DURATION) {
-            alert("Your session has expired (8 hours limit). Please sign in again.");
+            alert("Your session has expired (12 hours limit). Please sign in again.");
             await signOut(auth);
             localStorage.removeItem('adminLoginTime');
             window.location.replace("index.html");
