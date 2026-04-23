@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, getDocs, getDoc, setDoc, doc, writeBatch, deleteDoc, onSnapshot, query, where, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, getDocs, getDoc, setDoc, doc, writeBatch, deleteDoc, onSnapshot, query, where, Timestamp, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 import { firebaseConfig } from "./firebase-config.js";
@@ -32,7 +32,7 @@ let listSelectedIds = new Set();
 let currentManagerDate = null;
 let currentFilterIds = null;
 
-let dayManagerModal, bulkModal, listEditModal, presetModal, staffAnalyticsModal;
+let dayManagerModal, bulkModal, listEditModal, presetModal, staffAnalyticsModal, editSingleShiftModal;
 
 function getTodayStr() {
     const now = new Date();
@@ -50,6 +50,8 @@ requireAdmin(app, db, async (user) => {
         listEditModal = new bootstrap.Modal(document.getElementById('listEditModal'));
         presetModal = new bootstrap.Modal(document.getElementById('presetModal'));
         staffAnalyticsModal = new bootstrap.Modal(document.getElementById('staffAnalyticsModal'));
+        // 新增的单条编辑 Modal
+        editSingleShiftModal = new bootstrap.Modal(document.getElementById('editSingleShiftModal'));
     }
 
     initFilters();
@@ -250,7 +252,11 @@ function renderDayRoster() {
     shifts.forEach(s => {
         const div = document.createElement('div'); div.className = 'roster-item';
         const clockInBadge = s.clockIn ? `<span class="badge bg-success bg-opacity-10 text-success border border-success ms-1" style="font-size:0.6rem;">IN</span>` : '';
-        const actionBtn = s.clockIn ? `<button class="btn btn-xs text-secondary border-0" disabled title="Clocked In"><i data-lucide="lock" class="size-4"></i></button>` : `<button class="btn btn-xs btn-outline-danger border-0" onclick="window.removeShift('${s.id}')"><i data-lucide="trash-2" class="size-4"></i></button>`;
+        // 🟢 替换为包含编辑按钮的新逻辑
+        const actionBtn = s.clockIn 
+            ? `<button class="btn btn-xs text-secondary border-0" disabled title="Clocked In"><i data-lucide="lock" class="size-4"></i></button>` 
+            : `<button class="btn btn-xs text-primary border-0 me-1" onclick="window.openSingleEdit('${s.id}')"><i data-lucide="edit-2" class="size-4"></i></button><button class="btn btn-xs btn-outline-danger border-0" onclick="window.removeShift('${s.id}')"><i data-lucide="trash-2" class="size-4"></i></button>`;
+            
         div.innerHTML = `<div><div class="fw-bold text-dark small">${s.empName} ${clockInBadge}</div><div class="text-muted" style="font-size:0.75rem;">${formatTime(s.start)} - ${formatTime(s.end)} <span class="ms-1 badge bg-secondary bg-opacity-10 text-secondary border text-xs">-${s.breakMins}m</span> <span class="ms-2 text-info">${s.notes?'('+s.notes+')':''}</span></div></div>${actionBtn}`;
         container.appendChild(div);
     });
@@ -904,15 +910,29 @@ window.renderAnalytics = () => {
 
 window.openStaffAnalytics = (uid) => {
     const data = window.currentStats[uid]; if(!data) return;
-    document.getElementById('analyticsName').innerText = data.name; document.getElementById('analyticsPeriod').innerText = "Selected Period";
+    
+    // 🟢 增加一键清空按钮 (调用 clearStaffShifts)
+    document.getElementById('analyticsName').innerHTML = `${data.name} <button class="btn btn-xs btn-outline-danger ms-2 py-0" onclick="window.clearStaffShifts('${uid}', '${data.name}')">Clear All Displayed</button>`; 
+    document.getElementById('analyticsPeriod').innerText = "Selected Period";
+    
     const t = document.getElementById('staffShiftsBody'); t.innerHTML = '';
     data.shifts.sort((a,b) => new Date(a.date) - new Date(b.date));
     data.shifts.forEach(s => { 
         const d = new Date(s.date).toLocaleDateString('en-US', {weekday: 'short'}); 
-        t.innerHTML += `<tr><td class="ps-3">${s.date}</td><td><span class="badge bg-light text-dark border">${d}</span></td><td>${formatTime(s.start)} - ${formatTime(s.end)}</td><td class="text-end pe-3 fw-bold text-primary">${s.hours.toFixed(1)}</td></tr>`; 
+        // 🟢 在 Hrs 后面加上了一个小编辑按钮
+        t.innerHTML += `<tr>
+            <td class="ps-3">${s.date}</td>
+            <td><span class="badge bg-light text-dark border">${d}</span></td>
+            <td>${formatTime(s.start)} - ${formatTime(s.end)}</td>
+            <td class="text-end pe-3 fw-bold text-primary d-flex justify-content-end align-items-center gap-2">
+                ${s.hours.toFixed(1)}
+                ${!s.clockIn ? `<button class="btn btn-xs text-primary border-0 p-0" onclick="window.openSingleEdit('${s.id}')" title="Edit"><i data-lucide="edit-2" class="size-3"></i></button>` : '<i data-lucide="lock" class="size-3 text-muted"></i>'}
+            </td>
+        </tr>`; 
     });
     document.getElementById('modalTotalShifts').innerText = data.shifts.length; document.getElementById('modalTotalHours').innerText = data.totalHours.toFixed(1);
     staffAnalyticsModal.show();
+    setTimeout(() => lucide.createIcons(), 100); // 重新渲染图标
 }
 
 window.copyPreviousWeek = async () => {
@@ -989,5 +1009,106 @@ window.clearCurrentWeek = async () => {
     } catch(err) {
         hideLoading();
         alert("Clear failed.");
+    }
+};
+
+// --- NEW FEATURE: Edit Single Shift ---
+window.openSingleEdit = (id) => {
+    const shift = rawSchedules.find(s => s.id === id);
+    if (!shift) return;
+    if (shift.clockIn) return alert("Cannot edit a shift that is already clocked in.");
+
+    document.getElementById('esId').value = shift.id;
+    document.getElementById('esStaffName').innerText = shift.empName;
+    document.getElementById('esDate').innerText = shift.date;
+    
+    // Format Date object to HH:mm for input type="time"
+    document.getElementById('esStart').value = shift.start.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
+    document.getElementById('esEnd').value = shift.end.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
+    document.getElementById('esBreak').value = shift.breakMins || 0;
+
+    editSingleShiftModal.show();
+};
+
+window.saveSingleEdit = async () => {
+    const id = document.getElementById('esId').value;
+    const startStr = document.getElementById('esStart').value;
+    const endStr = document.getElementById('esEnd').value;
+    const breakMins = parseInt(document.getElementById('esBreak').value) || 0;
+
+    if (!startStr || !endStr) return alert("Please enter valid times.");
+    
+    const shift = rawSchedules.find(s => s.id === id);
+    if (!shift) return;
+
+    document.getElementById('btnSaveSingleEdit').disabled = true;
+    showLoading();
+
+    try {
+        const sDT = new Date(`${shift.date}T${startStr}:00`);
+        const eDT = new Date(`${shift.date}T${endStr}:00`);
+
+        const newData = {
+            start: Timestamp.fromDate(sDT),
+            end: Timestamp.fromDate(eDT),
+            breakMins: breakMins
+        };
+
+        // Update Firestore
+        await updateDoc(doc(db, "schedules", id), newData);
+        
+        // Log action
+        await logAdminAction(db, auth.currentUser, "EDIT_SINGLE_SHIFT", shift.userId, { oldStart: shift.start, oldEnd: shift.end }, newData);
+
+        editSingleShiftModal.hide();
+        hideLoading();
+        showStatusAlert('statusMessage', 'Shift updated successfully.', true);
+        
+        // 如果是从 Analytics Modal 点开的，我们需要刷新一下那个 Modal
+        if (staffAnalyticsModal._element.classList.contains('show')) {
+            setTimeout(() => window.openStaffAnalytics(shift.userId), 500);
+        }
+    } catch (err) {
+        console.error(err);
+        hideLoading();
+        alert("Failed to save changes.");
+    } finally {
+        document.getElementById('btnSaveSingleEdit').disabled = false;
+    }
+};
+
+// --- NEW FEATURE: Clear Staff's Shifts for displayed period ---
+window.clearStaffShifts = async (uid, name) => {
+    const data = window.currentStats[uid];
+    if(!data || data.shifts.length === 0) return;
+
+    // 检查是否有已经打卡的记录
+    const hasClockedIn = data.shifts.some(s => s.clockIn);
+    if (hasClockedIn) {
+        alert("Cannot clear all: Some shifts are already clocked in. You can only delete pending shifts one by one.");
+        return;
+    }
+
+    if (!confirm(`⚠️ DANGER: Are you sure you want to DELETE ALL ${data.shifts.length} displayed shifts for ${name}?\n\nThis is useful if you made a mistake during Bulk Schedule and want to start over.`)) return;
+
+    showLoading();
+    try {
+        const batch = writeBatch(db);
+        let count = 0;
+        data.shifts.forEach(s => {
+            batch.delete(doc(db, "schedules", s.id));
+            count++;
+        });
+
+        await batch.commit();
+        await logAdminAction(db, auth.currentUser, "BULK_DELETE_STAFF_SHIFTS", uid, null, { deletedCount: count });
+        
+        staffAnalyticsModal.hide();
+        hideLoading();
+        showStatusAlert('statusMessage', `Cleared ${count} shifts for ${name}.`, true);
+    } catch (err) {
+        console.error(err);
+        hideLoading();
+        alert("Failed to clear shifts.");
     }
 };
