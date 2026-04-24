@@ -22,7 +22,7 @@ let docIdToAuthMap = {};
 let attendanceData = []; 
 let currentMode = 'day'; 
 
-let photoModal, manualActionModal, editRecordModal, bulkVerifyModalInst, monthlyReportModalInst; 
+let photoModal, manualActionModal, editRecordModal, bulkVerifyModalInst, monthlyReportModalInst, bulkManualActionModalInst; 
 let unsubscribeAttendance = null; 
 let unverifiedRecordsCache = []; 
 
@@ -40,6 +40,7 @@ export async function initAttendanceApp() {
         editRecordModal = new bootstrap.Modal(document.getElementById('editRecordModal'));
         bulkVerifyModalInst = new bootstrap.Modal(document.getElementById('bulkVerifyModal')); 
         monthlyReportModalInst = new bootstrap.Modal(document.getElementById('monthlyReportModal')); 
+        bulkManualActionModalInst = new bootstrap.Modal(document.getElementById('bulkManualActionModal')); 
     }
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -93,7 +94,7 @@ async function fetchUsers() {
             photo: d.faceIdPhoto || null,
             email: d.personal?.email,
             status: d.status || 'active',
-            role: d.role || 'staff', // 🟢 确保 role 被加载，供报表过滤使用
+            role: d.role || 'staff',
             docId: docSnap.id,
             authUid: d.authUid,
             empCode: d.personal?.empCode || d.empCode || d.staffId || "" 
@@ -484,7 +485,6 @@ function renderDashboard(data, pUids, missingOutData = []) {
         let leaveObj = leavesMap[uid+"_"+target];
         let leaveType = leaveObj ? leaveObj.type : null;
         
-        // 🟢 修复重点：如果对象存在但没有 duration 字段，必须安全地 fallback 为 'Full Day'
         let duration = leaveObj?.duration || 'Full Day';
 
         if (sched) scheduled++;
@@ -493,7 +493,6 @@ function renderDashboard(data, pUids, missingOutData = []) {
         
         if(isPH || leaveType) {
             leave++; 
-            // 🟢 如果只是请了半天，且没有打卡记录，仍视为缺勤另一半
             if (duration !== 'Full Day' && sched && !pUids.has(uid)) {
                 absent++;
                 aList.push(`${usersMap[uid].name} <span class="text-warning small ms-2 border px-1 rounded">(Missing Half)</span>`);
@@ -727,7 +726,7 @@ window.submitManualAction = async () => {
                 startDate: dateStr, 
                 endDate: dateStr, 
                 days: 1, 
-                duration: 'Full Day', // 🟢 补足默认值
+                duration: 'Full Day',
                 status: 'Approved', 
                 reviewedAt: serverTimestamp(), 
                 isPayrollDeductible: true, 
@@ -761,7 +760,7 @@ window.submitManualAction = async () => {
                     startDate: dateStr, 
                     endDate: dateStr, 
                     days: 1, 
-                    duration: 'Full Day', // 🟢 确保后台手动添加的请假自带 Full Day 标识
+                    duration: 'Full Day', 
                     deductibleDays: deductAmt, 
                     phOverlap: isPH ? 1 : 0,
                     status: 'Approved', 
@@ -1265,3 +1264,159 @@ export function exportMonthlyReportToExcel() {
     link.click();
     document.body.removeChild(link);
 }
+
+// ----------------------------------------------------
+// 🟢 批量添加考勤记录 (Bulk Manual Action) - 适配 Select 模式
+// ----------------------------------------------------
+
+window.openBulkManualAction = () => {
+    const currentDate = document.getElementById('dateFilter').value || getLocalTodayStr();
+    document.getElementById('bulkManualDate').value = currentDate;
+    document.getElementById('bulkManualTime').value = "";
+    document.getElementById('bulkManualActionType').value = "";
+    document.getElementById('bulkManualReason').value = "System recovery bulk entry";
+    document.getElementById('bulkManualStaffSearch').value = ""; 
+
+    // 🟢 实时根据所选日期加载当天的员工列表 (调用新增的动态加载函数)
+    window.updateBulkManualStaffList();
+    
+    bulkManualActionModalInst.show();
+    if (window.lucide) window.lucide.createIcons();
+};
+
+// 🟢 核心功能：当日期改变时，实时获取对应日期的排班和假单并过滤
+window.updateBulkManualStaffList = async () => {
+    const targetDate = document.getElementById('bulkManualDate').value;
+    const staffSelect = document.getElementById('bulkManualStaffSelect');
+    staffSelect.innerHTML = '<option disabled>Loading staff...</option>';
+    
+    if (!targetDate) return;
+
+    try {
+        // 1. 获取当天的 Schedule
+        const sSnap = await getDocs(query(collection(db, "schedules"), where("date", "==", targetDate)));
+        const dateSchedules = new Set();
+        sSnap.forEach(d => {
+            const uid = docIdToAuthMap[d.data().userId] || d.data().userId;
+            dateSchedules.add(uid);
+        });
+
+        // 2. 获取当天的 Leaves (包括连跨几天的假单)
+        const lSnap = await getDocs(query(collection(db, "leaves"), where("status", "==", "Approved"), where("startDate", "<=", targetDate)));
+        const dateLeaves = new Set();
+        lSnap.forEach(d => {
+            const data = d.data();
+            // 如果请假的结束日期 >= 目标日期，说明当天在请假期间内
+            if (data.endDate >= targetDate) {
+                const uid = data.authUid || docIdToAuthMap[data.uid] || data.uid;
+                dateLeaves.add(uid);
+            }
+        });
+
+        // 3. 构建选择列表
+        staffSelect.innerHTML = '';
+        const userList = Object.values(usersMap).sort((a, b) => a.name.localeCompare(b.name));
+        let count = 0;
+
+        userList.forEach(u => {
+            if (u.status !== 'disabled' && u.role !== 'manager') {
+                const uid = u.authUid || u.docId;
+                
+                // 🟢 核心判断：只有当天有排班，且没有请假的员工才显示
+                if (dateSchedules.has(uid) && !dateLeaves.has(uid)) {
+                    const opt = document.createElement('option');
+                    opt.value = uid;
+                    opt.text = u.name;
+                    opt.dataset.name = u.name;
+                    opt.dataset.email = u.email || '';
+                    staffSelect.appendChild(opt);
+                    count++;
+                }
+            }
+        });
+
+        if (count === 0) {
+            staffSelect.innerHTML = `<option disabled>No scheduled staff found (or all on leave).</option>`;
+        }
+
+        // 如果用户在搜素框里有内容，重新过滤一次
+        if(typeof window.filterBulkManualStaff === 'function') {
+            window.filterBulkManualStaff();
+        }
+
+    } catch (error) {
+        console.error("Error loading target date staff:", error);
+        staffSelect.innerHTML = '<option disabled>Error loading staff.</option>';
+    }
+};
+
+window.submitBulkManualAction = async () => {
+    const dateStr = document.getElementById('bulkManualDate').value;
+    const timeStr = document.getElementById('bulkManualTime').value;
+    const actionType = document.getElementById('bulkManualActionType').value;
+    const remarks = document.getElementById('bulkManualReason').value || "Admin Bulk Entry";
+
+    if (!dateStr || !timeStr || !actionType) {
+        alert("Please select Date, Time, and Action Type.");
+        return;
+    }
+
+    const staffSelect = document.getElementById('bulkManualStaffSelect');
+    const selectedOptions = Array.from(staffSelect.selectedOptions);
+
+    if (selectedOptions.length === 0) {
+        alert("Please select at least one staff member.");
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to bulk add [${actionType}] at [${timeStr}] for ${selectedOptions.length} staff members?`)) {
+        return;
+    }
+
+    showLoading();
+    try {
+        const batch = writeBatch(db);
+        const preciseDate = new Date(`${dateStr}T${timeStr}:00`);
+        let addedCount = 0;
+
+        selectedOptions.forEach(opt => {
+            const uid = opt.value;
+            const name = opt.dataset.name;
+            const email = opt.dataset.email;
+
+            const newRef = doc(collection(db, "attendance"));
+            batch.set(newRef, {
+                uid: uid,
+                name: name,
+                email: email,
+                date: dateStr,
+                session: actionType,
+                timestamp: Timestamp.fromDate(preciseDate),
+                verificationStatus: "Verified",
+                address: "Admin Bulk Entry",
+                remarks: remarks
+            });
+            addedCount++;
+        });
+
+        await batch.commit();
+
+        await logAdminAction(db, auth.currentUser, "BULK_MANUAL_ADD_ATTENDANCE", "MULTIPLE", null, {
+            date: dateStr, 
+            time: timeStr, 
+            action: actionType, 
+            staffCount: addedCount
+        });
+
+        bulkManualActionModalInst.hide();
+        hideLoading();
+        showStatusAlert('statusMessage', `Successfully added ${actionType} record for ${addedCount} staff members.`, true);
+        
+        window.loadData();
+
+    } catch (e) {
+        console.error(e);
+        hideLoading();
+        showStatusAlert('statusMessage', `Bulk add failed: ${e.message}`, false);
+    }
+};
