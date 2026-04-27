@@ -230,11 +230,16 @@ async function loadAttendanceStats() {
 
         const staffDocIds = new Set();
         const authUidToDocId = {}; 
+        const docIdToAuthMap = {}; // 🟢 FIX: Added missing variable declaration
+
         usersSnap.forEach(doc => {
             const data = doc.data();
             if (data.status !== 'disabled') {
                 staffDocIds.add(doc.id);
-                if (data.authUid) authUidToDocId[data.authUid] = doc.id;
+                if (data.authUid) {
+                    authUidToDocId[data.authUid] = doc.id;
+                    docIdToAuthMap[doc.id] = data.authUid; // 🟢 FIX: Populate the map
+                }
             }
         });
 
@@ -262,6 +267,8 @@ async function loadAttendanceStats() {
         const leaveMap = {};
         leaveSnap.forEach(doc => {
             const data = doc.data();
+            if (!data.startDate || !data.endDate) return; // 🟢 FIX: Prevent crash if dates are missing
+            
             const eUid = data.authUid || docIdToAuthMap[data.uid] || data.uid;
             
             const [sY, sM, sD] = data.startDate.split('-');
@@ -280,7 +287,7 @@ async function loadAttendanceStats() {
         });
 
         let present = 0, late = 0, absent = 0;
-        let expectedCount = 0; // 🟢 新增：今天真正需要出勤的人数
+        let expectedCount = 0;
 
         staffDocIds.forEach(docId => {
             const records = attendanceMap[docId] || [];
@@ -291,9 +298,7 @@ async function loadAttendanceStats() {
             let duration = leaveObj?.duration || 'Full Day';
             const isPH = holidaysMap[todayStr] && (!!schedStart || !!leaveType);
 
-            // 🟢 如果有排班，判定是否应当算作应出勤基数
             if (schedStart) {
-                // 如果不是公共假期，且不是“全天假”，才需要他来上班
                 if (!isPH && !(leaveType && duration === 'Full Day')) {
                     expectedCount++;
                 }
@@ -324,12 +329,13 @@ async function loadAttendanceStats() {
         document.getElementById('countLate').innerText = late;
         document.getElementById('countAbsent').innerText = absent;
         
-        // 🟢 修改：将计算分母换成 expectedCount
         const total = Math.max(expectedCount, present);
         document.getElementById('attPercent').innerText = total ? Math.round((present / total) * 100) + '%' : '0%';
         
         updateChart(present, absent, late);
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error("Dashboard Load Error:", e); // Print the actual error logic to your console to prevent silent failures in the future
+    }
 }
 
 function updateChart(present, absent, late) {
