@@ -391,12 +391,12 @@ async function calculateAttendanceStats(uid, monthStr) {
         const endD = new Date(eY, eM - 1, eD);
         
         // 🟢 记录请假天数，因为可能是半天 0.5
-        const leaveValue = l.days || 1; 
+        const leaveValue = (l.days !== undefined && l.days < 1) ? parseFloat(l.days) : 1;
 
         while(curr <= endD) {
             const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
             if (dStr >= startDate && dStr <= endDate) { 
-                userLeaves[dStr] = { type: l.type, val: leaveValue }; 
+                userLeaves[dStr] = { type: l.type, val: leaveValue, status: l.status || 'Approved' }; 
             }
             curr.setDate(curr.getDate() + 1);
         }
@@ -499,9 +499,15 @@ async function calculateAttendanceStats(uid, monthStr) {
     let annualLeaveCount = 0, medicalLeaveCount = 0, unpaidLeaveCount = 0;
     let unpaidLeaveHrs = 0;
 
+    // --- 🟢 【DEBUG START】收集无薪假详情 ---
+    console.log(`%c[DEBUG] 开始分析 ${staff.displayName} 的无薪假...`, "color: white; background: #dc2626; padding: 2px 5px;");
+    let unpaidDetails = [];
+    // --- 【DEBUG END】 ---
+
     for (const [dateStr, leaveObj] of Object.entries(userLeaves)) {
         const lType = leaveObj.type;
         const lVal = parseFloat(leaveObj.val) || 1; // 🟢 读取具体天数 (0.5 或 1)
+        const lStatus = leaveObj.status; // 🟢 获取假条状态
 
         const validPH = !!holidaysMap[dateStr] && (!!mySchedules[dateStr] || !!lType);
         
@@ -518,6 +524,10 @@ async function calculateAttendanceStats(uid, monthStr) {
             else {
                 unpaidLeaveCount += lVal; 
                 
+                // --- 🟢 【DEBUG START】记录被认定为无薪假的日期 ---
+                unpaidDetails.push({ date: dateStr, type: lType, value: lVal, status: lStatus });
+                // --- 【DEBUG END】 ---
+
                 const sched = mySchedules[dateStr];
                 if (sched && sched.start && sched.end) {
                     let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
@@ -531,6 +541,11 @@ async function calculateAttendanceStats(uid, monthStr) {
             }
         }
     }
+
+    // --- 🟢 【DEBUG START】在控制台打印出全部收集到的无薪假 ---
+    console.table(unpaidDetails);
+    console.log(`%c[DEBUG] 判定出的无薪假总计: ${unpaidLeaveCount} 天`, "font-weight: bold; color: red;");
+    // --- 【DEBUG END】 ---
 
     const totalDecimalHrs = totalWorkMs / 3600000;
     const phUnworkedHrsDec = phUnworkedMs / 3600000;
@@ -1351,7 +1366,7 @@ window.generateAllDrafts = async () => {
                     const [eY, eM, eD] = l.endDate.split('-');
                     let curr = new Date(sY, sM - 1, sD);
                     const endD = new Date(eY, eM - 1, eD);
-                    const lVal = l.days || 1; // 🟢 允许小数天数
+                    const lVal = (l.days !== undefined && l.days < 1) ? parseFloat(l.days) : 1; 
 
                     while(curr <= endD) {
                         const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
