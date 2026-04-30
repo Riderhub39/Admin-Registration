@@ -87,6 +87,7 @@ async function fetchUsers() {
     const snap = await getDocs(query(collection(db, "users")));
     snap.forEach(docSnap => {
         const d = docSnap.data();
+        if (d.role === 'manager') return;
         if (d.authUid) docIdToAuthMap[docSnap.id] = d.authUid;
         const key = d.authUid || docSnap.id;
         usersMap[key] = {
@@ -257,7 +258,7 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
         }
     } else {
         sortedUids.forEach(uid => { 
-            if(usersMap[uid].status !== 'disabled' && renderMonthUserCard(uid, grouped[uid] || [], listContainer, null, currentTodayStr)) count++; 
+            if(usersMap[uid].status !== 'disabled' && usersMap[uid].role !== 'manager' && renderMonthUserCard(uid, grouped[uid] || [], listContainer, null, currentTodayStr)) count++;
         });
         
         const bulkBtn = document.getElementById('bulkVerifyBtn');
@@ -430,6 +431,10 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
                 <div class="text-end">${statusHtml}</div>
             </li>`;
         }
+    }
+
+    if (scheduledCount === 0 && present === 0 && rowsHtml === "") {
+        return false;
     }
 
     const card = document.createElement('div');
