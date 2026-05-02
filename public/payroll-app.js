@@ -3,6 +3,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { getFirestore, collection, query, where, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, serverTimestamp, getDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
+// 注意：原有的 calculateStatutoryAmount 被弃用，这里继续引入避免报错，下方使用了全新的专属大马引擎
 import { formatMoney, formatTime, calculateStatutoryAmount, msToHM, logAdminAction, showLoading, hideLoading, showStatusAlert } from './utils.js';
 import { requireAdmin } from './auth-guard.js';
 
@@ -21,11 +22,77 @@ let currentPayrollData = [];
 let staffMap = {}; 
 let holidaysMap = {}; 
 let formModal, printModal, advancesModal, settingsModal;
-// 🟢 新增：加入 defaultCompany 全局变量
 let globalSettings = { calcMode: 'daily', satMultiplier: 1.0, lateMode: 'minutes', lateFixedAmount: 10, defaultCompany: 'RH RIDER HUB MOTOR (M) SDN. BHD.' }; 
 
 const safeSetVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
 const safeSetText = (id, text) => { const el = document.getElementById(id); if (el) el.innerText = text; };
+
+// 🟢 新增：马来西亚 2026 专属法定扣款计算引擎 (EPF/SOCSO/EIS - 完美复刻 Jadual Caruman)
+function calculateMalaysiaStatutory(earnedBasic, commission, allowance, overtime, epfRateRaw) {
+    // 法定基薪 (KWSP 通常不包含 OT，但 SOCSO/EIS 必须包含 OT)
+    const epfGross = earnedBasic + commission + allowance;
+    const socsoEisGross = epfGross + overtime;
+
+    // 1. KWSP (EPF) - RM 20 区间进位法 (Third Schedule)
+    let epfEmp = 0;
+    let epfEmpr = 0;
+    if (epfGross > 0) {
+        const epfBracketMax = Math.ceil(epfGross / 20) * 20; // 以 RM 20 为上限
+        const empEpfRate = parseFloat(epfRateRaw) || 11;
+        const employerEpfRate = epfGross <= 5000 ? 0.13 : 0.12; 
+        
+        // EPF 必须向上取整至最接近的令吉 (Round Up to next Ringgit)
+        epfEmp = Math.ceil(epfBracketMax * (empEpfRate / 100));
+        epfEmpr = Math.ceil(epfBracketMax * employerEpfRate);
+    }
+
+    // 2 & 3. PERKESO (SOCSO) & SIP (EIS)
+    let socsoEmp = 0, socsoEmpr = 0, eisEmp = 0, eisEmpr = 0;
+    if (socsoEisGross > 0) {
+        // 最新封顶 RM 6000
+        const capGross = Math.min(socsoEisGross, 6000);
+
+        // 处理早期的不规则小区间
+        if (capGross <= 30) {
+            socsoEmp = 0.10; socsoEmpr = 0.40; eisEmp = 0.05; eisEmpr = 0.05;
+        } else if (capGross <= 50) {
+            socsoEmp = 0.20; socsoEmpr = 0.70; eisEmp = 0.10; eisEmpr = 0.10;
+        } else if (capGross <= 70) {
+            socsoEmp = 0.30; socsoEmpr = 1.10; eisEmp = 0.15; eisEmpr = 0.15;
+        } else if (capGross <= 100) {
+            socsoEmp = 0.40; socsoEmpr = 1.45; eisEmp = 0.20; eisEmpr = 0.20;
+        } else if (capGross <= 140) {
+            socsoEmp = 0.60; socsoEmpr = 2.05; eisEmp = 0.25; eisEmpr = 0.25;
+        } else if (capGross <= 200) {
+            socsoEmp = 0.85; socsoEmpr = 2.95; eisEmp = 0.35; eisEmpr = 0.35;
+        } else {
+            // RM 200 以上，每个区间跨度为严格的 RM 100 (Jadual Ketiga)
+            const bracketMax = Math.ceil(capGross / 100) * 100;
+            const midPoint = bracketMax - 50; // 取区间中间值进行推算
+
+            // SIP (EIS): 员工/雇主固定为中位数的 0.2%
+            eisEmp = +(midPoint * 0.002).toFixed(2);
+            eisEmpr = eisEmp;
+
+            // PERKESO (SOCSO): 
+            // 员工固定为中位数的 0.5%
+            socsoEmp = +(midPoint * 0.005).toFixed(2);
+            
+            // 雇主的法定算法：总金额(2.25%)四舍五入到最近的0.10，然后再减去员工扣款
+            const totalSocso = Math.round(midPoint * 0.0225 * 10) / 10;
+            socsoEmpr = +(totalSocso - socsoEmp).toFixed(2);
+        }
+    }
+
+    return {
+        epfEmp: epfEmp,
+        epfEmpr: epfEmpr,
+        socsoEmp: socsoEmp,
+        socsoEmpr: socsoEmpr,
+        eisEmp: eisEmp,
+        eisEmpr: eisEmpr
+    };
+}
 
 // ==========================================
 // INITIALIZATION
@@ -73,7 +140,6 @@ async function loadSettings() {
         safeSetVal('configSatMulti', globalSettings.satMultiplier);
         safeSetVal('configLateMode', globalSettings.lateMode || 'minutes');
         safeSetVal('configLateAmount', globalSettings.lateFixedAmount || 10);
-        // 🟢 新增：读取设置中的默认公司
         safeSetVal('configDefaultCompany', globalSettings.defaultCompany || 'RH RIDER HUB MOTOR (M) SDN. BHD.');
         
         window.toggleSettingsView();
@@ -115,7 +181,6 @@ window.saveSettings = async () => {
         satMultiplier: parseFloat(document.getElementById('configSatMulti').value), 
         lateMode: document.getElementById('configLateMode').value, 
         lateFixedAmount: parseFloat(document.getElementById('configLateAmount').value) || 0,
-        // 🟢 新增：保存用户设置的默认公司
         defaultCompany: document.getElementById('configDefaultCompany').value
     };
     
@@ -390,7 +455,6 @@ async function calculateAttendanceStats(uid, monthStr) {
         let curr = new Date(sY, sM - 1, sD);
         const endD = new Date(eY, eM - 1, eD);
         
-        // 🟢 记录请假天数，因为可能是半天 0.5
         const leaveValue = (l.days !== undefined && l.days < 1) ? parseFloat(l.days) : 1;
 
         while(curr <= endD) {
@@ -415,15 +479,13 @@ async function calculateAttendanceStats(uid, monthStr) {
         return new Date(t);
     };
 
-    console.log(`[Process] Starting loop over ${daysInMonth} days...`);
-
     for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
         const records = attMap[dateStr];
         const sched = mySchedules[dateStr];
         const leaveObj = userLeaves[dateStr];
         const leaveType = leaveObj?.type;
-        const leaveVal = leaveObj?.val || 0; // 可能是 0.5 或 1
+        const leaveVal = leaveObj?.val || 0; 
         
         const isPH = !!holidaysMap[dateStr];
         const validPH = isPH && (!!sched || !!leaveType);
@@ -431,7 +493,6 @@ async function calculateAttendanceStats(uid, monthStr) {
         if (records && records.in) {
             const isSat = new Date(dateStr).getDay() === 6;
             
-            // 🟢 如果这天有打卡但是又请了半天假，那么实际上工作天数只算一半
             let actAdd = isSat ? satMulti : 1;
             if (leaveVal === 0.5) actAdd = 0.5;
 
@@ -499,22 +560,13 @@ async function calculateAttendanceStats(uid, monthStr) {
     let annualLeaveCount = 0, medicalLeaveCount = 0, unpaidLeaveCount = 0;
     let unpaidLeaveHrs = 0;
 
-    // --- 🟢 【DEBUG START】收集无薪假详情 ---
-    console.log(`%c[DEBUG] 开始分析 ${staff.displayName} 的无薪假...`, "color: white; background: #dc2626; padding: 2px 5px;");
-    let unpaidDetails = [];
-    // --- 【DEBUG END】 ---
-
     for (const [dateStr, leaveObj] of Object.entries(userLeaves)) {
         const lType = leaveObj.type;
-        const lVal = parseFloat(leaveObj.val) || 1; // 🟢 读取具体天数 (0.5 或 1)
-        const lStatus = leaveObj.status; // 🟢 获取假条状态
-
+        const lVal = parseFloat(leaveObj.val) || 1; 
+        
         const validPH = !!holidaysMap[dateStr] && (!!mySchedules[dateStr] || !!lType);
         
-        // 🟢 如果是半天假，即使有打卡（records.in），这半天假也应该被计入
-        // 否则原本代码只有 !attMap[dateStr]?.in 才会计入请假天数
         if (!attMap[dateStr]?.in || lVal < 1 || !validPH) {
-            
             if (lType.includes('Annual') || lType.includes('年假') || lType.includes('Cuti Tahunan')) {
                 annualLeaveCount += lVal;
             }
@@ -523,29 +575,19 @@ async function calculateAttendanceStats(uid, monthStr) {
             }
             else {
                 unpaidLeaveCount += lVal; 
-                
-                // --- 🟢 【DEBUG START】记录被认定为无薪假的日期 ---
-                unpaidDetails.push({ date: dateStr, type: lType, value: lVal, status: lStatus });
-                // --- 【DEBUG END】 ---
-
                 const sched = mySchedules[dateStr];
                 if (sched && sched.start && sched.end) {
                     let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
                     if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
                     if (schedDurMs > 0) {
-                        unpaidLeaveHrs += (schedDurMs / 3600000) * lVal; // 🟢 按比例扣时间
+                        unpaidLeaveHrs += (schedDurMs / 3600000) * lVal; 
                     }
                 } else {
-                    unpaidLeaveHrs += 8 * lVal; // 🟢 按比例扣时间
+                    unpaidLeaveHrs += 8 * lVal; 
                 }
             }
         }
     }
-
-    // --- 🟢 【DEBUG START】在控制台打印出全部收集到的无薪假 ---
-    console.table(unpaidDetails);
-    console.log(`%c[DEBUG] 判定出的无薪假总计: ${unpaidLeaveCount} 天`, "font-weight: bold; color: red;");
-    // --- 【DEBUG END】 ---
 
     const totalDecimalHrs = totalWorkMs / 3600000;
     const phUnworkedHrsDec = phUnworkedMs / 3600000;
@@ -570,15 +612,11 @@ async function calculateAttendanceStats(uid, monthStr) {
 
     const paidLeaveCount = annualLeaveCount + medicalLeaveCount; 
     
-    // 🟢 UNSCHEDULED CALCULATION
     const totalRecordedDays = actWorkedDays + paidLeaveCount + phUnworkedDays + unpaidLeaveCount + absentDays;
     const unscheduledDays = Math.max(0, majorityDays - totalRecordedDays);
 
     const totalRecordedHrs = totalDecimalHrs + phUnworkedHrsDec + (paidLeaveCount * 8) + unpaidLeaveHrs + absentHrs;
     const unscheduledHrs = Math.max(0, majorityHours - totalRecordedHrs);
-
-    console.log(`[Result] Actual Worked: ${actWorkedDays} days (${totalDecimalHrs.toFixed(2)} hrs)`);
-    console.log(`[Result] Absent: ${absentDays} days | Unpaid: ${unpaidLeaveCount} days | Unscheduled: ${unscheduledDays} days`);
 
     const metaTotalHrsEl = document.getElementById('metaTotalHrs');
     if(metaTotalHrsEl) {
@@ -592,7 +630,7 @@ async function calculateAttendanceStats(uid, monthStr) {
     safeSetText('dispPaidLeave', `${paidLeaveCount} Days (AL:${annualLeaveCount} ML:${medicalLeaveCount})`);
     safeSetText('dispPH', `${phUnworkedDays} / ${phWorkedDays} Off/Work`);
     safeSetText('dispPayableDays', `${actWorkedDays + paidLeaveCount + phUnworkedDays} Days`);
-    safeSetText('dispTotalHrs', `${formattedTotalHrs}`);
+    safeSetText('dispTotalHrs', `${formattedTotalHrs} / ${majorityHours}h`);
     safeSetText('dispLateStats', `${lateCount} times (${totalLateMins}m)`);
 
     safeSetText('dispAbsent', `${absentDays} Days`);
@@ -619,8 +657,6 @@ async function calculateAttendanceStats(uid, monthStr) {
     
     const unworkedPhEl = document.getElementById('metaPHUnworked');
     if (unworkedPhEl) unworkedPhEl.dataset.hrs = phUnworkedHrsDec;
-
-    console.log(`%c[ANALYSIS COMPLETE]\n`, `color:blue; font-weight:bold;`);
 }
 
 window.calcTotals = (autoUpdateStatutory = false) => {
@@ -644,11 +680,11 @@ window.calcTotals = (autoUpdateStatutory = false) => {
         let exactHrRate = 0;
         if (fullBasic > 0 && majorityHours > 0) {
             exactHrRate = fullBasic / majorityHours;
-            if(autoUpdateStatutory) safeSetVal('inpHourlyRate', exactHrRate.toFixed(2));
+            // 无条件强制更新时薪
+            safeSetVal('inpHourlyRate', exactHrRate.toFixed(2));
         }
 
-        const uiRate = getVal('inpHourlyRate');
-        const hrRateToUse = (Math.abs(uiRate - parseFloat(exactHrRate.toFixed(2))) <= 0.01) ? exactHrRate : uiRate;
+        const hrRateToUse = exactHrRate;
 
         absentDed = hrRateToUse * getVal('metaAbsentHrs');
         unpaidDed = hrRateToUse * getVal('metaUnpaidLeaveHrs');
@@ -693,24 +729,35 @@ window.calcTotals = (autoUpdateStatutory = false) => {
     let earnedBasicForStatutory = baseGross - getVal('inpAbsentDed') - getVal('inpUnpaidDed') - getVal('inpUnscheduledDed') - getVal('inpLateDed');
     if (earnedBasicForStatutory < 0) earnedBasicForStatutory = 0;
 
+    // 🟢 使用新引擎同步更新所有 Statutory & Employer Contributions
     if (autoUpdateStatutory) {
         const uid = document.getElementById('staffSelect')?.value;
         const staff = staffMap[uid]; 
         
         if (staff && staff.statutory) {
-            const epfRaw = staff.statutory.epf?.contrib || '';
-            const eisRaw = staff.statutory.eis || '';
+            const epfRaw = staff.statutory.epf?.contrib || '11';
+            
+            safeSetText('hintEPF', `(${epfRaw}%)`);
+            safeSetText('hintSOCSO', '(0.5%)');
+            safeSetText('hintEIS', '(0.2%)');
 
-            safeSetText('hintEPF', epfRaw ? `(${epfRaw}${epfRaw.toString().includes('%') ? '' : '%'})` : '');
-            safeSetText('hintEIS', eisRaw ? `(${eisRaw}${eisRaw.toString().includes('%') ? '' : '%'})` : '');
+            const comm = getVal('inpComm');
+            const allow = getVal('inpAllowance');
+            const ot = getVal('inpOT');
+            const phPay = getVal('calcPHExtra');
 
-            const epfAmt = calculateStatutoryAmount(epfRaw, earnedBasicForStatutory, true); 
-            const eisAmt = calculateStatutoryAmount(eisRaw, earnedBasicForStatutory, true); 
+            // 计算所有 statutory (带入 OT + PH Pay 作为加班/额外收入基础)
+            const stat = calculateMalaysiaStatutory(earnedBasicForStatutory, comm, allow, (ot + phPay), epfRaw);
 
-            if (epfAmt > 0) safeSetVal('inpEPF', epfAmt.toFixed(2));
-            if (eisAmt > 0) safeSetVal('inpEIS', eisAmt.toFixed(2));
+            safeSetVal('inpEPF', stat.epfEmp.toFixed(2));
+            safeSetVal('inpSOCSO', stat.socsoEmp.toFixed(2));
+            safeSetVal('inpEIS', stat.eisEmp.toFixed(2));
+            
+            safeSetVal('inpEmpEPF', stat.epfEmpr.toFixed(2));
+            safeSetVal('inpEmpSOCSO', stat.socsoEmpr.toFixed(2));
+            safeSetVal('inpEmpEIS', stat.eisEmpr.toFixed(2));
         } else {
-            safeSetText('hintEPF', ''); safeSetText('hintEIS', '');
+            safeSetText('hintEPF', ''); safeSetText('hintSOCSO', ''); safeSetText('hintEIS', '');
         }
     }
 
@@ -740,7 +787,7 @@ window.savePayslipForm = async () => {
 
     const payload = {
         uid, month,
-        companyName: document.getElementById('inpCompany')?.value || 'RH RIDER HUB MOTOR (M) SDN. BHD.', // 🟢 新增：保存公司名字
+        companyName: document.getElementById('inpCompany')?.value || 'RH RIDER HUB MOTOR (M) SDN. BHD.',
         staffName: staff ? staff.displayName : 'Unknown',
         staffCode: staff ? staff.displayId : '',
         icNo: staff?.personal?.icNo || '-',
@@ -918,8 +965,6 @@ window.openCreateModal = () => {
     safeSetVal('calcPHExtra', "0");
     safeSetText('hintEPF', "");
     safeSetText('hintEIS', "");
-    
-    // 🟢 新增：新建时应用系统默认设置的公司
     safeSetVal('inpCompany', globalSettings.defaultCompany || 'RH RIDER HUB MOTOR (M) SDN. BHD.');
 
     document.getElementById('btnDeletePayslip')?.classList.add('d-none');
@@ -947,7 +992,6 @@ window.openEditModal = (id) => {
     if (staffSelect) { staffSelect.value = d.uid; staffSelect.disabled = true; }
     if (formMonthPicker) { formMonthPicker.value = d.month; formMonthPicker.disabled = true; }
 
-    // 🟢 新增：加载旧数据的公司名称，或使用默认值
     safeSetVal('inpCompany', d.companyName || globalSettings.defaultCompany || 'RH RIDER HUB MOTOR (M) SDN. BHD.');
 
     safeSetVal('inpBasic', d.basic);
@@ -1030,7 +1074,9 @@ window.openEditModal = (id) => {
         const savedTotalHrs = parseFloat(d.attendanceStats.totalHrs) || 0;
         const hrPart = Math.floor(savedTotalHrs);
         const minPart = Math.round((savedTotalHrs - hrPart) * 60);
-        safeSetText('dispTotalHrs', `${hrPart}h ${minPart}m`);
+        
+        const majHrs = d.attendanceStats.majorityHours || 208;
+        safeSetText('dispTotalHrs', `${hrPart}h ${minPart}m / ${majHrs}h`);
         
         safeSetText('dispLateStats', `${d.attendanceStats.lateCount || 0} <span style="font-size:0.6rem">times (${d.attendanceStats.lateMins || 0}m)</span>`);
         
@@ -1129,15 +1175,13 @@ window.viewPayslip = (id) => {
     const payableDays = actDays + al + ml + phUnworked;
     const compName = d.companyName || globalSettings.defaultCompany || "RH RIDER HUB MOTOR (M) SDN. BHD.";
 
-    // 🟢 核心修改：动态分配 Letterhead 图片路径
-    // 请确保这些图片与你的 HTML/JS 文件处于正确的相对路径。建议改名避免混淆。
     let letterheadSrc = "";
     if (compName === "RH RIDER HUB MOTOR (M) SDN. BHD.") {
-        letterheadSrc = "assets/images/Header_RH_RIDER_HUB_MOTOR(M).jpeg"; // 对应 Rider Hub
+        letterheadSrc = "assets/images/Header_RH_RIDER_HUB_MOTOR(M).jpeg"; 
     } else if (compName === "H DIGITAL MARKETING SDN BHD") {
-        letterheadSrc = "assets/images/Header_H_DIGITAL_CARRIER_MARKETING.jpeg"; // 对应 H Digital
+        letterheadSrc = "assets/images/Header_H_DIGITAL_CARRIER_MARKETING.jpeg";
     } else {
-        letterheadSrc = "assets/images/Header_H_DIGITAL_CARRIER_MARKETING.jpeg"; // 对应第三张图
+        letterheadSrc = "assets/images/Header_H_DIGITAL_CARRIER_MARKETING.jpeg"; 
     }
 
     const html = `
@@ -1179,6 +1223,7 @@ window.viewPayslip = (id) => {
                 <div class="small text-muted">
                     <div>Employer EPF: <b>RM ${formatMoney(d.employer_epf)}</b></div>
                     <div>Employer SOCSO: <b>RM ${formatMoney(d.employer_socso)}</b></div>
+                    <div>Employer EIS: <b>RM ${formatMoney(d.employer_eis)}</b></div>
                 </div>
                 <div class="text-end">
                     <div class="text-muted text-uppercase fw-bold" style="font-size:0.7rem; letter-spacing:1px;">Net Pay / Actual Salary</div>
@@ -1384,7 +1429,7 @@ window.generateAllDrafts = async () => {
                 const sched = mySchedsList[dateStr];
                 const leaveObj = userLeaves[dateStr];
                 const leaveType = leaveObj?.type;
-                const leaveVal = leaveObj?.val || 0; // 🟢 读取半天
+                const leaveVal = leaveObj?.val || 0; 
                 const isPH = !!holidaysMap[dateStr];
                 
                 const validPH = isPH && (!!sched || !!leaveType);
@@ -1392,7 +1437,6 @@ window.generateAllDrafts = async () => {
                 if (records && records.in) {
                     const isSat = new Date(dateStr).getDay() === 6;
                     
-                    // 🟢 计算当天实际工作天数
                     let actAdd = isSat ? satMulti : 1;
                     if (leaveVal === 0.5) actAdd = 0.5;
                     
@@ -1463,11 +1507,10 @@ window.generateAllDrafts = async () => {
             
             for (const [dateStr, leaveObj] of Object.entries(userLeaves)) {
                 const lType = leaveObj.type;
-                const lVal = parseFloat(leaveObj.val) || 1; // 🟢 支持计算小数天数
+                const lVal = parseFloat(leaveObj.val) || 1; 
                 
                 const validPH = !!holidaysMap[dateStr] && (!!mySchedsList[dateStr] || !!lType);
                 
-                // 🟢 匹配单日打卡却有半天假的情况
                 if (!myAtt[dateStr]?.in || lVal < 1 || !validPH) {
                     if (lType.includes('Annual') || lType.includes('年假') || lType.includes('Cuti Tahunan')) {
                         annualLeaveCount += lVal;
@@ -1540,21 +1583,22 @@ window.generateAllDrafts = async () => {
             let earnedBasicForStatutory = baseGross - absentDed - unpaidDed - unscheduledDed - autoLateDeduct;
             if (earnedBasicForStatutory < 0) earnedBasicForStatutory = 0;
 
-            let epfAmt = 0, eisAmt = 0;
+            // 🟢 在批量生成中，使用大马 2026 引擎计算所有的法定与雇主负担
+            let stat = { epfEmp: 0, epfEmpr: 0, socsoEmp: 0, socsoEmpr: 0, eisEmp: 0, eisEmpr: 0 };
             if (staff.statutory) {
-                const epfRaw = staff.statutory.epf?.contrib || '';
-                const eisRaw = staff.statutory.eis || '';
-                epfAmt = calculateStatutoryAmount(epfRaw, earnedBasicForStatutory, true);
-                eisAmt = calculateStatutoryAmount(eisRaw, earnedBasicForStatutory, true);
+                const epfRaw = staff.statutory.epf?.contrib || '11';
+                // 批量生成时，初始 Commission 和 Allowance 默认为 0，但 PH Extra 会计入 OT 基础计算
+                stat = calculateMalaysiaStatutory(earnedBasicForStatutory, 0, 0, phExtraGross, epfRaw);
             }
 
             const grossTotal = baseGross + phExtraGross; 
-            const totalDed = epfAmt + eisAmt + autoLateDeduct + absentDed + unpaidDed + unscheduledDed + totalAdvanceDed;
+            // 🟢 总扣款加上引擎计算出的法定税
+            const totalDed = stat.epfEmp + stat.socsoEmp + stat.eisEmp + autoLateDeduct + absentDed + unpaidDed + unscheduledDed + totalAdvanceDed;
             const net = grossTotal - totalDed;
 
             const payload = {
                 uid, month: monthStr,
-                companyName: globalSettings.defaultCompany || 'RH RIDER HUB MOTOR (M) SDN. BHD.', // 🟢 新增：批量生成时采用全局公司配置
+                companyName: globalSettings.defaultCompany || 'RH RIDER HUB MOTOR (M) SDN. BHD.',
                 staffName: staff.displayName,
                 staffCode: staff.displayId,
                 icNo: staff.personal?.icNo || '-',
@@ -1570,15 +1614,18 @@ window.generateAllDrafts = async () => {
                     absent: parseFloat(absentDed.toFixed(2)), 
                     unpaidLeave: parseFloat(unpaidDed.toFixed(2)), 
                     unscheduled: parseFloat(unscheduledDed.toFixed(2)), 
-                    epf: parseFloat(epfAmt.toFixed(2)), 
-                    socso: 0, 
-                    eis: parseFloat(eisAmt.toFixed(2)), 
+                    epf: stat.epfEmp, 
+                    socso: stat.socsoEmp, 
+                    eis: stat.eisEmp, 
                     tax: 0, 
                     late: parseFloat(autoLateDeduct.toFixed(2)), 
                     advance: parseFloat(totalAdvanceDed.toFixed(2)), 
                     total: parseFloat(totalDed.toFixed(2)) 
                 },
-                employer_epf: 0, employer_socso: 0, employer_eis: 0,
+                // 🟢 记录雇主负担 (Employer Contributions)
+                employer_epf: stat.epfEmpr, 
+                employer_socso: stat.socsoEmpr, 
+                employer_eis: stat.eisEmpr,
                 attendanceStats: {
                     stdDays: majorityDays, actDays: actWorkedDays,
                     annualLeave: annualLeaveCount, medicalLeave: medicalLeaveCount, unpaidLeave: unpaidLeaveCount,

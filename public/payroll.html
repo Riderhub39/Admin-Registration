@@ -214,6 +214,11 @@
                                 <span class="stats-label">Total Payable</span>
                                 <span class="stats-val" id="dispPayableDays">0 <span style="font-size: 0.6rem">Days</span></span>
                             </div>
+
+                            <div class="stats-box border-info bg-info-subtle flex-fill">
+                                <span class="stats-label text-info">Working Hours (Act/Std)</span>
+                                <span class="stats-val text-info" id="dispTotalHrs">0 / 0 <span style="font-size: 0.6rem">Hrs</span></span>
+                            </div>
                             
                             <div class="stats-box border-danger bg-danger-subtle flex-fill">
                                 <span class="stats-label text-danger">Absent</span>
@@ -262,7 +267,10 @@
                             </div>
                             <div class="col-md-2 d-none" id="boxHourlyRate">
                                 <label class="form-label text-muted small fw-bold">Hourly Rate</label>
-                                <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpHourlyRate" class="form-control" step="0.01" oninput="window.calcTotals(true)"></div>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-light border-primary text-primary">RM</span>
+                                    <input type="number" id="inpHourlyRate" class="form-control bg-light fw-bold border-primary text-primary" step="0.01" readonly>
+                                </div>
                             </div>
                             
                             <div class="col-md-4">
