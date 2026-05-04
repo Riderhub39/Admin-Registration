@@ -1118,10 +1118,17 @@ window.viewPayslip = (id) => {
     if (d.deductions.unpaidLeave > 0) deductionsList.push({ name: `UNPAID LEAVE (${ul} Days)`, amount: d.deductions.unpaidLeave });
     if (d.deductions.unscheduled > 0) deductionsList.push({ name: `PRO-RATED / UNSCHEDULED (${unsched} Days)`, amount: d.deductions.unscheduled });
 
+    // 🌟 核心修改：在工资单上清晰列出 Late 的总时长，并自动换算小时与分钟
     if (d.deductions.late > 0) {
         let lateStr = "LATE DEDUCTION";
-        if (lateMins > 0 && stats.mode !== 'hourly') lateStr += ` (${lateMins} mins)`;
-        else if (lateCount > 0) lateStr += ` (${lateCount} times)`;
+        if (lateMins > 0) {
+            const hrs = Math.floor(lateMins / 60);
+            const mins = lateMins % 60;
+            const timeStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins} mins`;
+            lateStr += ` (${timeStr})`;
+        } else if (lateCount > 0) {
+            lateStr += ` (${lateCount} times)`;
+        }
         deductionsList.push({ name: lateStr, amount: d.deductions.late });
     }
 
