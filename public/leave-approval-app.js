@@ -47,7 +47,10 @@ async function fetchHolidays() {
 async function fetchUsers() {
     const snap = await getDocs(query(collection(db, "users")));
     const staffSelect = document.getElementById('addLeaveStaff');
+    const empFilterSelect = document.getElementById('employeeHistoryFilter'); // 🟢 获取新增的筛选菜单
+
     if(staffSelect) staffSelect.innerHTML = '<option value="">-- Select Employee --</option>';
+    if(empFilterSelect) empFilterSelect.innerHTML = '<option value="all">All Employees</option>'; // 🟢 初始化筛选菜单
     
     let users = [];
     snap.forEach(docSnap => {
@@ -66,6 +69,9 @@ async function fetchUsers() {
         usersMap[u.id] = u;
         if(staffSelect) {
             staffSelect.innerHTML += `<option value="${u.id}">${u.name}</option>`;
+        }
+        if(empFilterSelect) { // 🟢 将员工名字加入到筛选下拉菜单中
+            empFilterSelect.innerHTML += `<option value="${u.id}">${u.name}</option>`;
         }
     });
 }
@@ -126,7 +132,7 @@ function listenToPendingLeaves() {
             if (data.type === 'Medical Leave') typeColor = "text-danger bg-danger";
             if (data.type === 'Unpaid Leave') typeColor = "text-warning text-dark bg-warning";
 
-            // 🟢 新增：如果含有半天假标识，显示 (AM) 或 (PM)
+            // 如果含有半天假标识，显示 (AM) 或 (PM)
             const durationDisplay = (data.duration && data.duration !== 'Full Day') 
                 ? ` <span class="badge bg-secondary ms-1">${data.duration.replace('Half Day ', '')}</span>` 
                 : '';
@@ -196,11 +202,21 @@ function listenToLeaveHistory() {
 }
 
 window.filterHistory = function() {
-    const filter = document.getElementById('historyFilter').value;
+    const typeFilter = document.getElementById('historyFilter').value;
+    const empFilter = document.getElementById('employeeHistoryFilter').value; // 🟢 获取当前选择的员工
     const tbody = document.getElementById('historyListBody');
     tbody.innerHTML = '';
 
-    const filtered = filter === 'all' ? fullHistoryList : fullHistoryList.filter(d => d.type === filter);
+    // 🟢 双重过滤逻辑：同时满足类型和员工
+    let filtered = fullHistoryList;
+
+    if (typeFilter !== 'all') {
+        filtered = filtered.filter(d => d.type === typeFilter);
+    }
+    
+    if (empFilter !== 'all') {
+        filtered = filtered.filter(d => d.uid === empFilter || d.authUid === empFilter);
+    }
 
     if (filtered.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No records found.</td></tr>';
@@ -223,7 +239,7 @@ window.filterHistory = function() {
             ? `<br><small class="text-warning">(-${data.deductibleDays} deducted)</small>` 
             : '';
 
-        // 🟢 新增：如果含有半天假标识，显示 (AM) 或 (PM)
+        // 如果含有半天假标识，显示 (AM) 或 (PM)
         const durationDisplay = (data.duration && data.duration !== 'Full Day') 
             ? ` <small class="text-muted">(${data.duration.replace('Half Day ', '')})</small>` 
             : '';
@@ -308,7 +324,7 @@ window.approveLeave = async function(leaveId, targetUid, days, type, startDate, 
     }
 }
 
-// 🟢 新增：检查是否为单日，如果是单日则允许选择半天假
+// 检查是否为单日，如果是单日则允许选择半天假
 window.checkSingleDay = function() {
     const startStr = document.getElementById('addLeaveStart').value;
     const endStr = document.getElementById('addLeaveEnd').value;
@@ -328,7 +344,7 @@ window.openAddLeaveModal = () => {
     document.getElementById('addLeaveType').value = "Annual Leave";
     document.getElementById('addLeaveStart').value = "";
     document.getElementById('addLeaveEnd').value = "";
-    document.getElementById('addLeaveDuration').value = "Full Day"; // 🟢 重置时长
+    document.getElementById('addLeaveDuration').value = "Full Day"; // 重置时长
     document.getElementById('addLeaveReason').value = "";
     document.getElementById('addLeaveAttachment').value = ""; 
     
@@ -341,7 +357,7 @@ window.submitAddLeave = async () => {
     const type = document.getElementById('addLeaveType').value;
     const startStr = document.getElementById('addLeaveStart').value;
     const endStr = document.getElementById('addLeaveEnd').value;
-    const duration = document.getElementById('addLeaveDuration').value; // 🟢 获取请假时长
+    const duration = document.getElementById('addLeaveDuration').value; // 获取请假时长
     const reason = document.getElementById('addLeaveReason').value || "Added by Admin";
     
     const fileInput = document.getElementById('addLeaveAttachment');
@@ -359,7 +375,7 @@ window.submitAddLeave = async () => {
         return;
     }
 
-    // 🟢 调整：如果选了半天假，并且是同一天，天数算作 0.5
+    // 调整：如果选了半天假，并且是同一天，天数算作 0.5
     let days = Math.round((eDate - sDate) / (1000 * 60 * 60 * 24)) + 1;
     if (startStr === endStr && duration !== 'Full Day') {
         days = 0.5;
@@ -413,8 +429,8 @@ window.submitAddLeave = async () => {
                 type: type,
                 startDate: startStr,
                 endDate: endStr,
-                days: days, // 🟢 存入计算后的 0.5 或整数
-                duration: duration, // 🟢 存入具体的时段 (Full Day, Half Day AM, Half Day PM)
+                days: days, // 存入计算后的 0.5 或整数
+                duration: duration, // 存入具体的时段 (Full Day, Half Day AM, Half Day PM)
                 deductibleDays: actualDeductibleDays, 
                 phOverlap: phOverlap, 
                 reason: reason,

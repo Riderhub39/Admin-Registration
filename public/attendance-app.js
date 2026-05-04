@@ -1078,8 +1078,8 @@ window.generateMonthlyReport = async () => {
         const dailyData = {};
         snap.forEach(doc => {
             const data = doc.data();
-            if (data.uid === uid || docIdToAuthMap[data.uid] === uid) {
-                if (!dailyData[data.date]) dailyData[data.date] = { in: null, out: null, breakOut: null, breakIn: null };
+            if ((data.uid === uid || docIdToAuthMap[data.uid] === uid) && data.verificationStatus === 'Verified') { 
+                   if (!dailyData[data.date]) dailyData[data.date] = { in: null, out: null, breakOut: null, breakIn: null };
                 
                 if (data.session === 'Clock In' && (!dailyData[data.date].in || data.timestamp < dailyData[data.date].in.timestamp)) dailyData[data.date].in = data;
                 if (data.session === 'Clock Out' && (!dailyData[data.date].out || data.timestamp > dailyData[data.date].out.timestamp)) dailyData[data.date].out = data;

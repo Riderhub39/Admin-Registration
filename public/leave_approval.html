@@ -68,7 +68,13 @@
             <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
                 <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
                     <h6 class="fw-bold text-dark m-0">Recent Decisions</h6>
-                    <div class="d-flex gap-2">
+                    <div class="d-flex gap-2 flex-wrap">
+                        <!-- 新增的员工筛选下拉菜单 -->
+                        <select id="employeeHistoryFilter" class="form-select form-select-sm border-secondary" style="width: 180px;" onchange="window.filterHistory()">
+                            <option value="all">All Employees</option>
+                        </select>
+                        
+                        <!-- 原有的请假类型筛选 -->
                         <select id="historyFilter" class="form-select form-select-sm border-secondary" style="width: 130px;" onchange="window.filterHistory()">
                             <option value="all">All Types</option>
                             <option value="Annual Leave">Annual Leave</option>

@@ -1,9 +1,9 @@
+// payroll-app.js
 import { firebaseConfig } from './firebase-config.js';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, collection, query, where, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, serverTimestamp, getDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-// 注意：原有的 calculateStatutoryAmount 被弃用，这里继续引入避免报错，下方使用了全新的专属大马引擎
 import { formatMoney, formatTime, calculateStatutoryAmount, msToHM, logAdminAction, showLoading, hideLoading, showStatusAlert } from './utils.js';
 import { requireAdmin } from './auth-guard.js';
 
@@ -27,32 +27,26 @@ let globalSettings = { calcMode: 'daily', satMultiplier: 1.0, lateMode: 'minutes
 const safeSetVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
 const safeSetText = (id, text) => { const el = document.getElementById(id); if (el) el.innerText = text; };
 
-// 🟢 新增：马来西亚 2026 专属法定扣款计算引擎 (EPF/SOCSO/EIS - 完美复刻 Jadual Caruman)
+// 🟢 马来西亚 2026 专属法定扣款计算引擎 (EPF/SOCSO/EIS - Jadual Caruman)
 function calculateMalaysiaStatutory(earnedBasic, commission, allowance, overtime, epfRateRaw) {
-    // 法定基薪 (KWSP 通常不包含 OT，但 SOCSO/EIS 必须包含 OT)
     const epfGross = earnedBasic + commission + allowance;
     const socsoEisGross = epfGross + overtime;
 
-    // 1. KWSP (EPF) - RM 20 区间进位法 (Third Schedule)
     let epfEmp = 0;
     let epfEmpr = 0;
     if (epfGross > 0) {
-        const epfBracketMax = Math.ceil(epfGross / 20) * 20; // 以 RM 20 为上限
+        const epfBracketMax = Math.ceil(epfGross / 20) * 20; 
         const empEpfRate = parseFloat(epfRateRaw) || 11;
         const employerEpfRate = epfGross <= 5000 ? 0.13 : 0.12; 
         
-        // EPF 必须向上取整至最接近的令吉 (Round Up to next Ringgit)
         epfEmp = Math.ceil(epfBracketMax * (empEpfRate / 100));
         epfEmpr = Math.ceil(epfBracketMax * employerEpfRate);
     }
 
-    // 2 & 3. PERKESO (SOCSO) & SIP (EIS)
     let socsoEmp = 0, socsoEmpr = 0, eisEmp = 0, eisEmpr = 0;
     if (socsoEisGross > 0) {
-        // 最新封顶 RM 6000
         const capGross = Math.min(socsoEisGross, 6000);
 
-        // 处理早期的不规则小区间
         if (capGross <= 30) {
             socsoEmp = 0.10; socsoEmpr = 0.40; eisEmp = 0.05; eisEmpr = 0.05;
         } else if (capGross <= 50) {
@@ -66,32 +60,19 @@ function calculateMalaysiaStatutory(earnedBasic, commission, allowance, overtime
         } else if (capGross <= 200) {
             socsoEmp = 0.85; socsoEmpr = 2.95; eisEmp = 0.35; eisEmpr = 0.35;
         } else {
-            // RM 200 以上，每个区间跨度为严格的 RM 100 (Jadual Ketiga)
             const bracketMax = Math.ceil(capGross / 100) * 100;
-            const midPoint = bracketMax - 50; // 取区间中间值进行推算
+            const midPoint = bracketMax - 50; 
 
-            // SIP (EIS): 员工/雇主固定为中位数的 0.2%
             eisEmp = +(midPoint * 0.002).toFixed(2);
             eisEmpr = eisEmp;
 
-            // PERKESO (SOCSO): 
-            // 员工固定为中位数的 0.5%
             socsoEmp = +(midPoint * 0.005).toFixed(2);
-            
-            // 雇主的法定算法：总金额(2.25%)四舍五入到最近的0.10，然后再减去员工扣款
             const totalSocso = Math.round(midPoint * 0.0225 * 10) / 10;
             socsoEmpr = +(totalSocso - socsoEmp).toFixed(2);
         }
     }
 
-    return {
-        epfEmp: epfEmp,
-        epfEmpr: epfEmpr,
-        socsoEmp: socsoEmp,
-        socsoEmpr: socsoEmpr,
-        eisEmp: eisEmp,
-        eisEmpr: eisEmpr
-    };
+    return { epfEmp, epfEmpr, socsoEmp, socsoEmpr, eisEmp, eisEmpr };
 }
 
 // ==========================================
@@ -688,14 +669,30 @@ window.calcTotals = (autoUpdateStatutory = false) => {
 
         absentDed = hrRateToUse * getVal('metaAbsentHrs');
         unpaidDed = hrRateToUse * getVal('metaUnpaidLeaveHrs');
-        unscheduledDed = hrRateToUse * getVal('metaUnscheduledHrs');
+        
+        let rawUnschedDed = hrRateToUse * getVal('metaUnscheduledHrs');
 
         phExtraGross = hrRateToUse * phWorkedHrs * 2; 
 
         if (globalSettings.lateMode === 'times') {
+            unscheduledDed = rawUnschedDed;
             autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
             safeSetText('lateFormulaText', `Fine: ${lateCount} times x RM${globalSettings.lateFixedAmount}`);
-        } else safeSetText('lateFormulaText', "Unpaid by default in Hourly mode.");
+        } else {
+            // 🌟 核心修改：在时薪模式下，将迟到的分钟从 Unscheduled 扣款中抽离出来，单独显示为 Late Penalty，不造成额外罚款
+            const lateHrs = lateMins / 60;
+            let calculatedLateDed = lateHrs * hrRateToUse;
+            
+            // 确保抽离的金额不会超过 Unscheduled 的总额，避免出现负数的 Unscheduled
+            if (calculatedLateDed > rawUnschedDed) {
+                calculatedLateDed = rawUnschedDed;
+            }
+            
+            autoLateDeduct = calculatedLateDed;
+            unscheduledDed = rawUnschedDed - autoLateDeduct;
+            
+            safeSetText('lateFormulaText', `Extracted from Pro-rated: ${lateMins} mins`);
+        }
         
     } else {
         const stdDays = getVal('inpStdDays') || 26; 
@@ -729,7 +726,6 @@ window.calcTotals = (autoUpdateStatutory = false) => {
     let earnedBasicForStatutory = baseGross - getVal('inpAbsentDed') - getVal('inpUnpaidDed') - getVal('inpUnscheduledDed') - getVal('inpLateDed');
     if (earnedBasicForStatutory < 0) earnedBasicForStatutory = 0;
 
-    // 🟢 使用新引擎同步更新所有 Statutory & Employer Contributions
     if (autoUpdateStatutory) {
         const uid = document.getElementById('staffSelect')?.value;
         const staff = staffMap[uid]; 
@@ -746,7 +742,7 @@ window.calcTotals = (autoUpdateStatutory = false) => {
             const ot = getVal('inpOT');
             const phPay = getVal('calcPHExtra');
 
-            // 计算所有 statutory (带入 OT + PH Pay 作为加班/额外收入基础)
+            // 计算所有 statutory
             const stat = calculateMalaysiaStatutory(earnedBasicForStatutory, comm, allow, (ot + phPay), epfRaw);
 
             safeSetVal('inpEPF', stat.epfEmp.toFixed(2));
@@ -1557,12 +1553,21 @@ window.generateAllDrafts = async () => {
                 
                 absentDed = exactHrRate * absentHrs;
                 unpaidDed = exactHrRate * unpaidLeaveHrs;
-                unscheduledDed = exactHrRate * unscheduledHrs;
+                let rawUnschedDed = exactHrRate * unschedHrs;
                 
                 phExtraGross = exactHrRate * phWorkedHrsDec * 2;
 
                 if (globalSettings.lateMode === 'times') {
+                    unscheduledDed = rawUnschedDed;
                     autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
+                } else {
+                    // 🌟 核心修改：在批量生成中，将迟到分钟从 Unscheduled 扣款中抽离到 Late Penalty
+                    const lateHrs = totalLateMins / 60;
+                    let calculatedLateDed = lateHrs * exactHrRate;
+                    if (calculatedLateDed > rawUnschedDed) calculatedLateDed = rawUnschedDed;
+                    
+                    autoLateDeduct = calculatedLateDed;
+                    unscheduledDed = rawUnschedDed - autoLateDeduct;
                 }
             } else {
                 const exactDailyRate = majorityDays > 0 ? (fullBasic / majorityDays) : 0;
@@ -1583,16 +1588,13 @@ window.generateAllDrafts = async () => {
             let earnedBasicForStatutory = baseGross - absentDed - unpaidDed - unscheduledDed - autoLateDeduct;
             if (earnedBasicForStatutory < 0) earnedBasicForStatutory = 0;
 
-            // 🟢 在批量生成中，使用大马 2026 引擎计算所有的法定与雇主负担
             let stat = { epfEmp: 0, epfEmpr: 0, socsoEmp: 0, socsoEmpr: 0, eisEmp: 0, eisEmpr: 0 };
             if (staff.statutory) {
                 const epfRaw = staff.statutory.epf?.contrib || '11';
-                // 批量生成时，初始 Commission 和 Allowance 默认为 0，但 PH Extra 会计入 OT 基础计算
                 stat = calculateMalaysiaStatutory(earnedBasicForStatutory, 0, 0, phExtraGross, epfRaw);
             }
 
             const grossTotal = baseGross + phExtraGross; 
-            // 🟢 总扣款加上引擎计算出的法定税
             const totalDed = stat.epfEmp + stat.socsoEmp + stat.eisEmp + autoLateDeduct + absentDed + unpaidDed + unscheduledDed + totalAdvanceDed;
             const net = grossTotal - totalDed;
 
@@ -1622,7 +1624,6 @@ window.generateAllDrafts = async () => {
                     advance: parseFloat(totalAdvanceDed.toFixed(2)), 
                     total: parseFloat(totalDed.toFixed(2)) 
                 },
-                // 🟢 记录雇主负担 (Employer Contributions)
                 employer_epf: stat.epfEmpr, 
                 employer_socso: stat.socsoEmpr, 
                 employer_eis: stat.eisEmpr,
