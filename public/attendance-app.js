@@ -277,6 +277,9 @@ function processAndRenderAttendance(attSnap, startDate, endDate) {
 function renderDayUserCard(uid, records, container, targetDate, currentTodayStr) {
     const user = usersMap[uid];
     const sched = schedulesMap[uid + "_" + targetDate];
+    
+    if (!sched && records.length === 0) return false;
+
     let leaveObj = leavesMap[uid + "_" + targetDate];
     let leave = leaveObj ? leaveObj.type : null;
     let duration = leaveObj?.duration || 'Full Day';
@@ -375,14 +378,18 @@ function renderMonthUserCard(uid, allRecords, container, filterType, currentToda
     for(let d=1; d<=days; d++) {
         const dateStr = `${y}-${m}-${d.toString().padStart(2,'0')}`;
         const sched = schedulesMap[uid + "_" + dateStr];
-        const isPH = !!holidaysMap[dateStr] && !!sched; 
+         
+
+        const dayRecords = allRecords.filter(r => r.date === dateStr && r.verificationStatus === 'Verified');
         
+        if (!sched && dayRecords.length === 0) continue;
+        const isPH = !!holidaysMap[dateStr] && !!sched;
+
         let leaveObj = leavesMap[uid + "_" + dateStr];
         let leave = leaveObj ? leaveObj.type : null;
         let duration = leaveObj?.duration || 'Full Day';
         if (isPH) leave = null;
 
-        const dayRecords = allRecords.filter(r => r.date === dateStr && r.verificationStatus === 'Verified');
         if (sched) scheduledCount++;
 
         let inT = null;
@@ -490,6 +497,8 @@ function renderDashboard(data, pUids, missingOutData = []) {
         let leaveObj = leavesMap[uid+"_"+target];
         let leaveType = leaveObj ? leaveObj.type : null;
         
+        if (!sched) leaveType = null;
+
         let duration = leaveObj?.duration || 'Full Day';
 
         if (sched) scheduled++;
