@@ -27,7 +27,7 @@ let globalSettings = { calcMode: 'daily', satMultiplier: 1.0, lateMode: 'minutes
 const safeSetVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
 const safeSetText = (id, text) => { const el = document.getElementById(id); if (el) el.innerText = text; };
 
-// 🟢 马来西亚 2026 专属法定扣款计算引擎 (EPF/SOCSO/EIS - Jadual Caruman)
+// 🟢 马来西亚 2026 专属法定扣款计算引擎
 function calculateMalaysiaStatutory(earnedBasic, commission, allowance, overtime, epfRateRaw) {
     const epfGross = earnedBasic + commission + allowance;
     const socsoEisGross = epfGross + overtime;
@@ -374,10 +374,6 @@ window.recalcStatutoryAndTotals = () => {
 };
 
 async function calculateAttendanceStats(uid, monthStr) {
-    console.log(`\n%c=========================================`, `color:blue; font-weight:bold;`);
-    console.log(`%c[ANALYSIS START] Staff: ${staffMap[uid]?.displayName} | Month: ${monthStr}`, `color:blue; font-weight:bold; font-size: 14px;`);
-    console.log(`=========================================`);
-
     const staff = staffMap[uid];
     if (!staff) return;
 
@@ -479,6 +475,7 @@ async function calculateAttendanceStats(uid, monthStr) {
 
             actWorkedDays += actAdd;
 
+            // 1. 早上迟到计算
             if (sched && sched.start) {
                 const inTime = toDateObj(records.in, dateStr);
                 const schedStart = toDateObj(sched.start, dateStr);
@@ -491,9 +488,20 @@ async function calculateAttendanceStats(uid, monthStr) {
                 const outTime = toDateObj(records.out, dateStr);
                 workMsThisDay = outTime - inTime;
                 
+                // 2. 午休扣除与超时计算
                 if (records.breakOut && records.breakIn) {
                     const breakDur = toDateObj(records.breakIn, dateStr) - toDateObj(records.breakOut, dateStr);
-                    if (breakDur > 0) workMsThisDay -= breakDur;
+                    if (breakDur > 0) {
+                        workMsThisDay -= breakDur;
+
+                        // 🌟 核心修改：午休超时计入迟到时间和迟到次数
+                        const allowedBreakMins = (sched && sched.breakMins) ? sched.breakMins : 60; // 默认60分钟
+                        const allowedBreakMs = allowedBreakMins * 60000;
+                        if (breakDur > allowedBreakMs) {
+                            totalLateMs += (breakDur - allowedBreakMs);
+                            lateCount++;
+                        }
+                    }
                 }
 
                 if (sched && sched.start && sched.end) {
@@ -661,7 +669,6 @@ window.calcTotals = (autoUpdateStatutory = false) => {
         let exactHrRate = 0;
         if (fullBasic > 0 && majorityHours > 0) {
             exactHrRate = fullBasic / majorityHours;
-            // 无条件强制更新时薪
             safeSetVal('inpHourlyRate', exactHrRate.toFixed(2));
         }
 
@@ -679,11 +686,9 @@ window.calcTotals = (autoUpdateStatutory = false) => {
             autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
             safeSetText('lateFormulaText', `Fine: ${lateCount} times x RM${globalSettings.lateFixedAmount}`);
         } else {
-            // 🌟 核心修改：在时薪模式下，将迟到的分钟从 Unscheduled 扣款中抽离出来，单独显示为 Late Penalty，不造成额外罚款
             const lateHrs = lateMins / 60;
             let calculatedLateDed = lateHrs * hrRateToUse;
             
-            // 确保抽离的金额不会超过 Unscheduled 的总额，避免出现负数的 Unscheduled
             if (calculatedLateDed > rawUnschedDed) {
                 calculatedLateDed = rawUnschedDed;
             }
@@ -742,7 +747,6 @@ window.calcTotals = (autoUpdateStatutory = false) => {
             const ot = getVal('inpOT');
             const phPay = getVal('calcPHExtra');
 
-            // 计算所有 statutory
             const stat = calculateMalaysiaStatutory(earnedBasicForStatutory, comm, allow, (ot + phPay), epfRaw);
 
             safeSetVal('inpEPF', stat.epfEmp.toFixed(2));
@@ -1364,10 +1368,7 @@ window.generateAllDrafts = async () => {
             }
         });
         allAdvSnap.forEach(d => { 
-            const a = d.data(); 
-            if (a.isTransferred === true) {
-                advances[a.uid] = (advances[a.uid] || 0) + a.amount; 
-            }
+            if (d.data().isTransferred === true) batchContext.advances[d.data().uid] = (batchContext.advances[d.data().uid] || 0) + d.data().amount; 
         });
 
         for (const [uid, staff] of Object.entries(staffMap)) {
@@ -1454,7 +1455,17 @@ window.generateAllDrafts = async () => {
                             const bOut = toDateObj(records.breakOut, dateStr);
                             const bIn = toDateObj(records.breakIn, dateStr);
                             const breakDur = bIn - bOut;
-                            if (breakDur > 0) workMsThisDay -= breakDur;
+                            if (breakDur > 0) {
+                                workMsThisDay -= breakDur;
+
+                                // 🌟 核心修改：批量生成时也将午休超时计入迟到时间和次数
+                                const allowedBreakMins = (sched && sched.breakMins) ? sched.breakMins : 60;
+                                const allowedBreakMs = allowedBreakMins * 60000;
+                                if (breakDur > allowedBreakMs) {
+                                    totalLateMs += (breakDur - allowedBreakMs);
+                                    lateCount++;
+                                }
+                            }
                         }
 
                         if (sched && sched.start && sched.end) {
@@ -1561,7 +1572,6 @@ window.generateAllDrafts = async () => {
                     unscheduledDed = rawUnschedDed;
                     autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
                 } else {
-                    // 🌟 核心修改：在批量生成中，将迟到分钟从 Unscheduled 扣款中抽离到 Late Penalty
                     const lateHrs = totalLateMins / 60;
                     let calculatedLateDed = lateHrs * exactHrRate;
                     if (calculatedLateDed > rawUnschedDed) calculatedLateDed = rawUnschedDed;
