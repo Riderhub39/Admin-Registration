@@ -225,10 +225,32 @@
                 <div><h6 class="modal-title fw-bold text-primary mb-1" id="analyticsName">Staff Name</h6><small class="text-muted fw-bold" id="analyticsPeriod">Selected Period</small></div>
                 <button type="button" class="btn-close small" data-bs-dismiss="modal"></button>
             </div>
+            
+            <div id="analyticsBulkActionBar" class="d-none bg-warning bg-opacity-10 p-2 m-2 rounded d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-2">
+                    <i data-lucide="check-square" class="size-4 text-warning"></i>
+                    <span class="text-dark fw-bold small"><span id="analyticsSelectedCount">0</span> Selected</span>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-light border text-primary fw-bold py-0" onclick="window.openAnalyticsBulkEdit()">Edit Time</button>
+                    <button class="btn btn-sm btn-light border text-danger fw-bold py-0" onclick="window.deleteSelectedAnalytics()">Delete</button>
+                </div>
+            </div>
+
             <div class="modal-body p-0">
                 <div class="table-responsive" style="max-height: 400px;">
                     <table class="table table-sm table-striped m-0 align-middle border-0" style="font-size: 0.85rem;">
-                        <thead class="table-light sticky-top text-muted"><tr><th class="ps-3 border-0">Date</th><th class="border-0">Day</th><th class="border-0">Time</th><th class="text-end pe-3 border-0">Hrs</th></tr></thead>
+                        <thead class="table-light sticky-top text-muted">
+                            <tr>
+                                <th style="width: 30px;" class="ps-3 border-0">
+                                    <input type="checkbox" id="selectAllAnalytics" class="form-check-input" onchange="window.toggleAnalyticsSelectAll()">
+                                </th>
+                                <th class="border-0">Date</th>
+                                <th class="border-0">Day</th>
+                                <th class="border-0">Time</th>
+                                <th class="text-end pe-3 border-0">Hrs</th>
+                            </tr>
+                        </thead>
                         <tbody id="staffShiftsBody" class="border-0"></tbody>
                     </table>
                 </div>

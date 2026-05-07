@@ -29,6 +29,8 @@ let leaveCache = {};
 let presetCache = []; 
 let allStaff = []; 
 let listSelectedIds = new Set();
+let analyticsSelectedIds = new Set();
+let bulkEditContext = 'list'; // 区分是从 'list' 还是 'analytics' 触发的编辑
 let currentManagerDate = null;
 let currentFilterIds = null;
 
@@ -835,25 +837,41 @@ window.toggleListSelectAll = () => { const c=document.getElementById('selectAllL
 window.toggleListSelection = (id) => { if(listSelectedIds.has(id)) listSelectedIds.delete(id); else listSelectedIds.add(id); updateListBulkUI(); }
 function updateListBulkUI() { const b=document.getElementById('bulkActionBar'); if(listSelectedIds.size>0){b.classList.remove('d-none');document.getElementById('listSelectedCount').innerText=listSelectedIds.size;}else{b.classList.add('d-none');} }
 
-window.openListBulkEditModal = () => { document.getElementById('listEditCount').innerText=listSelectedIds.size; document.getElementById('leStart').value=""; document.getElementById('leEnd').value=""; listEditModal.show(); }
+window.openListBulkEditModal = () => { 
+    bulkEditContext = 'list';
+    document.getElementById('listEditCount').innerText = listSelectedIds.size; 
+    document.getElementById('leStart').value=""; 
+    document.getElementById('leEnd').value=""; 
+    listEditModal.show(); 
+}
 
-// 🟢 SECURE: Bulk Edit Time
+window.openAnalyticsBulkEdit = () => {
+    bulkEditContext = 'analytics';
+    document.getElementById('listEditCount').innerText = analyticsSelectedIds.size;
+    document.getElementById('leStart').value="";
+    document.getElementById('leEnd').value="";
+    listEditModal.show();
+}
+
 window.submitListEdit = async () => { 
-    const s=document.getElementById('leStart').value, e=document.getElementById('leEnd').value; 
-    if(!s||!e) return showStatusAlert('statusMessage', 'Enter time', false); 
+    const s = document.getElementById('leStart').value, e = document.getElementById('leEnd').value; 
+    if(!s || !e) return showStatusAlert('statusMessage', 'Enter time', false); 
     
+    // 根据上下文判断使用的是哪个选中集合
+    const activeSet = bulkEditContext === 'list' ? listSelectedIds : analyticsSelectedIds;
+
     document.getElementById('btnSubmitListEdit').disabled = true;
     showLoading();
 
     try {
-        const b=writeBatch(db); 
+        const b = writeBatch(db); 
         let editCount = 0;
         
-        listSelectedIds.forEach(id=>{ 
-            const sh=rawSchedules.find(x=>x.id===id); 
+        activeSet.forEach(id => { 
+            const sh = rawSchedules.find(x => x.id === id); 
             if(sh && !sh.clockIn){ 
-                const st=new Date(`${sh.date}T${s}`), et=new Date(`${sh.date}T${e}`); 
-                b.update(doc(db,"schedules",id),{start:Timestamp.fromDate(st),end:Timestamp.fromDate(et)}); 
+                const st = new Date(`${sh.date}T${s}`), et = new Date(`${sh.date}T${e}`); 
+                b.update(doc(db,"schedules",id), {start:Timestamp.fromDate(st), end:Timestamp.fromDate(et)}); 
                 editCount++;
             } 
         }); 
@@ -865,6 +883,8 @@ window.submitListEdit = async () => {
         }
         
         listEditModal.hide(); 
+        if (bulkEditContext === 'analytics') staffAnalyticsModal.hide(); // 成功后关闭弹窗，刷新数据
+
         hideLoading();
         showStatusAlert('statusMessage', `Updated ${editCount} shifts successfully.`, true);
     } catch(err) {
@@ -911,7 +931,12 @@ window.renderAnalytics = () => {
 window.openStaffAnalytics = (uid) => {
     const data = window.currentStats[uid]; if(!data) return;
     
-    // 🟢 增加一键清空按钮 (调用 clearStaffShifts)
+    // 重置选择状态
+    analyticsSelectedIds.clear();
+    if(window.updateAnalyticsBulkUI) window.updateAnalyticsBulkUI();
+    const selectAllCb = document.getElementById('selectAllAnalytics');
+    if(selectAllCb) selectAllCb.checked = false;
+
     document.getElementById('analyticsName').innerHTML = `${data.name} <button class="btn btn-xs btn-outline-danger ms-2 py-0" onclick="window.clearStaffShifts('${uid}', '${data.name}')">Clear All Displayed</button>`; 
     document.getElementById('analyticsPeriod').innerText = "Selected Period";
     
@@ -919,9 +944,12 @@ window.openStaffAnalytics = (uid) => {
     data.shifts.sort((a,b) => new Date(a.date) - new Date(b.date));
     data.shifts.forEach(s => { 
         const d = new Date(s.date).toLocaleDateString('en-US', {weekday: 'short'}); 
-        // 🟢 在 Hrs 后面加上了一个小编辑按钮
+        // 为尚未打卡的排班添加复选框
+        const checkbox = !s.clockIn ? `<input type="checkbox" class="form-check-input analytics-check" value="${s.id}" onchange="window.toggleAnalyticsSelection('${s.id}')">` : '';
+        
         t.innerHTML += `<tr>
-            <td class="ps-3">${s.date}</td>
+            <td class="ps-3">${checkbox}</td>
+            <td>${s.date}</td>
             <td><span class="badge bg-light text-dark border">${d}</span></td>
             <td>${formatTime(s.start)} - ${formatTime(s.end)}</td>
             <td class="text-end pe-3 fw-bold text-primary d-flex justify-content-end align-items-center gap-2">
@@ -930,9 +958,62 @@ window.openStaffAnalytics = (uid) => {
             </td>
         </tr>`; 
     });
-    document.getElementById('modalTotalShifts').innerText = data.shifts.length; document.getElementById('modalTotalHours').innerText = data.totalHours.toFixed(1);
+    document.getElementById('modalTotalShifts').innerText = data.shifts.length; 
+    document.getElementById('modalTotalHours').innerText = data.totalHours.toFixed(1);
     staffAnalyticsModal.show();
-    setTimeout(() => lucide.createIcons(), 100); // 重新渲染图标
+    setTimeout(() => lucide.createIcons(), 100); 
+}
+
+window.toggleAnalyticsSelectAll = () => { 
+    const c = document.getElementById('selectAllAnalytics').checked; 
+    document.querySelectorAll('.analytics-check').forEach(cb => {
+        cb.checked = c; 
+        if(c) analyticsSelectedIds.add(cb.value);
+    }); 
+    if(!c) analyticsSelectedIds.clear();
+    window.updateAnalyticsBulkUI(); 
+}
+
+window.toggleAnalyticsSelection = (id) => { 
+    if(analyticsSelectedIds.has(id)) analyticsSelectedIds.delete(id); 
+    else analyticsSelectedIds.add(id); 
+    window.updateAnalyticsBulkUI(); 
+}
+
+window.updateAnalyticsBulkUI = () => { 
+    const b = document.getElementById('analyticsBulkActionBar'); 
+    if(!b) return;
+    if(analyticsSelectedIds.size > 0){
+        b.classList.remove('d-none');
+        document.getElementById('analyticsSelectedCount').innerText = analyticsSelectedIds.size;
+    } else {
+        b.classList.add('d-none');
+    } 
+}
+
+window.deleteSelectedAnalytics = async () => {
+    if (analyticsSelectedIds.size === 0) return;
+    const idsToDelete = Array.from(analyticsSelectedIds);
+    if (!confirm(`Delete ${idsToDelete.length} selected shifts?`)) return;
+
+    showLoading();
+    try {
+        const batch = writeBatch(db);
+        idsToDelete.forEach(id => batch.delete(doc(db, "schedules", id)));
+        await batch.commit();
+
+        logAdminAction(db, auth.currentUser, "BULK_DELETE_ANALYTICS_SHIFTS", "MULTIPLE", { count: idsToDelete.length }, null);
+
+        analyticsSelectedIds.clear();
+        window.updateAnalyticsBulkUI();
+
+        hideLoading();
+        showStatusAlert('statusMessage', 'Selected shifts deleted.', true);
+        staffAnalyticsModal.hide(); // 删除后关闭弹窗以防数据显示旧数据
+    } catch(e) {
+        hideLoading();
+        showStatusAlert('statusMessage', `Delete failed: ${e.message}`, false);
+    }
 }
 
 window.copyPreviousWeek = async () => {
