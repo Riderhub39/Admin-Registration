@@ -931,31 +931,17 @@ window.savePayslipForm = async () => {
         updatedAt: serverTimestamp()
     };
 
-    const payslipId = `${uid}_${month}`; 
     const oldDocId = document.getElementById('editDocId')?.value;
-
+    const payslipId = oldDocId ? oldDocId : `${uid}_${month}_${Date.now()}`;
     try {
         const psRef = doc(db, "payslips", payslipId);
         const oldSnap = await getDoc(psRef);
         const isExisting = oldSnap.exists();
         const oldData = isExisting ? oldSnap.data() : null;
 
-        if (isExisting && oldData.status === 'Published' && status === 'Published' && oldDocId !== payslipId) {
-            if(!confirm(`⚠️ OVERWRITE WARNING\n\nA Published payslip already exists for ${staff.displayName} in ${month}.\nSaving will automatically OVERWRITE the old one. Proceed?`)) {
-                hideLoading();
-                return;
-            }
-        }
-
-        let actionType = isExisting ? "OVERWRITE_PAYSLIP" : "CREATE_PAYSLIP";
-        if (oldDocId === payslipId) actionType = "EDIT_PAYSLIP";
+        let actionType = oldDocId ? "EDIT_PAYSLIP" : "CREATE_PAYSLIP";
 
         payload.createdAt = isExisting ? oldData.createdAt : serverTimestamp();
-
-        if (oldDocId && oldDocId !== payslipId) {
-            await deleteDoc(doc(db, "payslips", oldDocId));
-            actionType = "MIGRATE_AND_OVERWRITE_PAYSLIP";
-        }
 
         await setDoc(psRef, payload);
 
