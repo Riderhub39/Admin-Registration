@@ -14,7 +14,8 @@ const auth = getAuth(app);
 const storage = getStorage(app); 
 
 let fullHistoryList = [];
-let attachmentModal, rejectModal, editStatusModal, addLeaveModalInst;
+// 🌟 追加了 leavePrintModalInst
+let attachmentModal, rejectModal, editStatusModal, addLeaveModalInst, leavePrintModalInst;
 let usersMap = {}; 
 let holidaysMap = {}; 
 
@@ -27,6 +28,8 @@ export async function initLeaveApprovalApp() {
         rejectModal = new bootstrap.Modal(document.getElementById('rejectModal'));
         editStatusModal = new bootstrap.Modal(document.getElementById('editStatusModal'));
         addLeaveModalInst = new bootstrap.Modal(document.getElementById('addLeaveModal'));
+        // 🌟 初始化打印预览弹窗
+        leavePrintModalInst = new bootstrap.Modal(document.getElementById('leavePrintModal'));
     }
 
     await fetchHolidays(); 
@@ -47,10 +50,10 @@ async function fetchHolidays() {
 async function fetchUsers() {
     const snap = await getDocs(query(collection(db, "users")));
     const staffSelect = document.getElementById('addLeaveStaff');
-    const empFilterSelect = document.getElementById('employeeHistoryFilter'); // 🟢 获取新增的筛选菜单
+    const empFilterSelect = document.getElementById('employeeHistoryFilter');
 
     if(staffSelect) staffSelect.innerHTML = '<option value="">-- Select Employee --</option>';
-    if(empFilterSelect) empFilterSelect.innerHTML = '<option value="all">All Employees</option>'; // 🟢 初始化筛选菜单
+    if(empFilterSelect) empFilterSelect.innerHTML = '<option value="all">All Employees</option>';
     
     let users = [];
     snap.forEach(docSnap => {
@@ -60,7 +63,9 @@ async function fetchUsers() {
                 id: docSnap.id,
                 authUid: d.authUid || "",
                 name: d.personal?.name || d.name || "Unknown Staff",
-                email: d.personal?.email || ""
+                email: d.personal?.email || "",
+                personal: d.personal || {},
+                empCode: d.empCode || d.personal?.empCode || "--"
             });
         }
     });
@@ -70,7 +75,7 @@ async function fetchUsers() {
         if(staffSelect) {
             staffSelect.innerHTML += `<option value="${u.id}">${u.name}</option>`;
         }
-        if(empFilterSelect) { // 🟢 将员工名字加入到筛选下拉菜单中
+        if(empFilterSelect) {
             empFilterSelect.innerHTML += `<option value="${u.id}">${u.name}</option>`;
         }
     });
@@ -132,7 +137,6 @@ function listenToPendingLeaves() {
             if (data.type === 'Medical Leave') typeColor = "text-danger bg-danger";
             if (data.type === 'Unpaid Leave') typeColor = "text-warning text-dark bg-warning";
 
-            // 如果含有半天假标识，显示 (AM) 或 (PM)
             const durationDisplay = (data.duration && data.duration !== 'Full Day') 
                 ? ` <span class="badge bg-secondary ms-1">${data.duration.replace('Half Day ', '')}</span>` 
                 : '';
@@ -203,11 +207,10 @@ function listenToLeaveHistory() {
 
 window.filterHistory = function() {
     const typeFilter = document.getElementById('historyFilter').value;
-    const empFilter = document.getElementById('employeeHistoryFilter').value; // 🟢 获取当前选择的员工
+    const empFilter = document.getElementById('employeeHistoryFilter').value; 
     const tbody = document.getElementById('historyListBody');
     tbody.innerHTML = '';
 
-    // 🟢 双重过滤逻辑：同时满足类型和员工
     let filtered = fullHistoryList;
 
     if (typeFilter !== 'all') {
@@ -239,7 +242,6 @@ window.filterHistory = function() {
             ? `<br><small class="text-warning">(-${data.deductibleDays} deducted)</small>` 
             : '';
 
-        // 如果含有半天假标识，显示 (AM) 或 (PM)
         const durationDisplay = (data.duration && data.duration !== 'Full Day') 
             ? ` <small class="text-muted">(${data.duration.replace('Half Day ', '')})</small>` 
             : '';
@@ -324,7 +326,6 @@ window.approveLeave = async function(leaveId, targetUid, days, type, startDate, 
     }
 }
 
-// 检查是否为单日，如果是单日则允许选择半天假
 window.checkSingleDay = function() {
     const startStr = document.getElementById('addLeaveStart').value;
     const endStr = document.getElementById('addLeaveEnd').value;
@@ -344,11 +345,11 @@ window.openAddLeaveModal = () => {
     document.getElementById('addLeaveType').value = "Annual Leave";
     document.getElementById('addLeaveStart').value = "";
     document.getElementById('addLeaveEnd').value = "";
-    document.getElementById('addLeaveDuration').value = "Full Day"; // 重置时长
+    document.getElementById('addLeaveDuration').value = "Full Day"; 
     document.getElementById('addLeaveReason').value = "";
     document.getElementById('addLeaveAttachment').value = ""; 
     
-    window.checkSingleDay(); // 初始化显示状态
+    window.checkSingleDay(); 
     addLeaveModalInst.show();
 };
 
@@ -357,7 +358,7 @@ window.submitAddLeave = async () => {
     const type = document.getElementById('addLeaveType').value;
     const startStr = document.getElementById('addLeaveStart').value;
     const endStr = document.getElementById('addLeaveEnd').value;
-    const duration = document.getElementById('addLeaveDuration').value; // 获取请假时长
+    const duration = document.getElementById('addLeaveDuration').value; 
     const reason = document.getElementById('addLeaveReason').value || "Added by Admin";
     
     const fileInput = document.getElementById('addLeaveAttachment');
@@ -375,7 +376,6 @@ window.submitAddLeave = async () => {
         return;
     }
 
-    // 调整：如果选了半天假，并且是同一天，天数算作 0.5
     let days = Math.round((eDate - sDate) / (1000 * 60 * 60 * 24)) + 1;
     if (startStr === endStr && duration !== 'Full Day') {
         days = 0.5;
@@ -429,8 +429,8 @@ window.submitAddLeave = async () => {
                 type: type,
                 startDate: startStr,
                 endDate: endStr,
-                days: days, // 存入计算后的 0.5 或整数
-                duration: duration, // 存入具体的时段 (Full Day, Half Day AM, Half Day PM)
+                days: days, 
+                duration: duration, 
                 deductibleDays: actualDeductibleDays, 
                 phOverlap: phOverlap, 
                 reason: reason,
@@ -620,3 +620,126 @@ window.submitStatusChange = async function() {
         showStatusAlert('statusMessage', `Failed to update: ${e.message}`, false);
     }
 }
+
+// ==========================================
+// 🌟 打印指定月份已批准的请假 (按员工分类分页)
+// ==========================================
+
+window.openLeavePrintModal = () => {
+    const now = new Date();
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    document.getElementById('printMonthPicker').value = monthStr;
+    
+    window.generatePrintPreview();
+    if(leavePrintModalInst) leavePrintModalInst.show();
+};
+
+window.generatePrintPreview = () => {
+    const monthStr = document.getElementById('printMonthPicker').value; // 格式: YYYY-MM
+    if(!monthStr) return;
+
+    const printArea = document.getElementById('leavePrintArea');
+    
+    // 1. 过滤：状态必须为 Approved，且 startDate 或 endDate 包含在该月份中
+    const filteredLeaves = fullHistoryList.filter(l => {
+        if (l.status !== 'Approved') return false;
+        const startMatch = l.startDate && l.startDate.startsWith(monthStr);
+        const endMatch = l.endDate && l.endDate.startsWith(monthStr);
+        return startMatch || endMatch;
+    });
+
+    if (filteredLeaves.length === 0) {
+        printArea.innerHTML = `<div class="p-5 text-center text-muted fw-bold fs-5">No approved leaves found for ${monthStr}.</div>`;
+        return;
+    }
+
+    // 2. 按员工 (UID) 进行分组
+    const groupedData = {};
+    filteredLeaves.forEach(l => {
+        const uid = l.uid || l.authUid; 
+        if (!groupedData[uid]) groupedData[uid] = [];
+        groupedData[uid].push(l);
+    });
+
+    let finalHtml = '';
+    const uids = Object.keys(groupedData);
+    
+    // 3. 遍历每个员工，生成专属的一页数据
+    uids.forEach((uid, index) => {
+        const leaves = groupedData[uid];
+        const staffInfo = usersMap[uid] || {};
+        const empName = staffInfo.name || staffInfo.personal?.name || leaves[0].empName || leaves[0].userName || 'Unknown Employee';
+        const empCode = staffInfo.personal?.empCode || staffInfo.empCode || '--';
+
+        let rowsHtml = '';
+        let totalDays = 0;
+
+        // 按照开始日期升序排序
+        leaves.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+
+        leaves.forEach(l => {
+            const days = parseFloat(l.days) || 1;
+            totalDays += days;
+            rowsHtml += `
+                <tr>
+                    <td class="fw-bold">${formatDate(l.startDate)} <span class="fw-normal text-muted px-1">to</span> ${formatDate(l.endDate)}</td>
+                    <td class="text-primary fw-bold">${l.type}</td>
+                    <td>${days} Day(s)</td>
+                    <td class="text-muted small">${l.reason || '-'}</td>
+                </tr>
+            `;
+        });
+
+        // 拼接 HTML，如果是最后一个员工就不需要加 page-break 分页符
+        const isLastPage = (index === uids.length - 1);
+        finalHtml += `
+            <div class="print-page ${!isLastPage ? 'page-break' : ''} p-5 bg-white border-bottom">
+                <div class="text-center mb-4">
+                    <h3 class="fw-bold text-dark mb-1">Approved Leave Report</h3>
+                    <h6 class="text-muted">Month: ${monthStr}</h6>
+                </div>
+                
+                <div class="mb-4 p-3 bg-light rounded border border-secondary border-opacity-25">
+                    <div class="row">
+                        <div class="col-6"><span class="text-muted">Employee Name:</span> <strong class="ms-1">${empName}</strong></div>
+                        <div class="col-6"><span class="text-muted">Employee Code:</span> <strong class="ms-1">${empCode}</strong></div>
+                    </div>
+                </div>
+                
+                <table class="table table-bordered align-middle">
+                    <thead class="table-light text-muted small text-uppercase">
+                        <tr>
+                            <th>Date (From - To)</th>
+                            <th>Leave Type</th>
+                            <th>Duration</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                    <tfoot class="bg-light">
+                        <tr>
+                            <td colspan="2" class="text-end fw-bold text-muted">Total Approved Days in this period:</td>
+                            <td colspan="2" class="text-danger fw-bold fs-6">${totalDays} Day(s)</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        `;
+    });
+
+    printArea.innerHTML = finalHtml;
+};
+
+window.executePrint = () => {
+    const originalTitle = document.title;
+    const monthStr = document.getElementById('printMonthPicker').value;
+    
+    // 修改网页标题，这样打印出来保存 PDF 时的默认文件名就很好看
+    document.title = `Approved_Leaves_Report_${monthStr}`;
+    
+    window.print();
+    
+    setTimeout(() => { document.title = originalTitle; }, 1000);
+};
