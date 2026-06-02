@@ -51,9 +51,11 @@ async function fetchUsers() {
     const snap = await getDocs(query(collection(db, "users")));
     const staffSelect = document.getElementById('addLeaveStaff');
     const empFilterSelect = document.getElementById('employeeHistoryFilter');
+    const printStaffFilter = document.getElementById('printStaffFilter'); // 🌟 新增：获取打印的员工筛选菜单
 
     if(staffSelect) staffSelect.innerHTML = '<option value="">-- Select Employee --</option>';
     if(empFilterSelect) empFilterSelect.innerHTML = '<option value="all">All Employees</option>';
+    if(printStaffFilter) printStaffFilter.innerHTML = '<option value="all">All Employees</option>'; // 🌟 初始化打印菜单
     
     let users = [];
     snap.forEach(docSnap => {
@@ -77,6 +79,9 @@ async function fetchUsers() {
         }
         if(empFilterSelect) {
             empFilterSelect.innerHTML += `<option value="${u.id}">${u.name}</option>`;
+        }
+        if(printStaffFilter) { // 🌟 将员工名字加入到打印筛选下拉菜单中
+            printStaffFilter.innerHTML += `<option value="${u.id}">${u.name}</option>`;
         }
     });
 }
@@ -622,34 +627,59 @@ window.submitStatusChange = async function() {
 }
 
 // ==========================================
-// 🌟 打印指定月份已批准的请假 (按员工分类分页)
+// 🌟 高级打印模块 (支持指定员工、多月份范围筛选)
 // ==========================================
 
 window.openLeavePrintModal = () => {
     const now = new Date();
-    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    document.getElementById('printMonthPicker').value = monthStr;
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    
+    // 默认显示当月到当月，员工选 All
+    document.getElementById('printStartMonth').value = currentMonthStr;
+    document.getElementById('printEndMonth').value = currentMonthStr;
+    document.getElementById('printStaffFilter').value = 'all'; 
     
     window.generatePrintPreview();
     if(leavePrintModalInst) leavePrintModalInst.show();
 };
 
 window.generatePrintPreview = () => {
-    const monthStr = document.getElementById('printMonthPicker').value; // 格式: YYYY-MM
-    if(!monthStr) return;
-
+    const startMonthStr = document.getElementById('printStartMonth').value; 
+    const endMonthStr = document.getElementById('printEndMonth').value; 
+    const staffFilter = document.getElementById('printStaffFilter').value;
     const printArea = document.getElementById('leavePrintArea');
+
+    if(!startMonthStr || !endMonthStr) return;
+
+    if (endMonthStr < startMonthStr) {
+        printArea.innerHTML = `<div class="p-5 text-center text-danger fw-bold fs-5"><i data-lucide="alert-circle" class="size-6 mb-2"></i><br>End month cannot be earlier than Start month.</div>`;
+        if (window.lucide) window.lucide.createIcons();
+        return;
+    }
     
-    // 1. 过滤：状态必须为 Approved，且 startDate 或 endDate 包含在该月份中
+    // 1. 过滤：状态为 Approved，匹配选中的员工，且日期在指定月份范围内
     const filteredLeaves = fullHistoryList.filter(l => {
         if (l.status !== 'Approved') return false;
-        const startMatch = l.startDate && l.startDate.startsWith(monthStr);
-        const endMatch = l.endDate && l.endDate.startsWith(monthStr);
-        return startMatch || endMatch;
+        
+        // 员工筛选
+        if (staffFilter !== 'all') {
+            if (l.uid !== staffFilter && l.authUid !== staffFilter) return false;
+        }
+
+        // 月份范围筛选逻辑 (处理跨月请假)
+        const leaveStartMonth = l.startDate ? l.startDate.substring(0, 7) : "";
+        const leaveEndMonth = l.endDate ? l.endDate.substring(0, 7) : "";
+        
+        if (!leaveStartMonth || !leaveEndMonth) return false;
+        
+        // 只要假期的月份范围与查询的月份范围有交集即可
+        return leaveStartMonth <= endMonthStr && leaveEndMonth >= startMonthStr;
     });
 
     if (filteredLeaves.length === 0) {
-        printArea.innerHTML = `<div class="p-5 text-center text-muted fw-bold fs-5">No approved leaves found for ${monthStr}.</div>`;
+        const targetName = staffFilter === 'all' ? 'All Employees' : (usersMap[staffFilter]?.name || 'Selected Employee');
+        const periodStr = startMonthStr === endMonthStr ? startMonthStr : `${startMonthStr} to ${endMonthStr}`;
+        printArea.innerHTML = `<div class="p-5 text-center text-muted fw-bold fs-5">No approved leaves found for <span class="text-dark">${targetName}</span><br>Period: ${periodStr}</div>`;
         return;
     }
 
@@ -664,7 +694,7 @@ window.generatePrintPreview = () => {
     let finalHtml = '';
     const uids = Object.keys(groupedData);
     
-    // 3. 遍历每个员工，生成专属的一页数据
+    // 3. 遍历每个员工，生成专属的报表
     uids.forEach((uid, index) => {
         const leaves = groupedData[uid];
         const staffInfo = usersMap[uid] || {};
@@ -674,35 +704,39 @@ window.generatePrintPreview = () => {
         let rowsHtml = '';
         let totalDays = 0;
 
-        // 按照开始日期升序排序
         leaves.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
 
         leaves.forEach(l => {
             const days = parseFloat(l.days) || 1;
             totalDays += days;
+            
+            const durationDisplay = (l.duration && l.duration !== 'Full Day') 
+                ? ` <small class="text-muted">(${l.duration.replace('Half Day ', '')})</small>` : '';
+
             rowsHtml += `
                 <tr>
                     <td class="fw-bold">${formatDate(l.startDate)} <span class="fw-normal text-muted px-1">to</span> ${formatDate(l.endDate)}</td>
-                    <td class="text-primary fw-bold">${l.type}</td>
-                    <td>${days} Day(s)</td>
+                    <td class="text-primary fw-bold">${l.type}${durationDisplay}</td>
+                    <td class="fw-bold">${days} <span class="fw-normal small text-muted">Day(s)</span></td>
                     <td class="text-muted small">${l.reason || '-'}</td>
                 </tr>
             `;
         });
 
-        // 拼接 HTML，如果是最后一个员工就不需要加 page-break 分页符
+        const periodDisplay = startMonthStr === endMonthStr ? startMonthStr : `${startMonthStr} to ${endMonthStr}`;
         const isLastPage = (index === uids.length - 1);
+        
         finalHtml += `
             <div class="print-page ${!isLastPage ? 'page-break' : ''} p-5 bg-white border-bottom">
                 <div class="text-center mb-4">
                     <h3 class="fw-bold text-dark mb-1">Approved Leave Report</h3>
-                    <h6 class="text-muted">Month: ${monthStr}</h6>
+                    <h6 class="text-muted">Period: <span class="text-dark fw-bold">${periodDisplay}</span></h6>
                 </div>
                 
                 <div class="mb-4 p-3 bg-light rounded border border-secondary border-opacity-25">
                     <div class="row">
-                        <div class="col-6"><span class="text-muted">Employee Name:</span> <strong class="ms-1">${empName}</strong></div>
-                        <div class="col-6"><span class="text-muted">Employee Code:</span> <strong class="ms-1">${empCode}</strong></div>
+                        <div class="col-6"><span class="text-muted">Employee Name:</span> <strong class="ms-1 fs-6">${empName}</strong></div>
+                        <div class="col-6"><span class="text-muted">Employee Code:</span> <strong class="ms-1 fs-6">${empCode}</strong></div>
                     </div>
                 </div>
                 
@@ -721,7 +755,7 @@ window.generatePrintPreview = () => {
                     <tfoot class="bg-light">
                         <tr>
                             <td colspan="2" class="text-end fw-bold text-muted">Total Approved Days in this period:</td>
-                            <td colspan="2" class="text-danger fw-bold fs-6">${totalDays} Day(s)</td>
+                            <td colspan="2" class="text-danger fw-bold fs-5">${totalDays} Day(s)</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -734,10 +768,14 @@ window.generatePrintPreview = () => {
 
 window.executePrint = () => {
     const originalTitle = document.title;
-    const monthStr = document.getElementById('printMonthPicker').value;
+    const startMonthStr = document.getElementById('printStartMonth').value;
+    const endMonthStr = document.getElementById('printEndMonth').value;
+    const staffFilter = document.getElementById('printStaffFilter').value;
     
-    // 修改网页标题，这样打印出来保存 PDF 时的默认文件名就很好看
-    document.title = `Approved_Leaves_Report_${monthStr}`;
+    // 动态生成 PDF 保存时的默认文件名
+    const staffName = staffFilter === 'all' ? 'All_Staff' : (usersMap[staffFilter]?.name.replace(/\s+/g, '_') || 'Staff');
+    const period = startMonthStr === endMonthStr ? startMonthStr : `${startMonthStr}_to_${endMonthStr}`;
+    document.title = `Approved_Leaves_${staffName}_${period}`;
     
     window.print();
     

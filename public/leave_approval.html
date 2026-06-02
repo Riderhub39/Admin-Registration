@@ -258,14 +258,24 @@
 <div class="modal fade" id="leavePrintModal" tabindex="-1">
     <div class="modal-dialog modal-lg" style="max-width: 900px;">
         <div class="modal-content">
-            <div class="modal-header no-print bg-light">
+            <div class="modal-header no-print bg-light flex-wrap gap-2 pb-3">
                 <h5 class="modal-title fw-bold"><i data-lucide="printer" class="size-5 me-2"></i>Print Approved Leaves</h5>
-                <div class="d-flex align-items-center gap-3">
-                    <input type="month" id="printMonthPicker" class="form-control form-control-sm border-primary" onchange="window.generatePrintPreview()">
-                    <button type="button" class="btn btn-dark btn-sm fw-bold px-3" onclick="window.executePrint()">
+                
+                <div class="d-flex align-items-center gap-2 flex-wrap w-100 mt-2">
+                    <select id="printStaffFilter" class="form-select form-select-sm border-primary fw-bold text-dark" style="width: 200px;" onchange="window.generatePrintPreview()">
+                        <option value="all">All Employees</option>
+                    </select>
+                    
+                    <div class="input-group input-group-sm" style="width: 280px;">
+                        <input type="month" id="printStartMonth" class="form-control border-primary fw-bold" onchange="window.generatePrintPreview()">
+                        <span class="input-group-text bg-light text-muted fw-bold border-primary">to</span>
+                        <input type="month" id="printEndMonth" class="form-control border-primary fw-bold" onchange="window.generatePrintPreview()">
+                    </div>
+
+                    <button type="button" class="btn btn-dark btn-sm fw-bold px-4 ms-auto shadow-sm" onclick="window.executePrint()">
                         <i data-lucide="printer" class="size-4 me-1"></i> Print
                     </button>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close ms-2" data-bs-dismiss="modal"></button>
                 </div>
             </div>
             <div class="modal-body bg-secondary bg-opacity-10 overflow-auto py-4" style="max-height: 75vh;">
@@ -283,7 +293,8 @@
     import { firebaseConfig } from "./firebase-config.js";
     import { requireAdmin } from "./auth-guard.js";
     
-    import { initLeaveApprovalApp } from "./leave-approval-app.js";
+    // 加了 ?v=3 防止浏览器使用旧版本的 JS 缓存
+    import { initLeaveApprovalApp } from "./leave-approval-app.js?v=3";
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
