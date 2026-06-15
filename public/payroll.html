@@ -12,60 +12,16 @@
     
     <style>
         @media print {
-            /* 1. 隐藏页面上所有的元素 */
-            body * {
-                visibility: hidden;
-            }
-            
-            /* 2. 解除 Body 和 Modal 的滚动/定位限制 (关键修复) */
-            body, body.modal-open {
-                overflow: visible !important;
-                padding: 0 !important;
-            }
-            .modal {
-                position: absolute !important;
-                left: 0 !important;
-                top: 0 !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                overflow: visible !important;
-            }
-            .modal-dialog {
-                transform: none !important; /* 🚨 必须解除：消除 Bootstrap 动画导致的缩放偏移 */
-                width: 100% !important;
-                max-width: 100% !important;
-                margin: 0 !important;
-            }
-            .modal-content, .modal-body {
-                border: none !important;
-                box-shadow: none !important;
-                padding: 0 !important;
-                overflow: visible !important;
-                background: transparent !important;
-            }
-
-            /* 3. 仅让工资单区域可见，并重置到页面最左上角 */
-            #printArea, #printArea * {
-                visibility: visible;
-            }
-            #printArea {
-                position: absolute !important;
-                left: 0 !important;
-                top: 0 !important;
-                width: 100% !important;
-            }
-
-            /* 4. 强制打印背景色 */
-            * {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-            }
+            body * { visibility: hidden; }
+            body, body.modal-open { overflow: visible !important; padding: 0 !important; }
+            .modal { position: absolute !important; left: 0 !important; top: 0 !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
+            .modal-dialog { transform: none !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; }
+            .modal-content, .modal-body { border: none !important; box-shadow: none !important; padding: 0 !important; overflow: visible !important; background: transparent !important; }
+            #printArea, #printArea * { visibility: visible; }
+            #printArea { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
-        
-        /* 设置 PDF 打印时的页边距，让排版更好看 */
-        @page {
-            margin: 1cm;
-        }
+        @page { margin: 1cm; }
     </style>
 </head>
 <body class="bg-light">
@@ -263,7 +219,7 @@
                         <div class="row g-3 mb-3">
                             <div class="col-md-2" id="boxStdDays">
                                 <label class="form-label text-muted small fw-bold">Comp. Std Days</label>
-                                <input type="number" id="inpStdDays" class="form-control" value="26" oninput="window.calcTotals(true)">
+                                <input type="number" id="inpStdDays" class="form-control" value="26" oninput="window.calcTotals('all')">
                             </div>
                             <div class="col-md-2 d-none" id="boxHourlyRate">
                                 <label class="form-label text-muted small fw-bold">Hourly Rate</label>
@@ -275,7 +231,7 @@
                             
                             <div class="col-md-4">
                                 <label class="form-label text-muted small">Full Basic Salary (Contract)</label>
-                                <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpBasic" class="form-control bg-light fw-bold" step="0.01" oninput="window.calcTotals(true)"></div>
+                                <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpBasic" class="form-control bg-light fw-bold" step="0.01" oninput="window.calcTotals('all')"></div>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label small fw-bold">Calculated Gross Basic</label>
@@ -285,15 +241,15 @@
                             
                             <div class="col-md-4">
                                 <label class="form-label text-muted small">Commission</label>
-                                <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpComm" class="form-control" step="0.01" oninput="window.calcTotals()"></div>
+                                <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpComm" class="form-control" step="0.01" oninput="window.calcTotals('statutory')"></div>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label text-muted small text-primary fw-bold">Overtime</label>
-                                <div class="input-group"><span class="input-group-text border-primary text-primary">RM</span><input type="number" id="inpOT" class="form-control border-primary" step="0.01" oninput="window.calcTotals()" placeholder="Manual Input"></div>
+                                <div class="input-group"><span class="input-group-text border-primary text-primary">RM</span><input type="number" id="inpOT" class="form-control border-primary" step="0.01" oninput="window.calcTotals('statutory')" placeholder="Manual Input"></div>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label text-muted small">Allowance</label>
-                                <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpAllowance" class="form-control" step="0.01" oninput="window.calcTotals()"></div>
+                                <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpAllowance" class="form-control" step="0.01" oninput="window.calcTotals('statutory')"></div>
                             </div>
                         </div>
 
@@ -303,22 +259,22 @@
                         <div class="row g-3 mb-3 bg-danger bg-opacity-10 p-3 rounded border border-danger border-opacity-25">
                             <div class="col-md-3">
                                 <label class="form-label text-muted small text-danger fw-bold">Absent Deduction</label>
-                                <div class="input-group input-group-sm"><span class="input-group-text text-danger border-danger fw-bold">RM</span><input type="number" id="inpAbsentDed" class="form-control border-danger text-danger fw-bold" step="0.01" oninput="window.calcTotals()"></div>
+                                <div class="input-group input-group-sm"><span class="input-group-text text-danger border-danger fw-bold">RM</span><input type="number" id="inpAbsentDed" class="form-control border-danger text-danger fw-bold" step="0.01" oninput="window.calcTotals('statutory')"></div>
                                 <div class="form-text text-danger" style="font-size:0.65rem">Auto Calc</div>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label text-muted small text-danger fw-bold">Unpaid Leave Ded.</label>
-                                <div class="input-group input-group-sm"><span class="input-group-text text-danger border-danger fw-bold">RM</span><input type="number" id="inpUnpaidDed" class="form-control border-danger text-danger fw-bold" step="0.01" oninput="window.calcTotals()"></div>
+                                <div class="input-group input-group-sm"><span class="input-group-text text-danger border-danger fw-bold">RM</span><input type="number" id="inpUnpaidDed" class="form-control border-danger text-danger fw-bold" step="0.01" oninput="window.calcTotals('statutory')"></div>
                                 <div class="form-text text-danger" style="font-size:0.65rem">Auto Calc</div>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label text-muted small text-danger fw-bold">Pro-rated (Unscheduled)</label>
-                                <div class="input-group input-group-sm"><span class="input-group-text text-danger border-danger fw-bold">RM</span><input type="number" id="inpUnscheduledDed" class="form-control border-danger text-danger fw-bold" step="0.01" oninput="window.calcTotals()"></div>
+                                <div class="input-group input-group-sm"><span class="input-group-text text-danger border-danger fw-bold">RM</span><input type="number" id="inpUnscheduledDed" class="form-control border-danger text-danger fw-bold" step="0.01" oninput="window.calcTotals('statutory')"></div>
                                 <div class="form-text text-danger" style="font-size:0.65rem">Auto Calc</div>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label text-muted small text-danger fw-bold">Late Penalty</label>
-                                <div class="input-group input-group-sm"><span class="input-group-text text-danger border-danger fw-bold">RM</span><input type="number" id="inpLateDed" class="form-control border-danger text-danger fw-bold" step="0.01" oninput="window.calcTotals()"></div>
+                                <div class="input-group input-group-sm"><span class="input-group-text text-danger border-danger fw-bold">RM</span><input type="number" id="inpLateDed" class="form-control border-danger text-danger fw-bold" step="0.01" oninput="window.calcTotals('statutory')"></div>
                                 <div class="form-text text-danger" style="font-size:0.65rem" id="lateFormulaText">Auto Deduct</div>
                             </div>
                         </div>
@@ -493,6 +449,6 @@
         </div>
     </div>
 
-    <script type="module" src="payroll-app.js"></script>
+    <script type="module" src="payroll-app.js?v=4"></script>
 </body>
 </html>

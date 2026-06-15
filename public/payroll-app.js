@@ -29,8 +29,9 @@ const safeSetText = (id, text) => { const el = document.getElementById(id); if (
 
 // 🟢 马来西亚法定扣款计算引擎 (EPF/SOCSO/EIS - 完美复刻 Jadual Caruman)
 function calculateMalaysiaStatutory(earnedBasic, commission, allowance, overtime, epfRateRaw) {
-    const epfGross = earnedBasic + commission + allowance;
-    const socsoEisGross = epfGross + overtime;
+    // 🌟 修改点：根据需求，Allowance 和 Overtime 都不计入 EPF, SOCSO 和 EIS 的计算基数中
+    const epfGross = earnedBasic + commission;
+    const socsoEisGross = earnedBasic + commission;
 
     let epfEmp = 0;
     let epfEmpr = 0;
@@ -373,12 +374,12 @@ window.autoFillStaffData = async () => {
 
     showLoading(); 
     await calculateAttendanceStats(uid, monthStr);
-    window.calcTotals(true); 
+    window.calcTotals('all'); 
     hideLoading(); 
 };
 
 window.recalcStatutoryAndTotals = () => {
-    window.calcTotals();
+    window.calcTotals('all');
 };
 
 async function calculateAttendanceStats(uid, monthStr) {
@@ -455,6 +456,10 @@ async function calculateAttendanceStats(uid, monthStr) {
     let phUnworkedDays = 0, phWorkedDays = 0, phWorkedMs = 0, phUnworkedMs = 0;
     let absentDays = 0, absentHrs = 0;
 
+    let totalLateFraction = 0;
+    let weekdayLateFraction = 0, satLateFraction = 0;
+    let totalWeekdayLateMs = 0, totalSatLateMs = 0;
+
     const satMulti = parseFloat(globalSettings.satMultiplier || 1.0);
 
     const toDateObj = (t, dateStr) => {
@@ -475,6 +480,15 @@ async function calculateAttendanceStats(uid, monthStr) {
         const isPH = !!holidaysMap[dateStr];
         const validPH = isPH && (!!sched || !!leaveType);
 
+        let schedDurMs = 8 * 3600000;
+        if (sched && sched.start && sched.end) {
+            const sStart = toDateObj(sched.start, dateStr);
+            const sEnd = toDateObj(sched.end, dateStr);
+            schedDurMs = sEnd - sStart;
+            if (sched.breakMins) schedDurMs -= (sched.breakMins * 60000);
+            if (schedDurMs <= 0) schedDurMs = 8 * 3600000;
+        }
+
         if (records && records.in) {
             const isSat = new Date(dateStr).getDay() === 6;
             
@@ -486,7 +500,21 @@ async function calculateAttendanceStats(uid, monthStr) {
             if (sched && sched.start) {
                 const inTime = toDateObj(records.in, dateStr);
                 const schedStart = toDateObj(sched.start, dateStr);
-                if (inTime > schedStart) { totalLateMs += (inTime - schedStart); lateCount++; }
+                if (inTime > schedStart) { 
+                    const lateMs = inTime - schedStart;
+                    totalLateMs += lateMs; 
+                    lateCount++; 
+                    const frac = lateMs / schedDurMs;
+                    totalLateFraction += frac; 
+
+                    if (isSat) {
+                        totalSatLateMs += lateMs;
+                        satLateFraction += frac;
+                    } else {
+                        totalWeekdayLateMs += lateMs;
+                        weekdayLateFraction += frac;
+                    }
+                }
             }
 
             let workMsThisDay = 0;
@@ -497,17 +525,37 @@ async function calculateAttendanceStats(uid, monthStr) {
                 
                 if (records.breakOut && records.breakIn) {
                     const breakDur = toDateObj(records.breakIn, dateStr) - toDateObj(records.breakOut, dateStr);
-                    if (breakDur > 0) workMsThisDay -= breakDur;
+                    if (breakDur > 0) {
+                        workMsThisDay -= breakDur;
+
+                        const allowedBreakMins = (sched && sched.breakMins) ? sched.breakMins : 60; 
+                        const allowedBreakMs = allowedBreakMins * 60000;
+                        if (breakDur > allowedBreakMs) {
+                            const lateMs = breakDur - allowedBreakMs;
+                            totalLateMs += lateMs;
+                            lateCount++;
+                            const frac = lateMs / schedDurMs;
+                            totalLateFraction += frac;
+
+                            if (isSat) {
+                                totalSatLateMs += lateMs;
+                                satLateFraction += frac;
+                            } else {
+                                totalWeekdayLateMs += lateMs;
+                                weekdayLateFraction += frac;
+                            }
+                        }
+                    }
                 }
 
                 if (sched && sched.start && sched.end) {
                     const sStart = toDateObj(sched.start, dateStr);
                     const sEnd = toDateObj(sched.end, dateStr);
-                    let schedDurMs = sEnd - sStart;
-                    if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
+                    let schedDurMsLimit = sEnd - sStart;
+                    if (sched.breakMins) schedDurMsLimit -= sched.breakMins * 60000;
 
-                    if (schedDurMs > 0 && workMsThisDay > schedDurMs) {
-                        workMsThisDay = schedDurMs;
+                    if (schedDurMsLimit > 0 && workMsThisDay > schedDurMsLimit) {
+                        workMsThisDay = schedDurMsLimit;
                     }
                 }
                 if(workMsThisDay > 0) totalWorkMs += workMsThisDay;
@@ -523,9 +571,9 @@ async function calculateAttendanceStats(uid, monthStr) {
                 phUnworkedDays += isSat ? satMulti : 1;
 
                 if (sched && sched.start && sched.end) {
-                    let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
-                    if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
-                    if (schedDurMs > 0) phUnworkedMs += schedDurMs;
+                    let schedDurMsPH = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
+                    if (sched.breakMins) schedDurMsPH -= sched.breakMins * 60000;
+                    if (schedDurMsPH > 0) phUnworkedMs += schedDurMsPH;
                 } else if (leaveType) {
                     phUnworkedMs += 8 * 3600000; 
                 }
@@ -534,9 +582,9 @@ async function calculateAttendanceStats(uid, monthStr) {
                 absentDays += isSat ? satMulti : 1;
 
                 if (sched.start && sched.end) {
-                    let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
-                    if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
-                    if (schedDurMs > 0) absentHrs += (schedDurMs / 3600000);
+                    let schedDurMsAbs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
+                    if (sched.breakMins) schedDurMsAbs -= sched.breakMins * 60000;
+                    if (schedDurMsAbs > 0) absentHrs += (schedDurMsAbs / 3600000);
                 }
             }
         }
@@ -562,10 +610,10 @@ async function calculateAttendanceStats(uid, monthStr) {
                 unpaidLeaveCount += lVal; 
                 const sched = mySchedules[dateStr];
                 if (sched && sched.start && sched.end) {
-                    let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
-                    if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
-                    if (schedDurMs > 0) {
-                        unpaidLeaveHrs += (schedDurMs / 3600000) * lVal; 
+                    let schedDurMsUnp = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
+                    if (sched.breakMins) schedDurMsUnp -= sched.breakMins * 60000;
+                    if (schedDurMsUnp > 0) {
+                        unpaidLeaveHrs += (schedDurMsUnp / 3600000) * lVal; 
                     }
                 } else {
                     unpaidLeaveHrs += 8 * lVal; 
@@ -596,9 +644,10 @@ async function calculateAttendanceStats(uid, monthStr) {
     }
 
     const paidLeaveCount = annualLeaveCount + medicalLeaveCount; 
+    const fixedScheduledDays = majorityDays; 
     
     const totalRecordedDays = actWorkedDays + paidLeaveCount + phUnworkedDays + unpaidLeaveCount + absentDays;
-    const unscheduledDays = Math.max(0, majorityDays - totalRecordedDays);
+    const unscheduledDays = Math.max(0, fixedScheduledDays - totalRecordedDays);
 
     const totalRecordedHrs = totalDecimalHrs + phUnworkedHrsDec + (paidLeaveCount * 8) + unpaidLeaveHrs + absentHrs;
     const unscheduledHrs = Math.max(0, majorityHours - totalRecordedHrs);
@@ -609,7 +658,7 @@ async function calculateAttendanceStats(uid, monthStr) {
         metaTotalHrsEl.value = totalDecimalHrs.toFixed(2);
     }
     
-    safeSetVal('inpStdDays', majorityDays);
+    safeSetVal('inpStdDays', fixedScheduledDays);
     safeSetText('dispSchDays', `${mySchedCount} Days`);
     safeSetText('dispActDays', `${actWorkedDays} Days`);
     safeSetText('dispPaidLeave', `${paidLeaveCount} Days (AL:${annualLeaveCount} ML:${medicalLeaveCount})`);
@@ -620,12 +669,24 @@ async function calculateAttendanceStats(uid, monthStr) {
 
     safeSetText('dispAbsent', `${absentDays} Days`);
     safeSetText('dispUnpaidLeave', `${unpaidLeaveCount} Days`);
+    
+    safeSetVal('metaUnscheduledDays', unscheduledDays);
     safeSetText('dispUnscheduled', `${unscheduledDays} Days`);
 
     safeSetVal('metaDaysSch', mySchedCount);
     safeSetVal('metaDaysAct', actWorkedDays);
     safeSetVal('metaLateMins', totalLateMins);
     safeSetVal('metaLateCount', lateCount);
+    
+    const lateMinsEl = document.getElementById('metaLateMins');
+    if (lateMinsEl) {
+        lateMinsEl.dataset.fraction = totalLateFraction;
+        lateMinsEl.dataset.weekdayFraction = weekdayLateFraction;
+        lateMinsEl.dataset.satFraction = satLateFraction;
+        lateMinsEl.dataset.weekdayMins = Math.floor(totalWeekdayLateMs / 60000);
+        lateMinsEl.dataset.satMins = Math.floor(totalSatLateMs / 60000);
+    }
+
     safeSetVal('metaAnnualLeave', annualLeaveCount);
     safeSetVal('metaMedicalLeave', medicalLeaveCount);
     
@@ -633,7 +694,6 @@ async function calculateAttendanceStats(uid, monthStr) {
     safeSetVal('metaAbsentHrs', absentHrs);
     safeSetVal('metaUnpaidLeave', unpaidLeaveCount);
     safeSetVal('metaUnpaidLeaveHrs', unpaidLeaveHrs);
-    safeSetVal('metaUnscheduledDays', unscheduledDays);
     safeSetVal('metaUnscheduledHrs', unscheduledHrs);
 
     safeSetVal('metaPHUnworked', phUnworkedDays);
@@ -644,7 +704,13 @@ async function calculateAttendanceStats(uid, monthStr) {
     if (unworkedPhEl) unworkedPhEl.dataset.hrs = phUnworkedHrsDec;
 }
 
-window.calcTotals = (autoUpdateStatutory = false) => {
+window.calcTotals = (updateMode = 'none') => {
+    if (updateMode === true) updateMode = 'all';
+    if (updateMode === false) updateMode = 'none';
+
+    const autoUpdateAttendance = (updateMode === 'all');
+    const autoUpdateStatutory = (updateMode === 'all' || updateMode === 'statutory');
+
     const getVal = (id) => { const el = document.getElementById(id); return el ? (parseFloat(el.value) || 0) : 0; };
     const fullBasic = getVal('inpBasic');
     let baseGross = fullBasic; 
@@ -654,9 +720,31 @@ window.calcTotals = (autoUpdateStatutory = false) => {
 
     const lateMins = getVal('metaLateMins');
     const lateCount = getVal('metaLateCount');
+    
+    const lateMinsEl = document.getElementById('metaLateMins');
+    const lateFraction = parseFloat(lateMinsEl?.dataset?.fraction) || 0;
+    const weekdayFraction = parseFloat(lateMinsEl?.dataset?.weekdayFraction) || 0;
+    const satFraction = parseFloat(lateMinsEl?.dataset?.satFraction) || 0;
+    const weekdayMins = parseInt(lateMinsEl?.dataset?.weekdayMins) || 0;
+    const satMins = parseInt(lateMinsEl?.dataset?.satMins) || 0;
 
     const phWorked = getVal('metaPHWorked');
     const phWorkedHrs = getVal('metaPHWorkedHrs');
+
+    const stdDays = getVal('inpStdDays') || 26; 
+    const actDays = getVal('metaDaysAct');
+    const al = getVal('metaAnnualLeave');
+    const ml = getVal('metaMedicalLeave');
+    const phOff = getVal('metaPHUnworked');
+    const unpaid = getVal('metaUnpaidLeave');
+    const absentDays = getVal('metaAbsentDays');
+    
+    const totalRecDays = actDays + al + ml + phOff + unpaid + absentDays;
+    let rawUnschedDays = stdDays - totalRecDays;
+    const cleanUnschedDays = rawUnschedDays < 0.05 ? 0 : Number(Math.max(0, rawUnschedDays).toFixed(1));
+    
+    safeSetVal('metaUnscheduledDays', cleanUnschedDays);
+    safeSetText('dispUnscheduled', `${cleanUnschedDays} Days`);
 
     if (globalSettings.calcMode === 'hourly') {
         const metaTotalHrsEl = document.getElementById('metaTotalHrs');
@@ -672,22 +760,33 @@ window.calcTotals = (autoUpdateStatutory = false) => {
 
         absentDed = hrRateToUse * getVal('metaAbsentHrs');
         unpaidDed = hrRateToUse * getVal('metaUnpaidLeaveHrs');
-        unscheduledDed = hrRateToUse * getVal('metaUnscheduledHrs');
+        let rawUnschedDed = hrRateToUse * getVal('metaUnscheduledHrs');
 
         phExtraGross = hrRateToUse * phWorkedHrs * 2; 
 
         if (globalSettings.lateMode === 'times') {
+            unscheduledDed = rawUnschedDed;
             autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
             safeSetText('lateFormulaText', `Fine: ${lateCount} times x RM${globalSettings.lateFixedAmount}`);
-        } else safeSetText('lateFormulaText', "Unpaid by default in Hourly mode.");
+        } else {
+            const lateHrs = lateMins / 60;
+            let calculatedLateDed = lateHrs * hrRateToUse;
+            
+            if (calculatedLateDed > rawUnschedDed) {
+                calculatedLateDed = rawUnschedDed;
+            }
+            
+            autoLateDeduct = calculatedLateDed;
+            unscheduledDed = rawUnschedDed - autoLateDeduct;
+            safeSetText('lateFormulaText', `Extracted from Pro-rated: ${lateMins} mins`);
+        }
         
     } else {
-        const stdDays = getVal('inpStdDays') || 26; 
         const exactDailyRate = stdDays > 0 ? (fullBasic / stdDays) : 0;
         
-        absentDed = exactDailyRate * getVal('metaAbsentDays');
-        unpaidDed = exactDailyRate * getVal('metaUnpaidLeave');
-        unscheduledDed = exactDailyRate * getVal('metaUnscheduledDays');
+        absentDed = exactDailyRate * absentDays;
+        unpaidDed = exactDailyRate * unpaid;
+        unscheduledDed = exactDailyRate * cleanUnschedDays;
         
         phExtraGross = phWorked * 2 * exactDailyRate;
 
@@ -695,12 +794,12 @@ window.calcTotals = (autoUpdateStatutory = false) => {
             autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
             safeSetText('lateFormulaText', `Fine: ${lateCount} times x RM${globalSettings.lateFixedAmount}`);
         } else {
-            autoLateDeduct = ((exactDailyRate / 8) / 60) * lateMins;
-            safeSetText('lateFormulaText', `Auto deduct: ${lateMins} mins`);
+            autoLateDeduct = exactDailyRate * lateFraction;
+            safeSetText('lateFormulaText', `Dynamic ratio from daily shift: ${lateMins} mins`);
         }
     }
     
-    if (autoUpdateStatutory) {
+    if (autoUpdateAttendance) {
         safeSetVal('inpAbsentDed', absentDed.toFixed(2));
         safeSetVal('inpUnpaidDed', unpaidDed.toFixed(2));
         safeSetVal('inpUnscheduledDed', unscheduledDed.toFixed(2));
@@ -778,7 +877,6 @@ window.savePayslipForm = async () => {
         department: staff?.employment?.dept || '-',
         bankAcc: staff?.payroll?.bank1?.acc || '-',
         bankName: staff?.payroll?.bank1?.name || '-',
-        // 🌟 新增：保存入职日期，用于精准计薪周期计算
         joinDate: staff?.employment?.joinDate || null,
         basic: getVal('inpBasic'),
         final_basic: baseGross, 
@@ -810,6 +908,11 @@ window.savePayslipForm = async () => {
             totalHrs: getVal('metaTotalHrs'),
             lateMins: getVal('metaLateMins'), 
             lateCount: getVal('metaLateCount'), 
+            lateFraction: parseFloat(document.getElementById('metaLateMins')?.dataset?.fraction) || 0,
+            weekdayLateFraction: parseFloat(document.getElementById('metaLateMins')?.dataset?.weekdayFraction) || 0,
+            satLateFraction: parseFloat(document.getElementById('metaLateMins')?.dataset?.satFraction) || 0,
+            weekdayLateMins: parseInt(document.getElementById('metaLateMins')?.dataset?.weekdayMins) || 0,
+            satLateMins: parseInt(document.getElementById('metaLateMins')?.dataset?.satMins) || 0,
             mode: globalSettings.calcMode,
             majorityHours: parseFloat(document.getElementById('metaTotalHrs')?.dataset?.majorityHours) || 208
         },
@@ -817,31 +920,17 @@ window.savePayslipForm = async () => {
         updatedAt: serverTimestamp()
     };
 
-    const payslipId = `${uid}_${month}`; 
     const oldDocId = document.getElementById('editDocId')?.value;
-
+    const payslipId = oldDocId ? oldDocId : `${uid}_${month}_${Date.now()}`;
     try {
         const psRef = doc(db, "payslips", payslipId);
         const oldSnap = await getDoc(psRef);
         const isExisting = oldSnap.exists();
         const oldData = isExisting ? oldSnap.data() : null;
 
-        if (isExisting && oldData.status === 'Published' && status === 'Published' && oldDocId !== payslipId) {
-            if(!confirm(`⚠️ OVERWRITE WARNING\n\nA Published payslip already exists for ${staff.displayName} in ${month}.\nSaving will automatically OVERWRITE the old one. Proceed?`)) {
-                hideLoading();
-                return;
-            }
-        }
-
-        let actionType = isExisting ? "OVERWRITE_PAYSLIP" : "CREATE_PAYSLIP";
-        if (oldDocId === payslipId) actionType = "EDIT_PAYSLIP";
+        let actionType = oldDocId ? "EDIT_PAYSLIP" : "CREATE_PAYSLIP";
 
         payload.createdAt = isExisting ? oldData.createdAt : serverTimestamp();
-
-        if (oldDocId && oldDocId !== payslipId) {
-            await deleteDoc(doc(db, "payslips", oldDocId));
-            actionType = "MIGRATE_AND_OVERWRITE_PAYSLIP";
-        }
 
         await setDoc(psRef, payload);
 
@@ -1020,6 +1109,7 @@ window.openEditModal = (id) => {
         
         safeSetVal('metaAbsentDays', d.attendanceStats.absentDays || 0);
         safeSetVal('metaUnpaidLeave', d.attendanceStats.unpaidLeave || 0);
+        
         safeSetVal('metaUnscheduledDays', d.attendanceStats.unscheduledDays || 0);
 
         safeSetVal('metaPHUnworked', d.attendanceStats.phUnworked || 0);
@@ -1039,6 +1129,7 @@ window.openEditModal = (id) => {
 
         safeSetText('dispAbsent', `${d.attendanceStats.absentDays || 0} <span style="font-size:0.6rem">Days</span>`);
         safeSetText('dispUnpaidLeave', `${d.attendanceStats.unpaidLeave || 0} <span style="font-size:0.6rem">Days</span>`);
+        
         safeSetText('dispUnscheduled', `${d.attendanceStats.unscheduledDays || 0} <span style="font-size:0.6rem">Days</span>`);
 
         safeSetVal('metaTotalHrs', d.attendanceStats.totalHrs || 0);
@@ -1055,6 +1146,15 @@ window.openEditModal = (id) => {
         safeSetVal('metaLateMins', d.attendanceStats.lateMins || 0);
         safeSetVal('metaLateCount', d.attendanceStats.lateCount || 0);
         
+        const lateMinsEl = document.getElementById('metaLateMins');
+        if (lateMinsEl) {
+            lateMinsEl.dataset.fraction = d.attendanceStats.lateFraction || 0;
+            lateMinsEl.dataset.weekdayFraction = d.attendanceStats.weekdayLateFraction || 0;
+            lateMinsEl.dataset.satFraction = d.attendanceStats.satLateFraction || 0;
+            lateMinsEl.dataset.weekdayMins = d.attendanceStats.weekdayLateMins || 0;
+            lateMinsEl.dataset.satMins = d.attendanceStats.satLateMins || 0;
+        }
+
         const savedTotalHrs = parseFloat(d.attendanceStats.totalHrs) || 0;
         const hrPart = Math.floor(savedTotalHrs);
         const minPart = Math.round((savedTotalHrs - hrPart) * 60);
@@ -1064,7 +1164,8 @@ window.openEditModal = (id) => {
         
         safeSetText('dispLateStats', `${d.attendanceStats.lateCount || 0} <span style="font-size:0.6rem">times (${d.attendanceStats.lateMins || 0}m)</span>`);
         
-        window.calcTotals(false);
+        // 🟢 载入时不覆盖任何扣款
+        window.calcTotals('none');
     }
     if(formModal) formModal.show();
 };
@@ -1088,7 +1189,6 @@ window.viewPayslip = (id) => {
     const lateMins = parseFloat(stats.lateMins) || 0;
     const lateCount = parseInt(stats.lateCount) || 0;
 
-    // 🌟 Pay Period 计算核心：兼容新员工入职日期
     let payPeriodDisplay = d.month;
     if (d.month && d.month.includes('-')) {
         const [year, mth] = d.month.split('-');
@@ -1118,14 +1218,29 @@ window.viewPayslip = (id) => {
     if (d.earnings.ot > 0) earningsList.push({ name: 'OVERTIME', amount: d.earnings.ot });
     if (d.earnings.allowance > 0) earningsList.push({ name: 'ALLOWANCE', amount: d.earnings.allowance });
 
-    if (d.deductions.absent > 0) deductionsList.push({ name: `ABSENT (${abs} Days)`, amount: d.deductions.absent });
-    if (d.deductions.unpaidLeave > 0) deductionsList.push({ name: `UNPAID LEAVE (${ul} Days)`, amount: d.deductions.unpaidLeave });
-    if (d.deductions.unscheduled > 0) deductionsList.push({ name: `PRO-RATED / UNSCHEDULED (${unsched} Days)`, amount: d.deductions.unscheduled });
+    if (d.deductions.absent > 0) {
+        const rate = abs > 0 ? (d.deductions.absent / abs).toFixed(2) : "0.00";
+        deductionsList.push({ name: `ABSENT - ${abs.toFixed(2)} Days @ RM ${rate}`, amount: d.deductions.absent });
+    }
+    if (d.deductions.unpaidLeave > 0) {
+        const rate = ul > 0 ? (d.deductions.unpaidLeave / ul).toFixed(2) : "0.00";
+        deductionsList.push({ name: `UNPAID LEAVE - ${ul.toFixed(2)} Days @ RM ${rate}`, amount: d.deductions.unpaidLeave });
+    }
+    if (d.deductions.unscheduled > 0) {
+        const rate = unsched > 0 ? (d.deductions.unscheduled / unsched).toFixed(2) : "0.00";
+        deductionsList.push({ name: `PRO-RATED / UNSCHEDULED - ${unsched.toFixed(2)} Days @ RM ${rate}`, amount: d.deductions.unscheduled });
+    }
 
     if (d.deductions.late > 0) {
-        let lateStr = "LATE DEDUCTION";
-        if (lateMins > 0 && stats.mode !== 'hourly') lateStr += ` (${lateMins} mins)`;
-        else if (lateCount > 0) lateStr += ` (${lateCount} times)`;
+        let lateStr = "LATENESS";
+        if (stats.mode === 'times' || (lateCount > 0 && lateMins === 0)) {
+            const perTime = lateCount > 0 ? (d.deductions.late / lateCount).toFixed(2) : "0.00";
+            lateStr = `LATENESS - ${lateCount} Times @ RM ${perTime}`;
+        } else if (lateMins > 0) {
+            const lateHrs = (lateMins / 60);
+            const rate = lateHrs > 0 ? (d.deductions.late / lateHrs).toFixed(2) : "0.00";
+            lateStr = `LATENESS - ${lateHrs.toFixed(2)} Hours @ RM ${rate}/hr`;
+        }
         deductionsList.push({ name: lateStr, amount: d.deductions.late });
     }
 
@@ -1154,7 +1269,7 @@ window.viewPayslip = (id) => {
 
         let dedStyle = 'padding-left:20px;';
         let dedAmtStyle = 'text-align:right;';
-        if (ded.name.includes('LATE') || ded.name.includes('ADVANCE') || ded.name.includes('ABSENT') || ded.name.includes('UNPAID') || ded.name.includes('PRO-RATED')) {
+        if (ded.name.includes('LATENESS') || ded.name.includes('ADVANCE') || ded.name.includes('ABSENT') || ded.name.includes('UNPAID') || ded.name.includes('PRO-RATED')) {
             dedStyle += ' color:red;';
             dedAmtStyle += ' color:red;';
         }
@@ -1372,17 +1487,16 @@ window.generateAllDrafts = async () => {
             }
         });
         allAdvSnap.forEach(d => { 
-            const a = d.data(); 
-            if (a.isTransferred === true) {
-                advances[a.uid] = (advances[a.uid] || 0) + a.amount; 
-            }
+            if (d.data().isTransferred === true) advances[d.data().uid] = (advances[d.data().uid] || 0) + d.data().amount; 
         });
 
         for (const [uid, staff] of Object.entries(staffMap)) {
-            const payslipId = `${uid}_${monthStr}`;
+            // 🟢 在批量生成时，同样使用包含时间戳的唯一 ID
+            const payslipId = `${uid}_${monthStr}_${Date.now()}`;
             
-            const existingPs = currentPayrollData.find(p => p.id === payslipId);
-            if (existingPs && existingPs.status === 'Published') {
+            // 这里为了防止无限生成，我们可以保留一个小检查：如果本月已有一张 Published，则跳过
+            const existingPs = currentPayrollData.find(p => p.uid === uid && p.month === monthStr && p.status === 'Published');
+            if (existingPs) {
                 skippedCount++;
                 continue; 
             }
@@ -1396,6 +1510,11 @@ window.generateAllDrafts = async () => {
             let actWorkedDays = 0, totalWorkMs = 0, totalLateMs = 0, lateCount = 0;
             let phUnworkedDays = 0, phWorkedDays = 0, phWorkedMs = 0, phUnworkedMs = 0;
             let absentDays = 0, absentHrs = 0;
+            
+            let totalLateFraction = 0;
+            let weekdayLateFraction = 0, satLateFraction = 0;
+            let totalWeekdayLateMs = 0, totalSatLateMs = 0;
+
             const satMulti = parseFloat(globalSettings.satMultiplier || 1.0);
             
             const toDateObj = (t, dateStr) => {
@@ -1438,6 +1557,15 @@ window.generateAllDrafts = async () => {
                 
                 const validPH = isPH && (!!sched || !!leaveType);
 
+                let schedDurMs = 8 * 3600000;
+                if (sched && sched.start && sched.end) {
+                    const sStart = toDateObj(sched.start, dateStr);
+                    const sEnd = toDateObj(sched.end, dateStr);
+                    schedDurMs = sEnd - sStart;
+                    if (sched.breakMins) schedDurMs -= (sched.breakMins * 60000);
+                    if (schedDurMs <= 0) schedDurMs = 8 * 3600000;
+                }
+
                 if (records && records.in) {
                     const isSat = new Date(dateStr).getDay() === 6;
                     
@@ -1449,7 +1577,20 @@ window.generateAllDrafts = async () => {
                     if (sched && sched.start) {
                         const inTime = toDateObj(records.in, dateStr);
                         const schedStart = toDateObj(sched.start, dateStr);
-                        if (inTime > schedStart) { totalLateMs += (inTime - schedStart); lateCount++; }
+                        if (inTime > schedStart) { 
+                            const lateMs = inTime - schedStart;
+                            totalLateMs += lateMs; 
+                            lateCount++; 
+                            const frac = lateMs / schedDurMs;
+                            totalLateFraction += frac;
+                            if (isSat) {
+                                totalSatLateMs += lateMs;
+                                satLateFraction += frac;
+                            } else {
+                                totalWeekdayLateMs += lateMs;
+                                weekdayLateFraction += frac;
+                            }
+                        }
                     }
 
                     let workMsThisDay = 0;
@@ -1462,17 +1603,36 @@ window.generateAllDrafts = async () => {
                             const bOut = toDateObj(records.breakOut, dateStr);
                             const bIn = toDateObj(records.breakIn, dateStr);
                             const breakDur = bIn - bOut;
-                            if (breakDur > 0) workMsThisDay -= breakDur;
+                            if (breakDur > 0) {
+                                workMsThisDay -= breakDur;
+
+                                const allowedBreakMins = (sched && sched.breakMins) ? sched.breakMins : 60;
+                                const allowedBreakMs = allowedBreakMins * 60000;
+                                if (breakDur > allowedBreakMs) {
+                                    const lateMs = breakDur - allowedBreakMs;
+                                    totalLateMs += lateMs;
+                                    lateCount++;
+                                    const frac = lateMs / schedDurMs;
+                                    totalLateFraction += frac;
+                                    if (isSat) {
+                                        totalSatLateMs += lateMs;
+                                        satLateFraction += frac;
+                                    } else {
+                                        totalWeekdayLateMs += lateMs;
+                                        weekdayLateFraction += frac;
+                                    }
+                                }
+                            }
                         }
 
                         if (sched && sched.start && sched.end) {
                             const sStart = toDateObj(sched.start, dateStr);
                             const sEnd = toDateObj(sched.end, dateStr);
-                            let schedDurMs = sEnd - sStart;
-                            if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
+                            let schedDurMsLimit = sEnd - sStart;
+                            if (sched.breakMins) schedDurMsLimit -= sched.breakMins * 60000;
 
-                            if (schedDurMs > 0 && workMsThisDay > schedDurMs) {
-                                workMsThisDay = schedDurMs;
+                            if (schedDurMsLimit > 0 && workMsThisDay > schedDurMsLimit) {
+                                workMsThisDay = schedDurMsLimit;
                             }
                         }
                         if(workMsThisDay > 0) totalWorkMs += workMsThisDay;
@@ -1488,9 +1648,9 @@ window.generateAllDrafts = async () => {
                         phUnworkedDays += isSat ? satMulti : 1;
                         
                         if (sched && sched.start && sched.end) {
-                            let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
-                            if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
-                            if (schedDurMs > 0) phUnworkedMs += schedDurMs;
+                            let schedDurMsPH = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
+                            if (sched.breakMins) schedDurMsPH -= sched.breakMins * 60000;
+                            if (schedDurMsPH > 0) phUnworkedMs += schedDurMsPH;
                         } else if (leaveType) {
                             phUnworkedMs += 8 * 3600000;
                         }
@@ -1498,9 +1658,9 @@ window.generateAllDrafts = async () => {
                         const isSat = new Date(dateStr).getDay() === 6;
                         absentDays += isSat ? satMulti : 1;
                         if (sched.start && sched.end) {
-                            let schedDurMs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
-                            if (sched.breakMins) schedDurMs -= sched.breakMins * 60000;
-                            if (schedDurMs > 0) absentHrs += (schedDurMs / 3600000);
+                            let schedDurMsAbs = toDateObj(sched.end, dateStr) - toDateObj(sched.start, dateStr);
+                            if (sched.breakMins) schedDurMsAbs -= sched.breakMins * 60000;
+                            if (schedDurMsAbs > 0) absentHrs += (schedDurMsAbs / 3600000);
                         }
                     }
                 }
@@ -1561,12 +1721,20 @@ window.generateAllDrafts = async () => {
                 
                 absentDed = exactHrRate * absentHrs;
                 unpaidDed = exactHrRate * unpaidLeaveHrs;
-                unscheduledDed = exactHrRate * unscheduledHrs;
+                let rawUnschedDed = exactHrRate * unscheduledHrs;
                 
                 phExtraGross = exactHrRate * phWorkedHrsDec * 2;
 
                 if (globalSettings.lateMode === 'times') {
+                    unscheduledDed = rawUnschedDed;
                     autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
+                } else {
+                    const lateHrs = totalLateMins / 60;
+                    let calculatedLateDed = lateHrs * exactHrRate;
+                    if (calculatedLateDed > rawUnschedDed) calculatedLateDed = rawUnschedDed;
+                    
+                    autoLateDeduct = calculatedLateDed;
+                    unscheduledDed = rawUnschedDed - autoLateDeduct;
                 }
             } else {
                 const exactDailyRate = majorityDays > 0 ? (fullBasic / majorityDays) : 0;
@@ -1580,7 +1748,7 @@ window.generateAllDrafts = async () => {
                 if (globalSettings.lateMode === 'times') {
                     autoLateDeduct = lateCount * (parseFloat(globalSettings.lateFixedAmount) || 0);
                 } else {
-                    autoLateDeduct = ((exactDailyRate / 8) / 60) * totalLateMins;
+                    autoLateDeduct = exactDailyRate * totalLateFraction;
                 }
             }
 
@@ -1608,7 +1776,6 @@ window.generateAllDrafts = async () => {
                 department: staff.employment?.dept || '-',
                 bankAcc: staff.payroll?.bank1?.acc || '-',
                 bankName: staff.payroll?.bank1?.name || '-',
-                // 🌟 新增：保存入职日期
                 joinDate: staff.employment?.joinDate || null,
                 basic: fullBasic,
                 final_basic: parseFloat(baseGross.toFixed(2)), 
@@ -1636,16 +1803,26 @@ window.generateAllDrafts = async () => {
                     phUnworkedHrs: parseFloat(phUnworkedHrsDec),
                     totalHrs: totalDecimalHrs,
                     lateMins: totalLateMins, lateCount: lateCount, 
+                    lateFraction: totalLateFraction,
+                    weekdayLateFraction: weekdayLateFraction,
+                    satLateFraction: satLateFraction,
+                    weekdayLateMins: Math.floor(totalWeekdayLateMs / 60000),
+                    satLateMins: Math.floor(totalSatLateMs / 60000),
                     mode: globalSettings.calcMode,
                     majorityHours: majorityHours
                 },
                 gross: parseFloat(grossTotal.toFixed(2)), net: parseFloat(net.toFixed(2)), 
                 status: 'Draft', 
+                // 🟢 当通过批量生成创建时，搜索之前同月所有的记录，如果有就将这些记录设为无效或者直接删除
                 updatedAt: serverTimestamp(),
-                createdAt: existingPs ? existingPs.createdAt : serverTimestamp()
+                createdAt: serverTimestamp()
             };
 
-            batch.set(doc(db, "payslips", payslipId), payload);
+            // 🟢 如果找到属于这个人的 Draft，覆盖最后那一张，如果没有，创建新的一张
+            const draftPs = currentPayrollData.find(p => p.uid === uid && p.month === monthStr && p.status === 'Draft');
+            const targetId = draftPs ? draftPs.id : payslipId;
+
+            batch.set(doc(db, "payslips", targetId), payload);
             generatedCount++;
         }
 
@@ -1668,9 +1845,6 @@ window.generateAllDrafts = async () => {
     }
 };
 
-// ==========================================
-// 5. QUICK NAVIGATION & DELETION
-// ==========================================
 window.currentViewingPayslipId = null;
 
 window.navigatePayslip = function(direction) {
