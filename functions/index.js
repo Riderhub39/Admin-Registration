@@ -1,5 +1,5 @@
-const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require("firebase-functions/v2/firestore");
-const { onSchedule } = require("firebase-functions/v2/scheduler"); // 引入定时任务
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 const { logger } = require("firebase-functions");
@@ -13,7 +13,7 @@ if (!admin.apps.length) {
 setGlobalOptions({ region: 'asia-southeast1' });
 
 // ============================================================================
-// 1. 公告推送 (Announcement Push) - 保留您的原有逻辑
+// 1. 公告推送 (Announcement Push)
 // ============================================================================
 exports.sendAnnouncementPush = onDocumentCreated('announcements/{docId}', async (event) => {
     const snap = event.data;
@@ -40,33 +40,31 @@ exports.sendAnnouncementPush = onDocumentCreated('announcements/{docId}', async 
             return;
         }
 
+        // 🟢 升级：使用新版 SDK 推荐的 sendEachForMulticast
         const payload = {
             notification: {
                 title: "📢 New Company Announcement",
                 body: messageBody
-            }
+            },
+            tokens: tokens // 传入 Token 数组
         };
 
-        // 注意：sendToDevice 在新版 SDK 中已被标记弃用，但为了兼容您的旧代码仍保留。
-        // 未来建议升级为 admin.messaging().sendEachForMulticast()
-        await admin.messaging().sendToDevice(tokens, payload);
-        logger.info(`Successfully sent announcement push to ${tokens.length} devices.`);
+        const response = await admin.messaging().sendEachForMulticast(payload);
+        logger.info(`Successfully sent announcement push. Success: ${response.successCount}, Failed: ${response.failureCount}`);
+        
     } catch (error) {
         logger.error("Error sending announcement push:", error);
     }
 });
 
 
-// ... (如果您还有其他的云函数，例如请假通知等，请保留粘贴在这里) ...
-
-
 // ============================================================================
-// 2. 自动签退补齐 (Auto Clock Out Job) - 🚀 已彻底修复终极版
+// 2. 自动签退补齐 (Auto Clock Out Job)
 // ============================================================================
 exports.autoClockOutJob = onSchedule({
-    schedule: "59 23 * * *", // 每天晚上 23:59 触发
-    timeZone: "Asia/Kuala_Lumpur", // 🟢 修复 1：强制指定马来西亚时区，避免 UTC 导致抓错日期
-    retryCount: 3 // 如果因网络波动失败，允许最多重试 3 次
+    schedule: "59 23 * * *",       // 每天晚上 23:59 触发
+    timeZone: "Asia/Kuala_Lumpur", // 强制指定马来西亚时区
+    retryCount: 3                  // 网络波动失败，允许最多重试 3 次
 }, async (event) => {
     const db = admin.firestore();
     
@@ -78,50 +76,54 @@ exports.autoClockOutJob = onSchedule({
                      String(mytTime.getDate()).padStart(2, '0');
 
     try {
-        // 2. 直接查询考勤表，获取今天【所有】的打卡记录
+        // 2. 查询考勤表，获取今天【所有】的打卡记录
         const attendanceRef = db.collection("attendance").where("date", "==", todayStr);
         const snapshot = await attendanceRef.get();
 
-        const clockIns = {};
-        const clockOuts = {};
+        // 用于将当天的考勤记录按用户归类
+        const userRecords = {};
 
-        // 3. 将今天的考勤记录按人头分类
-        // 🟢 修复 2：使用 identifier 完美兼容 data.uid 和 data.userId，彻底解决 ID 错乱导致的漏人问题
         snapshot.forEach(doc => {
             const data = doc.data();
             const identifier = data.uid || data.userId; 
             
-            if (!identifier) return; // 跳过脏数据
+            if (!identifier || !data.timestamp) return; // 跳过脏数据
 
-            if (data.session === "Clock In") {
-                clockIns[identifier] = data;
-            } else if (data.session === "Clock Out") {
-                clockOuts[identifier] = data;
+            if (!userRecords[identifier]) {
+                userRecords[identifier] = [];
             }
+            userRecords[identifier].push(data);
         });
 
-        const batch = db.batch();
+        let batch = db.batch();
         let fixCount = 0;
+        let batchOperationCount = 0; // 追踪 Batch 操作数量
 
-        // 4. 遍历所有今天有签到 (Clock In) 记录的员工
-        // 🟢 修复 3：不再依赖排班表匹配！只要签到了且没签退，无论是正常班还是临时加班，统统自动补齐
-        for (const [identifier, inData] of Object.entries(clockIns)) {
-            // 如果此人只有 Clock In，但在 clockOuts 字典里找不到他
-            if (!clockOuts[identifier]) {
-                
-                const autoOutTime = "23:59";
-                
-                // 构建带有正确时区的强制签退时间戳 (+08:00 马来西亚时间)
-                const forceTimestamp = new Date(`${todayStr}T23:59:00+08:00`);
+        const forceTimestamp = new Date(`${todayStr}T23:59:00+08:00`);
 
+        // 3. 遍历所有今天有打卡记录的员工
+        for (const [identifier, records] of Object.entries(userRecords)) {
+            
+            // 🟢 修复：按时间戳降序排列，只看该员工今天最后一次的打卡状态
+            records.sort((a, b) => {
+                const timeA = a.timestamp.toMillis ? a.timestamp.toMillis() : a.timestamp;
+                const timeB = b.timestamp.toMillis ? b.timestamp.toMillis() : b.timestamp;
+                return timeB - timeA; 
+            });
+
+            const latestRecord = records[0];
+
+            // 4. 如果最后一条记录是 "Clock In"，代表下班忘记打卡（包括加了临时班没退卡的情况）
+            if (latestRecord.session === "Clock In") {
+                
                 const newRecordRef = db.collection("attendance").doc();
                 batch.set(newRecordRef, {
                     uid: identifier,
-                    name: inData.name || "Unknown Staff",
-                    email: inData.email || "",
+                    name: latestRecord.name || "Unknown Staff",
+                    email: latestRecord.email || "",
                     date: todayStr,
                     session: "Clock Out",
-                    manualOut: autoOutTime,
+                    manualOut: "23:59",
                     verificationStatus: "Verified",
                     address: "System Auto Clock Out", 
                     remarks: "Forced by system due to missing clock out",
@@ -129,13 +131,24 @@ exports.autoClockOutJob = onSchedule({
                 });
 
                 fixCount++;
-                logger.info(`[Fixed] Auto Clock Out enforced for ${inData.name || identifier} at ${autoOutTime}`);
+                batchOperationCount++;
+                logger.info(`[Fixed] Auto Clock Out enforced for ${latestRecord.name || identifier}`);
+
+                // 🟢 保护机制：Firestore 的 batch 一次最多提交 500 个操作
+                if (batchOperationCount === 450) {
+                    await batch.commit();
+                    batch = db.batch(); // 重新实例化新的 batch
+                    batchOperationCount = 0;
+                }
             }
         }
 
-        // 5. 批量提交修改到数据库
-        if (fixCount > 0) {
+        // 5. 提交剩余的 batch
+        if (batchOperationCount > 0) {
             await batch.commit();
+        }
+
+        if (fixCount > 0) {
             logger.info(`✅ Successfully fixed ${fixCount} missing clock outs for ${todayStr}.`);
         } else {
             logger.info(`👍 All active staff properly clocked out today (${todayStr}). No fixes needed.`);
