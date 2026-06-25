@@ -1,16 +1,17 @@
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
-const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { onSchedule } = require("firebase-functions/v2/scheduler"); // 🟢 引入定时任务模块
 const { setGlobalOptions } = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 const { logger } = require("firebase-functions");
 
-// 初始化 Admin SDK (增加防重复初始化判定)
+// 🟢 初始化 Admin SDK (增加防重复初始化判定，避免云函数重启时报错)
 if (!admin.apps.length) {
     admin.initializeApp();
 }
 
-// 强制设置云函数部署在亚洲（与您的 Firestore 数据库区域保持一致）
+// 🟢 强制设置云函数部署在亚洲（与您的 Firestore 数据库保持一致）
 setGlobalOptions({ region: 'asia-southeast1' });
+
 
 // ============================================================================
 // 1. 公告推送 (Announcement Push)
@@ -40,18 +41,16 @@ exports.sendAnnouncementPush = onDocumentCreated('announcements/{docId}', async 
             return;
         }
 
-        // 🟢 升级：使用新版 SDK 推荐的 sendEachForMulticast
         const payload = {
             notification: {
                 title: "📢 New Company Announcement",
-                body: messageBody
+                body: messageBody,
             },
-            tokens: tokens // 传入 Token 数组
+            tokens: tokens
         };
 
         const response = await admin.messaging().sendEachForMulticast(payload);
-        logger.info(`Successfully sent announcement push. Success: ${response.successCount}, Failed: ${response.failureCount}`);
-        
+        logger.info(`Announcement sent. Success count: ${response.successCount}`);
     } catch (error) {
         logger.error("Error sending announcement push:", error);
     }
@@ -59,16 +58,97 @@ exports.sendAnnouncementPush = onDocumentCreated('announcements/{docId}', async 
 
 
 // ============================================================================
-// 2. 自动签退补齐 (Auto Clock Out Job)
+// 2. 假期审批推送 (Leave Update Push)
+// ============================================================================
+exports.sendLeaveUpdatePush = onDocumentUpdated('leaves/{leaveId}', async (event) => {
+    const change = event.data;
+    if (!change) return;
+
+    const newData = change.after.data();
+    const oldData = change.before.data();
+
+    if (oldData.status === newData.status) return;
+
+    const authUid = newData.authUid || newData.uid;
+    if (!authUid) return;
+
+    try {
+        const userQuery = await admin.firestore().collection('users').where('authUid', '==', authUid).limit(1).get();
+        if (userQuery.empty) return;
+
+        const fcmToken = userQuery.docs[0].data().fcmToken;
+        if (!fcmToken) return;
+
+        const payload = {
+            notification: {
+                title: "🏖️ Leave Request Update",
+                body: `Your request for ${newData.type} has been ${newData.status}.`,
+            },
+            token: fcmToken
+        };
+
+        await admin.messaging().send(payload);
+        logger.info(`Leave push sent successfully to ${authUid}`);
+    } catch (error) {
+        logger.error("Error sending leave push:", error);
+    }
+});
+
+
+// ============================================================================
+// 3. 薪资单发布推送 (Payslip Published Push)
+// ============================================================================
+exports.sendPayslipPush = onDocumentWritten('payslips/{payslipId}', async (event) => {
+    const change = event.data;
+    if (!change) return;
+
+    const docData = change.after.exists ? change.after.data() : null;
+    
+    if (!docData) return;
+    if (docData.status !== 'Published') return;
+
+    if (change.before.exists) {
+        const beforeData = change.before.data();
+        if (beforeData.status === 'Published') return; 
+    }
+
+    const uid = docData.uid; 
+    if (!uid) return;
+
+    try {
+        const userDoc = await admin.firestore().collection('users').doc(uid).get();
+        if (!userDoc.exists) return;
+
+        const fcmToken = userDoc.data().fcmToken;
+        if (!fcmToken) return;
+
+        const payload = {
+            notification: {
+                title: "💰 Payslip Available",
+                body: `Your payslip for ${docData.month} has been published and is ready to view.`,
+            },
+            token: fcmToken
+        };
+
+        await admin.messaging().send(payload);
+        logger.info(`Payslip push sent to user ${uid}`);
+    } catch (error) {
+        logger.error("Error sending payslip push:", error);
+    }
+});
+
+
+// ============================================================================
+// 4. 自动签退补齐 (Auto Clock Out Job) - 每天 23:59 触发
 // ============================================================================
 exports.autoClockOutJob = onSchedule({
-    schedule: "59 23 * * *",       // 每天晚上 23:59 触发
-    timeZone: "Asia/Kuala_Lumpur", // 强制指定马来西亚时区
-    retryCount: 3                  // 网络波动失败，允许最多重试 3 次
+    schedule: "59 23 * * *",       
+    timeZone: "Asia/Kuala_Lumpur", 
+    retryCount: 3                  
 }, async (event) => {
     const db = admin.firestore();
     
-    // 1. 获取准确的马来西亚时间当天日期字符串 (格式: YYYY-MM-DD)
+    // 获取准确的马来西亚时间当天日期字符串
     const now = new Date();
     const mytTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
     const todayStr = mytTime.getFullYear() + "-" + 
@@ -76,18 +156,16 @@ exports.autoClockOutJob = onSchedule({
                      String(mytTime.getDate()).padStart(2, '0');
 
     try {
-        // 2. 查询考勤表，获取今天【所有】的打卡记录
         const attendanceRef = db.collection("attendance").where("date", "==", todayStr);
         const snapshot = await attendanceRef.get();
 
-        // 用于将当天的考勤记录按用户归类
         const userRecords = {};
 
         snapshot.forEach(doc => {
             const data = doc.data();
             const identifier = data.uid || data.userId; 
             
-            if (!identifier || !data.timestamp) return; // 跳过脏数据
+            if (!identifier || !data.timestamp) return;
 
             if (!userRecords[identifier]) {
                 userRecords[identifier] = [];
@@ -97,14 +175,13 @@ exports.autoClockOutJob = onSchedule({
 
         let batch = db.batch();
         let fixCount = 0;
-        let batchOperationCount = 0; // 追踪 Batch 操作数量
+        let batchOperationCount = 0; 
 
         const forceTimestamp = new Date(`${todayStr}T23:59:00+08:00`);
 
-        // 3. 遍历所有今天有打卡记录的员工
         for (const [identifier, records] of Object.entries(userRecords)) {
             
-            // 🟢 修复：按时间戳降序排列，只看该员工今天最后一次的打卡状态
+            // 降序排列，取最后一次打卡记录
             records.sort((a, b) => {
                 const timeA = a.timestamp.toMillis ? a.timestamp.toMillis() : a.timestamp;
                 const timeB = b.timestamp.toMillis ? b.timestamp.toMillis() : b.timestamp;
@@ -113,7 +190,6 @@ exports.autoClockOutJob = onSchedule({
 
             const latestRecord = records[0];
 
-            // 4. 如果最后一条记录是 "Clock In"，代表下班忘记打卡（包括加了临时班没退卡的情况）
             if (latestRecord.session === "Clock In") {
                 
                 const newRecordRef = db.collection("attendance").doc();
@@ -134,16 +210,15 @@ exports.autoClockOutJob = onSchedule({
                 batchOperationCount++;
                 logger.info(`[Fixed] Auto Clock Out enforced for ${latestRecord.name || identifier}`);
 
-                // 🟢 保护机制：Firestore 的 batch 一次最多提交 500 个操作
+                // Firestore batch 500 操作限制保护
                 if (batchOperationCount === 450) {
                     await batch.commit();
-                    batch = db.batch(); // 重新实例化新的 batch
+                    batch = db.batch(); 
                     batchOperationCount = 0;
                 }
             }
         }
 
-        // 5. 提交剩余的 batch
         if (batchOperationCount > 0) {
             await batch.commit();
         }
