@@ -2,14 +2,11 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { 
-    getFirestore, collection, query, where, onSnapshot, doc, 
+    getFirestore, collection, query, onSnapshot, doc, 
     updateDoc, serverTimestamp, getDoc, setDoc, writeBatch, getDocs 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
 import { firebaseConfig } from "./firebase-config.js";
-
-// 🟢 导入通用工具
 import { logAdminAction, showStatusAlert, showLoading, hideLoading } from "./utils.js"; 
 
 const app = initializeApp(firebaseConfig);
@@ -23,46 +20,81 @@ let pendingRequests = {};
 let searchTerm = "";      
 let leaveRulesConfig = { annual: [], medical: [] };
 
-/**
- * 初始化页面应用
- */
+// 完整的字段定义
+const ALL_FIELDS = [
+    { label: "Emp Code", path: "personal.empCode" },
+    { label: "Name", path: "personal.name" },
+    { label: "IC No", path: "personal.icNo" },
+    { label: "Email", path: "personal.email" },
+    { label: "Phone", path: "personal.mobile" },
+    // --- Statutory ---
+    { label: "EPF No", path: "statutory.epf.no" },
+    { label: "EPF Name", path: "statutory.epf.name" },
+    { label: "SOCSO No", path: "statutory.socso.no" },
+    { label: "Tax No", path: "statutory.tax.no" },
+    { label: "PTPTN No", path: "statutory.ptptn" },
+    // --- Payroll ---
+    { label: "Basic Salary", path: "payroll.basic" },
+    { label: "Bank 1 Name", path: "payroll.bank1.name" },
+    { label: "Bank 1 Acc", path: "payroll.bank1.acc" },
+    // --- Address ---
+    { label: "Local City", path: "address.local.city" },
+    { label: "Emergency Name", path: "address.emergency.name" },
+    { label: "Emergency Number", path: "address.emergency.no" }
+];
+
 export async function initManageStaffApp() {
-    document.getElementById('loadingText').innerText = "Loading Staff List...";
+    document.getElementById('loadingText').innerText = "Loading...";
     
     if (typeof bootstrap !== 'undefined') {
         reviewModal = new bootstrap.Modal(document.getElementById('reviewModal'));
     }
     
-    initData();
+    initExportModal(); // 🟢 初始化导出界面的复选框
+    initData();        // 🟢 加载数据并渲染表格和弹窗列表
     loadLeaveRules();
 }
 
-// --- 实时监听器 ---
+// 渲染导出弹窗中的所有字段
+function initExportModal() {
+    const container = document.getElementById('fieldsContainer');
+    if (container) {
+        container.innerHTML = ALL_FIELDS.map(f => `
+            <div class="col-6">
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input export-field-cb" value="${f.path}" checked> 
+                    <label class="form-check-label">${f.label}</label>
+                </div>
+            </div>
+        `).join('');
+    }
+}
+
+// 加载并渲染员工数据
 function initData() {
-    // 监听员工列表
     const q = query(collection(db, "users"));
     onSnapshot(q, (snapshot) => {
         staffList = [];
         snapshot.forEach(doc => {
             const data = doc.data();
-            // 🟢 新增：过滤掉 role 为 'manager' 的用户
-            if (data.role !== 'manager') {
-                staffList.push({ id: doc.id, ...data });
-            }
+            if (data.role !== 'manager') staffList.push({ id: doc.id, ...data });
         });
         renderTable(); 
+        updateExportStaffList(); // 🟢 数据获取后立即更新弹窗中的员工列表
     });
+}
 
-    // 监听待处理的修改请求
-    const reqQuery = query(collection(db, "edit_requests"), where("status", "==", "pending"));
-    onSnapshot(reqQuery, (snap) => {
-        pendingRequests = {}; 
-        snap.forEach(doc => {
-            const data = doc.data();
-            pendingRequests[data.userId] = { reqId: doc.id, ...data };
-        });
-        renderTable(); 
-    });
+// 渲染弹窗中的员工列表
+function updateExportStaffList() {
+    const container = document.getElementById('staffListContainer');
+    if (container) {
+        container.innerHTML = staffList.map(user => `
+            <div class="form-check">
+                <input type="checkbox" class="form-check-input export-staff-cb" value="${user.id}"> 
+                <label class="form-check-label">${user.personal?.name || 'Unknown'} (${user.id})</label>
+            </div>
+        `).join('');
+    }
 }
 
 // --- 表单渲染逻辑 ---
@@ -159,7 +191,33 @@ function renderTable() {
     tbody.innerHTML = visibleCount === 0 ? '<tr><td colspan="6" class="text-center py-4 text-muted">No results found.</td></tr>' : htmlBuffer;
     lucide.createIcons();
 }
+window.exportStaffData = function() {
+    const selectedIds = Array.from(document.querySelectorAll('.export-staff-cb:checked')).map(cb => cb.value);
+    if (selectedIds.length === 0) {
+        alert("Please select at least one staff!");
+        return;
+    }
 
+    const selectedFields = Array.from(document.querySelectorAll('.export-field-cb:checked'))
+                                .map(cb => ({ path: cb.value, label: cb.nextElementSibling.innerText }));
+    
+    const dataToExport = staffList.filter(user => selectedIds.includes(user.id));
+
+    let csvContent = "\uFEFF" + selectedFields.map(f => f.label).join(",") + "\n"; 
+    dataToExport.forEach(user => {
+        const row = selectedFields.map(f => {
+            const val = f.path.split('.').reduce((obj, key) => (obj && obj[key] !== undefined) ? obj[key] : '', user);
+            return `"${String(val).replace(/"/g, '""')}"`;
+        });
+        csvContent += row.join(",") + "\n";
+    });
+
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
+    link.download = "staff_export.csv";
+    link.click();
+    bootstrap.Modal.getInstance(document.getElementById('exportModal')).hide();
+};
 // --- 假期规则管理 ---
 async function loadLeaveRules() {
     try {
