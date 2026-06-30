@@ -842,7 +842,7 @@ window.calcTotals = (updateMode = 'none') => {
         }
     }
 
-    const grossTotal = baseGross + phExtraGross + getVal('inpComm') + getVal('inpOT') + getVal('inpAllowance');
+    const grossTotal = baseGross + phExtraGross + getVal('inpComm') + getVal('inpOT') + getVal('inpAllowance') + getVal('inpReimbursement');
     const totalDed = getVal('inpAbsentDed') + getVal('inpUnpaidDed') + getVal('inpUnscheduledDed') + getVal('inpEPF') + getVal('inpSOCSO') + getVal('inpEIS') + getVal('inpPCB') + getVal('inpLateDed') + getVal('inpAdvance'); 
     const finalNet = grossTotal - totalDed;
     
@@ -862,7 +862,7 @@ window.savePayslipForm = async () => {
     const baseGross = parseFloat(document.getElementById('dispGrossBasic')?.value.replace(/,/g,'')) || 0;
     const phExtraGross = getVal('calcPHExtra');
 
-    const grossTotal = baseGross + phExtraGross + getVal('inpComm') + getVal('inpOT') + getVal('inpAllowance');
+    const grossTotal = baseGross + phExtraGross + getVal('inpComm') + getVal('inpOT') + getVal('inpAllowance') + getVal('inpReimbursement');
     const totalDed = getVal('inpAbsentDed') + getVal('inpUnpaidDed') + getVal('inpUnscheduledDed') + getVal('inpEPF') + getVal('inpSOCSO') + getVal('inpEIS') + getVal('inpPCB') + getVal('inpLateDed') + getVal('inpAdvance');
     const net = grossTotal - totalDed;
 
@@ -880,7 +880,7 @@ window.savePayslipForm = async () => {
         joinDate: staff?.employment?.joinDate || null,
         basic: getVal('inpBasic'),
         final_basic: baseGross, 
-        earnings: { commission: getVal('inpComm'), ot: getVal('inpOT'), allowance: getVal('inpAllowance'), phPay: phExtraGross, total: grossTotal },
+        earnings: { commission: getVal('inpComm'), ot: getVal('inpOT'), allowance: getVal('inpAllowance'), reimbursement: getVal('inpReimbursement'), phPay: phExtraGross, total: grossTotal },
         deductions: { 
             absent: getVal('inpAbsentDed'), 
             unpaidLeave: getVal('inpUnpaidDed'), 
@@ -1072,6 +1072,7 @@ window.openEditModal = (id) => {
     safeSetVal('inpComm', d.earnings.commission || 0);
     safeSetVal('inpOT', d.earnings.ot || 0);
     safeSetVal('inpAllowance', d.earnings.allowance || 0);
+    safeSetVal('inpReimbursement', d.earnings.reimbursement || 0);
 
     safeSetVal('inpAbsentDed', d.deductions?.absent || 0);
     safeSetVal('inpUnpaidDed', d.deductions?.unpaidLeave || 0);
@@ -1217,6 +1218,7 @@ window.viewPayslip = (id) => {
     if (d.earnings.commission > 0) earningsList.push({ name: 'COMMISSION', amount: d.earnings.commission });
     if (d.earnings.ot > 0) earningsList.push({ name: 'OVERTIME', amount: d.earnings.ot });
     if (d.earnings.allowance > 0) earningsList.push({ name: 'ALLOWANCE', amount: d.earnings.allowance });
+    if (d.earnings.reimbursement > 0) earningsList.push({ name: 'REIMBURSEMENT', amount: d.earnings.reimbursement });
 
     if (d.deductions.absent > 0) {
         const rate = abs > 0 ? (d.deductions.absent / abs).toFixed(2) : "0.00";
@@ -1779,7 +1781,7 @@ window.generateAllDrafts = async () => {
                 joinDate: staff.employment?.joinDate || null,
                 basic: fullBasic,
                 final_basic: parseFloat(baseGross.toFixed(2)), 
-                earnings: { commission: 0, ot: 0, allowance: 0, phPay: parseFloat(phExtraGross.toFixed(2)), total: parseFloat(grossTotal.toFixed(2)) },
+                earnings: { commission: 0, ot: 0, allowance: 0, reimbursement: 0, phPay: parseFloat(phExtraGross.toFixed(2)), total: parseFloat(grossTotal.toFixed(2)) },
                 deductions: { 
                     absent: parseFloat(absentDed.toFixed(2)), 
                     unpaidLeave: parseFloat(unpaidDed.toFixed(2)), 
