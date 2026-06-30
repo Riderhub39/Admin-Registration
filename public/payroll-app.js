@@ -27,7 +27,7 @@ let globalSettings = { calcMode: 'daily', satMultiplier: 1.0, lateMode: 'minutes
 const safeSetVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
 const safeSetText = (id, text) => { const el = document.getElementById(id); if (el) el.innerText = text; };
 
-// 🟢 马来西亚法定扣款计算引擎 (EPF/SOCSO/EIS - 完美复刻 Jadual Caruman)
+// 🟢 马来西亚法定扣款计算引擎 (EPF/SOCSO/EIS/SKBKK)
 function calculateMalaysiaStatutory(earnedBasic, commission, allowance, overtime, epfRateRaw) {
     // 🌟 修改点：根据需求，Allowance 和 Overtime 都不计入 EPF, SOCSO 和 EIS 的计算基数中
     const epfGross = earnedBasic + commission;
@@ -44,7 +44,7 @@ function calculateMalaysiaStatutory(earnedBasic, commission, allowance, overtime
         epfEmpr = Math.ceil(epfBracketMax * employerEpfRate);
     }
 
-    let socsoEmp = 0, socsoEmpr = 0, eisEmp = 0, eisEmpr = 0;
+    let socsoEmp = 0, socsoEmpr = 0, eisEmp = 0, eisEmpr = 0, skbkkEmp = 0;
     if (socsoEisGross > 0) {
         const capGross = Math.min(socsoEisGross, 6000);
 
@@ -72,6 +72,9 @@ function calculateMalaysiaStatutory(earnedBasic, commission, allowance, overtime
             const totalSocso = Math.round(midPoint * 0.0225 * 10) / 10;
             socsoEmpr = +(totalSocso - socsoEmp).toFixed(2);
         }
+        
+        // Calculate new SKBKK (0.75% of SOCSO gross, capped at 6000)
+        skbkkEmp = +(capGross * 0.0075).toFixed(2);
     }
 
     return {
@@ -80,7 +83,8 @@ function calculateMalaysiaStatutory(earnedBasic, commission, allowance, overtime
         socsoEmp: socsoEmp,
         socsoEmpr: socsoEmpr,
         eisEmp: eisEmp,
-        eisEmpr: eisEmpr
+        eisEmpr: eisEmpr,
+        skbkkEmp: skbkkEmp
     };
 }
 
@@ -822,6 +826,7 @@ window.calcTotals = (updateMode = 'none') => {
             safeSetText('hintEPF', `(${epfRaw}%)`);
             safeSetText('hintSOCSO', '(0.5%)');
             safeSetText('hintEIS', '(0.2%)');
+            safeSetText('hintSKBKK', '(0.75%)');
 
             const comm = getVal('inpComm');
             const allow = getVal('inpAllowance');
@@ -833,17 +838,18 @@ window.calcTotals = (updateMode = 'none') => {
             safeSetVal('inpEPF', stat.epfEmp.toFixed(2));
             safeSetVal('inpSOCSO', stat.socsoEmp.toFixed(2));
             safeSetVal('inpEIS', stat.eisEmp.toFixed(2));
+            safeSetVal('inpSKBKK', stat.skbkkEmp.toFixed(2));
             
             safeSetVal('inpEmpEPF', stat.epfEmpr.toFixed(2));
             safeSetVal('inpEmpSOCSO', stat.socsoEmpr.toFixed(2));
             safeSetVal('inpEmpEIS', stat.eisEmpr.toFixed(2));
         } else {
-            safeSetText('hintEPF', ''); safeSetText('hintSOCSO', ''); safeSetText('hintEIS', '');
+            safeSetText('hintEPF', ''); safeSetText('hintSOCSO', ''); safeSetText('hintEIS', ''); safeSetText('hintSKBKK', '');
         }
     }
 
     const grossTotal = baseGross + phExtraGross + getVal('inpComm') + getVal('inpOT') + getVal('inpAllowance') + getVal('inpReimbursement');
-    const totalDed = getVal('inpAbsentDed') + getVal('inpUnpaidDed') + getVal('inpUnscheduledDed') + getVal('inpEPF') + getVal('inpSOCSO') + getVal('inpEIS') + getVal('inpPCB') + getVal('inpLateDed') + getVal('inpAdvance'); 
+    const totalDed = getVal('inpAbsentDed') + getVal('inpUnpaidDed') + getVal('inpUnscheduledDed') + getVal('inpEPF') + getVal('inpSOCSO') + getVal('inpEIS') + getVal('inpSKBKK') + getVal('inpPCB') + getVal('inpLateDed') + getVal('inpAdvance'); 
     const finalNet = grossTotal - totalDed;
     
     safeSetText('dispNet', "RM " + formatMoney(finalNet));
@@ -863,7 +869,7 @@ window.savePayslipForm = async () => {
     const phExtraGross = getVal('calcPHExtra');
 
     const grossTotal = baseGross + phExtraGross + getVal('inpComm') + getVal('inpOT') + getVal('inpAllowance') + getVal('inpReimbursement');
-    const totalDed = getVal('inpAbsentDed') + getVal('inpUnpaidDed') + getVal('inpUnscheduledDed') + getVal('inpEPF') + getVal('inpSOCSO') + getVal('inpEIS') + getVal('inpPCB') + getVal('inpLateDed') + getVal('inpAdvance');
+    const totalDed = getVal('inpAbsentDed') + getVal('inpUnpaidDed') + getVal('inpUnscheduledDed') + getVal('inpEPF') + getVal('inpSOCSO') + getVal('inpEIS') + getVal('inpSKBKK') + getVal('inpPCB') + getVal('inpLateDed') + getVal('inpAdvance');
     const net = grossTotal - totalDed;
 
     const payload = {
@@ -888,6 +894,7 @@ window.savePayslipForm = async () => {
             epf: getVal('inpEPF'), 
             socso: getVal('inpSOCSO'), 
             eis: getVal('inpEIS'), 
+            skbkk: getVal('inpSKBKK'),
             tax: getVal('inpPCB'), 
             late: getVal('inpLateDed'), 
             advance: getVal('inpAdvance'), 
@@ -1038,6 +1045,7 @@ window.openCreateModal = () => {
     safeSetVal('calcPHExtra', "0");
     safeSetText('hintEPF', "");
     safeSetText('hintEIS', "");
+    safeSetText('hintSKBKK', "");
     safeSetVal('inpCompany', globalSettings.defaultCompany || 'RH RIDER HUB MOTOR (M) SDN. BHD.');
 
     document.getElementById('btnDeletePayslip')?.classList.add('d-none');
@@ -1081,6 +1089,7 @@ window.openEditModal = (id) => {
     safeSetVal('inpEPF', d.deductions.epf || 0);
     safeSetVal('inpSOCSO', d.deductions.socso || 0);
     safeSetVal('inpEIS', d.deductions.eis || 0);
+    safeSetVal('inpSKBKK', d.deductions.skbkk || 0);
     safeSetVal('inpPCB', d.deductions.tax || 0);
     safeSetVal('inpLateDed', d.deductions.late || 0);
     safeSetVal('inpAdvance', d.deductions.advance || 0); 
@@ -1099,6 +1108,7 @@ window.openEditModal = (id) => {
         const eisRaw = staff.statutory.eis || '';
         safeSetText('hintEPF', epfRaw ? `(${epfRaw}${epfRaw.toString().includes('%') ? '' : '%'})` : '');
         safeSetText('hintEIS', eisRaw ? `(${eisRaw}${eisRaw.toString().includes('%') ? '' : '%'})` : '');
+        safeSetText('hintSKBKK', '(0.75%)');
     }
     
     if (d.attendanceStats) {
@@ -1249,6 +1259,7 @@ window.viewPayslip = (id) => {
     if (d.deductions.epf > 0) deductionsList.push({ name: 'EPF (Employee)', amount: d.deductions.epf });
     if (d.deductions.socso > 0) deductionsList.push({ name: 'SOCSO (Employee)', amount: d.deductions.socso });
     if (d.deductions.eis > 0) deductionsList.push({ name: 'EIS (Employee)', amount: d.deductions.eis });
+    if (d.deductions.skbkk > 0) deductionsList.push({ name: 'SKBKK (Employee)', amount: d.deductions.skbkk });
     if (d.deductions.tax > 0) deductionsList.push({ name: 'PCB / TAX', amount: d.deductions.tax });
     if (d.deductions.advance > 0) deductionsList.push({ name: 'SALARY ADVANCE', amount: d.deductions.advance });
 
@@ -1757,14 +1768,14 @@ window.generateAllDrafts = async () => {
             let earnedBasicForStatutory = baseGross - absentDed - unpaidDed - unscheduledDed - autoLateDeduct;
             if (earnedBasicForStatutory < 0) earnedBasicForStatutory = 0;
 
-            let stat = { epfEmp: 0, epfEmpr: 0, socsoEmp: 0, socsoEmpr: 0, eisEmp: 0, eisEmpr: 0 };
+            let stat = { epfEmp: 0, epfEmpr: 0, socsoEmp: 0, socsoEmpr: 0, eisEmp: 0, eisEmpr: 0, skbkkEmp: 0 };
             if (staff.statutory) {
                 const epfRaw = staff.statutory.epf?.contrib || '11';
                 stat = calculateMalaysiaStatutory(earnedBasicForStatutory, 0, 0, phExtraGross, epfRaw);
             }
 
             const grossTotal = baseGross + phExtraGross; 
-            const totalDed = stat.epfEmp + stat.socsoEmp + stat.eisEmp + autoLateDeduct + absentDed + unpaidDed + unscheduledDed + totalAdvanceDed;
+            const totalDed = stat.epfEmp + stat.socsoEmp + stat.eisEmp + stat.skbkkEmp + autoLateDeduct + absentDed + unpaidDed + unscheduledDed + totalAdvanceDed;
             const net = grossTotal - totalDed;
 
             const payload = {
@@ -1789,6 +1800,7 @@ window.generateAllDrafts = async () => {
                     epf: stat.epfEmp, 
                     socso: stat.socsoEmp, 
                     eis: stat.eisEmp, 
+                    skbkk: stat.skbkkEmp,
                     tax: 0, 
                     late: parseFloat(autoLateDeduct.toFixed(2)), 
                     advance: parseFloat(totalAdvanceDed.toFixed(2)), 

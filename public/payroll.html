@@ -251,7 +251,6 @@
                                 <label class="form-label text-muted small">Allowance</label>
                                 <div class="input-group"><span class="input-group-text">RM</span><input type="number" id="inpAllowance" class="form-control" step="0.01" oninput="window.calcTotals('statutory')"></div>
                             </div>
-                            <!-- NEW: Reimbursement Field -->
                             <div class="col-md-4">
                                 <label class="form-label text-muted small">Reimbursement</label>
                                 <div class="input-group">
@@ -303,11 +302,15 @@
                                 <label class="form-label text-muted small">EIS <span id="hintEIS" class="text-primary fw-bold ms-1"></span></label>
                                 <div class="input-group input-group-sm"><span class="input-group-text border-secondary-subtle">RM</span><input type="number" id="inpEIS" class="form-control border-secondary-subtle" step="0.01" oninput="window.calcTotals()"></div>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-2">
+                                <label class="form-label text-muted small">SKBKK <span id="hintSKBKK" class="text-primary fw-bold ms-1"></span></label>
+                                <div class="input-group input-group-sm"><span class="input-group-text border-secondary-subtle">RM</span><input type="number" id="inpSKBKK" class="form-control border-secondary-subtle" step="0.01" oninput="window.calcTotals()"></div>
+                            </div>
+                            <div class="col-md-2">
                                 <label class="form-label text-muted small">PCB / Tax</label>
                                 <div class="input-group input-group-sm"><span class="input-group-text border-secondary-subtle">RM</span><input type="number" id="inpPCB" class="form-control border-secondary-subtle" step="0.01" oninput="window.calcTotals()"></div>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-2">
                                 <label class="form-label text-muted small text-danger fw-bold">Advance</label>
                                 <div class="input-group input-group-sm"><span class="input-group-text text-danger border-danger fw-bold">RM</span><input type="number" id="inpAdvance" class="form-control border-danger text-danger fw-bold bg-white" step="0.01" oninput="window.calcTotals()"></div>
                                 <div class="form-text text-danger" style="font-size:0.65rem">Transferred I.O.U</div>
