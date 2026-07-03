@@ -2,7 +2,7 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { 
-    getFirestore, collection, query, onSnapshot, doc, 
+    getFirestore, collection, query, where, onSnapshot, doc, 
     updateDoc, serverTimestamp, getDoc, setDoc, writeBatch, getDocs 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -362,12 +362,17 @@ window.recalculateAllBalances = async function() {
 
     showLoading();
     try {
+        console.log("Starting recalculation for year:", currentYear);
+        
         const ruleSnap = await getDoc(settingsRef);
         if (!ruleSnap.exists()) throw new Error("Rules missing.");
         const rules = ruleSnap.data();
+        console.log("Leave rules loaded:", rules);
         
+        // The 'where' function will now work correctly here
         const leavesQ = query(collection(db, "leaves"), where("status", "==", "Approved"), where("startDate", ">=", startOfYear));
         const leaveSnaps = await getDocs(leavesQ);
+        
         const usedMap = {}; 
         leaveSnaps.forEach(doc => {
             const d = doc.data();
@@ -377,6 +382,8 @@ window.recalculateAllBalances = async function() {
                 if (d.type === "Medical Leave") usedMap[d.uid].medical += d.days;
             }
         });
+        
+        console.log("Used leaves map calculated:", usedMap);
 
         const getEntitlement = (yrs, arr) => {
             const rule = arr.find(r => yrs >= r.min && yrs < r.max);
@@ -397,6 +404,8 @@ window.recalculateAllBalances = async function() {
                 const aU = usedMap[docSnap.id]?.annual || 0;
                 const mU = usedMap[docSnap.id]?.medical || 0;
 
+                console.log(`Updating staff ${docSnap.id}: Yrs=${yrs.toFixed(2)}, AL Entitlement=${aE}, AL Used=${aU}`);
+
                 batch.update(doc(db, "users", docSnap.id), { 
                     "leave_balance.annual": aE - aU, 
                     "leave_balance.medical": mE - mU,
@@ -409,11 +418,16 @@ window.recalculateAllBalances = async function() {
             }
         });
 
+        console.log(`Committing batch update for ${count} staff members...`);
         await batch.commit();
         await logAdminAction(db, auth.currentUser, "BATCH_RECALCULATE_LEAVES", "ALL_STAFF", null, { impactedUsers: count, year: currentYear });
+        
         hideLoading();
         showStatusAlert('statusMessage', `Updated ${count} staff balances.`, true);
+        console.log("Recalculation complete!");
+        
     } catch (e) {
+        console.error("Recalculation failed:", e); // This logs the full error trace to your DevTools
         hideLoading();
         showStatusAlert('statusMessage', `Error: ${e.message}`, false);
     }
