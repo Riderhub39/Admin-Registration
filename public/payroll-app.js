@@ -873,7 +873,9 @@ window.savePayslipForm = async () => {
     const net = grossTotal - totalDed;
 
     const payload = {
-        uid, month,
+        uid: uid, 
+        authUid: staff ? staff.authUid : null,
+        month,
         companyName: document.getElementById('inpCompany')?.value || 'RH RIDER HUB MOTOR (M) SDN. BHD.',
         staffName: staff ? staff.displayName : 'Unknown',
         staffCode: staff ? staff.displayId : '',
@@ -1779,7 +1781,9 @@ window.generateAllDrafts = async () => {
             const net = grossTotal - totalDed;
 
             const payload = {
-                uid, month: monthStr,
+                uid: uid, 
+                authUid: staff.authUid || null, 
+                month: monthStr,
                 companyName: globalSettings.defaultCompany || 'RH RIDER HUB MOTOR (M) SDN. BHD.',
                 staffName: staff.displayName,
                 staffCode: staff.displayId,
