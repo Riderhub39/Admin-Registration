@@ -142,18 +142,21 @@ exports.sendPayslipPush = onDocumentWritten('payslips/{payslipId}', async (event
 // 4. 自动签退补齐 (Auto Clock Out Job) - 每天 23:59 触发
 // ============================================================================
 exports.autoClockOutJob = onSchedule({
-    schedule: "59 23 * * *",       
+    schedule: "*/15 * * * *",  // Changed: Runs every 15 minutes
     timeZone: "Asia/Kuala_Lumpur", 
     retryCount: 3                  
 }, async (event) => {
     const db = admin.firestore();
     
-    // 获取准确的马来西亚时间当天日期字符串
+    // Get accurate Malaysia time strings
     const now = new Date();
     const mytTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
     const todayStr = mytTime.getFullYear() + "-" + 
                      String(mytTime.getMonth() + 1).padStart(2, '0') + "-" + 
                      String(mytTime.getDate()).padStart(2, '0');
+
+    // Convert current time to total minutes for easy comparison (e.g., 18:30 -> 1110)
+    const currentMinutes = (mytTime.getHours() * 60) + mytTime.getMinutes();
 
     try {
         const attendanceRef = db.collection("attendance").where("date", "==", todayStr);
@@ -177,11 +180,9 @@ exports.autoClockOutJob = onSchedule({
         let fixCount = 0;
         let batchOperationCount = 0; 
 
-        const forceTimestamp = new Date(`${todayStr}T23:59:00+08:00`);
-
         for (const [identifier, records] of Object.entries(userRecords)) {
             
-            // 降序排列，取最后一次打卡记录
+            // Sort descending to get the latest record
             records.sort((a, b) => {
                 const timeA = a.timestamp.toMillis ? a.timestamp.toMillis() : a.timestamp;
                 const timeB = b.timestamp.toMillis ? b.timestamp.toMillis() : b.timestamp;
@@ -190,31 +191,57 @@ exports.autoClockOutJob = onSchedule({
 
             const latestRecord = records[0];
 
+            // If the user is currently clocked in
             if (latestRecord.session === "Clock In") {
                 
-                const newRecordRef = db.collection("attendance").doc();
-                batch.set(newRecordRef, {
-                    uid: identifier,
-                    name: latestRecord.name || "Unknown Staff",
-                    email: latestRecord.email || "",
-                    date: todayStr,
-                    session: "Clock Out",
-                    manualOut: "23:59",
-                    verificationStatus: "Verified",
-                    address: "System Auto Clock Out", 
-                    remarks: "Forced by system due to missing clock out",
-                    timestamp: admin.firestore.Timestamp.fromDate(forceTimestamp)
-                });
+                // 1. Fetch user's specific profile to get their schedule
+                const userDoc = await db.collection("users").doc(identifier).get();
+                if (!userDoc.exists) continue;
+                const userData = userDoc.data();
 
-                fixCount++;
-                batchOperationCount++;
-                logger.info(`[Fixed] Auto Clock Out enforced for ${latestRecord.name || identifier}`);
+                // IMPORTANT: Change 'scheduleEndTime' to match your actual database field name
+                // e.g., userData.shift.endTime or userData.workingHours.to
+                const scheduledEndTimeStr = userData.scheduleEndTime || "18:00"; 
+                
+                // Parse their scheduled end time into minutes
+                const [endHour, endMin] = scheduledEndTimeStr.split(':').map(Number);
+                const scheduledEndMinutes = (endHour * 60) + endMin;
 
-                // Firestore batch 500 操作限制保护
-                if (batchOperationCount === 450) {
-                    await batch.commit();
-                    batch = db.batch(); 
-                    batchOperationCount = 0;
+                // Optional: Give them a grace period (e.g., 30 minutes) before forcing them out
+                const gracePeriodMinutes = 30; 
+
+                // 2. Check if current time exceeds their schedule + grace period
+                if (currentMinutes >= (scheduledEndMinutes + gracePeriodMinutes)) {
+                    
+                    const newRecordRef = db.collection("attendance").doc();
+                    
+                    // Use actual time of force-out, or use scheduled end time if you prefer
+                    const forceTimestamp = admin.firestore.Timestamp.fromDate(now);
+                    const manualOutTime = `${String(mytTime.getHours()).padStart(2, '0')}:${String(mytTime.getMinutes()).padStart(2, '0')}`;
+
+                    batch.set(newRecordRef, {
+                        uid: identifier,
+                        name: latestRecord.name || "Unknown Staff",
+                        email: latestRecord.email || "",
+                        date: todayStr,
+                        session: "Clock Out",
+                        manualOut: manualOutTime,
+                        verificationStatus: "Verified",
+                        address: "System Auto Clock Out", 
+                        remarks: `Forced by system due to missing clock out after scheduled shift (${scheduledEndTimeStr})`,
+                        timestamp: forceTimestamp
+                    });
+
+                    fixCount++;
+                    batchOperationCount++;
+                    logger.info(`[Fixed] Auto Clock Out enforced for ${latestRecord.name || identifier} at ${manualOutTime}`);
+
+                    // Firestore batch 500 operation limit protection
+                    if (batchOperationCount === 450) {
+                        await batch.commit();
+                        batch = db.batch(); 
+                        batchOperationCount = 0;
+                    }
                 }
             }
         }
@@ -224,9 +251,9 @@ exports.autoClockOutJob = onSchedule({
         }
 
         if (fixCount > 0) {
-            logger.info(`✅ Successfully fixed ${fixCount} missing clock outs for ${todayStr}.`);
+            logger.info(`✅ Successfully fixed ${fixCount} missing clock outs up to ${mytTime.getHours()}:${mytTime.getMinutes()}.`);
         } else {
-            logger.info(`👍 All active staff properly clocked out today (${todayStr}). No fixes needed.`);
+            // Keep logs clean, don't spam if nothing happened
         }
 
     } catch (error) {
